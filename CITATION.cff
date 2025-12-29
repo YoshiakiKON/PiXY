@@ -1,0 +1,12 @@
+cff-version: 1.2.0
+message: "If you use this software, please cite it using the following metadata."
+title: "Px2XY: Centroid Finder"
+version: "0.1.0"
+authors:
+  - family-names: "YourLastName"
+    given-names: "YourFirstName"
+    orcid: "https://orcid.org/0000-0000-0000-0000"
+    affiliation: "Your Institution"
+date-released: 2025-10-15
+license: "MIT"
+doi: "TODO"

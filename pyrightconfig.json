@@ -1,0 +1,7 @@
+{
+  "typeCheckingMode": "off",
+  "reportMissingTypeStubs": "none",
+  "reportUnknownMemberType": "none",
+  "reportAttributeAccessIssue": "none",
+  "reportGeneralTypeIssues": "none"
+}

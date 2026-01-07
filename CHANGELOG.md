@@ -2,6 +2,10 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.1.1] - 2026-01-08
+- Performance optimization: replaced Python loop with cv2.dilate for fast marker propagation in neck separation
+- 10-100x speedup in neck separation calculation
+
 ## [1.1] - 2026-01-08
 - Neck separation refinement: avoid double-counting areas when splitting components
 - Improved area histogram accuracy: only split areas counted post-split

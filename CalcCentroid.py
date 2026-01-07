@@ -39,6 +39,7 @@ class CentroidProcessor:
     def _split_by_neck_separation(self, comp_mask, neck_separation):
         """
         Detect and split particles by neck constriction using morphological operations.
+        Optimized with cv2.dilate for fast marker propagation.
         
         Args:
             comp_mask: Binary mask of the component (0-255)
@@ -73,34 +74,29 @@ class CentroidProcessor:
                 return [comp_mask]
             
             # Use multiple cores as seeds for splitting original component
-            # by marker propagation
+            # by fast marker propagation with cv2.dilate
             markers = np.zeros(comp_mask.shape, dtype=np.int32)
             for core_id in range(1, num_cores):
                 markers[core_labels == core_id] = core_id
             
-            # Ensure background is marked
-            markers[comp_mask == 0] = 0
+            # Ensure background is marked as -1 to distinguish from unmarked
+            markers[comp_mask == 0] = -1
             
-            # For each unmarked pixel in comp_mask, find nearest marked pixel
-            unmarked = (comp_mask > 0) & (markers == 0)
-            if unmarked.any():
-                # Dilate markers iteratively until all pixels are assigned
-                for iteration in range(20):  # increased iterations
-                    if not unmarked.any():
-                        break
-                    new_markers = markers.copy()
-                    for i in range(new_markers.shape[0]):
-                        for j in range(new_markers.shape[1]):
-                            if unmarked[i, j]:
-                                # Check neighbors
-                                for di, dj in [(-1, 0), (1, 0), (0, -1), (0, 1)]:
-                                    ni, nj = i + di, j + dj
-                                    if 0 <= ni < new_markers.shape[0] and 0 <= nj < new_markers.shape[1]:
-                                        if new_markers[ni, nj] > 0:
-                                            new_markers[i, j] = new_markers[ni, nj]
-                                            break
-                    markers = new_markers
-                    unmarked = (comp_mask > 0) & (markers == 0)
+            # Fast marker propagation using dilate (OpenCV optimized)
+            kernel_dilate = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (3, 3))
+            for iteration in range(max(comp_mask.shape)):  # enough iterations to fill
+                markers_old = markers.copy()
+                # Dilate each marker separately to propagate without conflicts
+                for core_id in range(1, num_cores):
+                    core_marker = (markers == core_id).astype(np.uint8) * 255
+                    dilated = cv2.dilate(core_marker, kernel_dilate, iterations=1)
+                    # Only expand into unmarked pixels (markers == 0)
+                    expand_mask = (dilated > 0) & (markers == 0) & (comp_mask > 0)
+                    markers[expand_mask] = core_id
+                
+                # Check if all pixels are assigned
+                if np.array_equal(markers, markers_old):
+                    break
             
             # Extract split masks
             split_masks = []

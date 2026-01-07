@@ -1,6 +1,6 @@
 [project]
 name = "pixy"
-version = "1.1"
+version = "1.1.1"
 description = "PiXY: Centroid Finder GUI for image-based centroid extraction"
 authors = [{name = "YourFirstName YourLastName", email = "you@example.com"}]
 licenses = [{file = "LICENSE"}]

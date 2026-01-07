@@ -22,7 +22,7 @@ exe = EXE(
     a.binaries,
     a.datas,
     [],
-    name='Px2XY',
+    name='PiXY',
     debug=False,
     bootloader_ignore_signals=False,
     strip=False,

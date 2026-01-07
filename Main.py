@@ -73,14 +73,18 @@ if __name__ == "__main__":
 
     # Ensure splash/icon files exist (write simple PPM dummies if necessary)
     project_dir = os.path.dirname(__file__)
-    # Prefer a bundled px2XY.png for the splash if present
-    bundled_png = os.path.join(project_dir, "px2XY.png")
+    # Prefer a bundled PiXY.png for the splash if present
+    bundled_png = os.path.join(project_dir, "PiXY_splash.png")
     splash_path = bundled_png if os.path.exists(bundled_png) else os.path.join(project_dir, "splash.ppm")
-    icon_path = os.path.join(project_dir, "app_icon.ppm")
+    # Prefer a bundled PiXY_icon.ico if present, otherwise fall back to a ppm icon asset.
+    ico_path = os.path.join(project_dir, "PiXY_icon.ico")
+    icon_path = ico_path if os.path.exists(ico_path) else os.path.join(project_dir, "app_icon.ppm")
     # create fallbacks if needed
     if not os.path.exists(splash_path):
         _ensure_ppm(splash_path, color=(50, 100, 200), w=480, h=200)
-    _ensure_ppm(icon_path, color=(200, 80, 80), w=64, h=64)
+    # If using ppm fallback, ensure it exists on disk
+    if not os.path.exists(icon_path) or icon_path.lower().endswith('.ppm'):
+        _ensure_ppm(icon_path, color=(200, 80, 80), w=64, h=64)
 
     # Create and show splash if asset is available
     splash = None
@@ -89,8 +93,16 @@ if __name__ == "__main__":
             pix = QPixmap(splash_path)
             if not pix.isNull():
                 splash = QSplashScreen(pix)
+                try:
+                    splash.setWindowFlag(Qt.WindowStaysOnTopHint, True)
+                except Exception:
+                    pass
                 splash.showMessage("Initializing...", Qt.AlignBottom | Qt.AlignHCenter, Qt.white)
                 splash.show()
+                try:
+                    splash.raise_()
+                except Exception:
+                    pass
                 app.processEvents()
     except Exception:
         splash = None
@@ -114,28 +126,38 @@ if __name__ == "__main__":
     except Exception:
         pass
 
-    # Show the main window and finish splash
-    win.show()
-    if splash is not None:
-        app.processEvents()
-        try:
-            splash.finish(win)
-        except Exception:
-            pass
-
+    # Show the main window (maximized)
+    win.showMaximized()
+    
     # CLI auto mode handling
     args = set(arg.lower() for arg in sys.argv[1:])
     if "--auto" in args or "--auto-exit" in args:
-        win.run_auto_and_exit()
-    else:
-        # If not in auto mode, prompt user to open an image at startup.
-        try:
-            QTimer.singleShot(0, win.open_image)
-        except Exception:
+        # Close splash immediately in auto mode and run
+        if splash is not None:
+            app.processEvents()
             try:
-                win.open_image()
+                splash.finish(win)
             except Exception:
                 pass
+        win.run_auto_and_exit()
+    else:
+        # Load default image in background while splash is showing
+        default_image = os.path.join(project_dir, "DemoBMP.bmp")
+        if os.path.exists(default_image):
+            try:
+                # Start loading image immediately (in background during splash)
+                QTimer.singleShot(0, lambda: win._open_image_from_path(default_image))
+            except Exception:
+                pass
+        
+        # Close splash after 2 seconds
+        if splash is not None:
+            def finish_splash():
+                try:
+                    splash.finish(win)
+                except Exception:
+                    pass
+            QTimer.singleShot(2000, finish_splash)
 
     # Use exec() for Qt6 / PySide6 compatibility (exec_ is deprecated)
     try:

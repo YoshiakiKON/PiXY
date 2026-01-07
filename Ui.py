@@ -1,13 +1,12 @@
+# -*- coding: utf-8 -*-
 """
 Centroid Finder のメイン UI ウィンドウ実装。
 
-このモジュールは PyQt5 を使用した GUI ウィンドウを定義します。
 主な機能:
 - 画像の読み込みと表示
-- 重心検出パラメータの調整 (PosterLevel, Min Area, Trim)
+- 重心検出パラメータの調整
 - 参照点の設定とフィッティング
 - テーブル表示と編集
-- 自動デバッグモード対応
 
 依存関係:
 - tables.py: テーブル操作
@@ -19,12 +18,19 @@ Centroid Finder のメイン UI ウィンドウ実装。
 """
 
 import qt_compat
-from qt_compat.QtWidgets import QSlider, QMainWindow, QLabel, QVBoxLayout, QHBoxLayout, QPushButton, QLineEdit, QWidget, QFileDialog, QStyle, QSizePolicy, QTableWidget, QTableWidgetItem, QAbstractItemView, QHeaderView, QScrollArea, QApplication
+from qt_compat.QtWidgets import (
+    QSlider, QMainWindow, QLabel, QVBoxLayout, QHBoxLayout, QPushButton, QLineEdit, QWidget,
+    QFileDialog, QStyle, QSizePolicy, QTableWidget, QTableWidgetItem, QAbstractItemView,
+    QHeaderView, QScrollArea, QApplication, QMenu, QComboBox
+)
+from qt_compat.QtWidgets import QButtonGroup
 from qt_compat.QtCore import Qt, QTimer, QObject, QEvent, QRect, QPoint, pyqtSignal, QThread
 from qt_compat.QtGui import QPixmap, QFont, QCursor, QPainter, QPen, QColor, QPalette
+
 from Util import cvimg_to_qpixmap, kmeans_posterize
 from CalcCentroid import CentroidProcessor
 from Config import PROC_TARGET_WIDTH, save_last_image_path, load_last_image_path, DEBUG
+
 import numpy as np
 import cv2
 from datetime import datetime
@@ -42,58 +48,595 @@ import ctypes
 from ctypes import wintypes
 
 
-class PatchWorker(QThread):
-    """Background worker that extracts a patch from a full image and resizes it.
+class SegmentControl(QWidget):
+    """Simple segmented control: horizontal checkable buttons in an exclusive group.
 
-    Emits (patch_array, left_label, top_label, request_id) where patch_array is a numpy BGR image or None on error.
+    Usage: sc = SegmentControl(["A","B"], checked_index=0, btn_w=64, btn_h=24)
+    Connect change via `sc.set_on_changed(callback)` where callback(index:int).
     """
-    finished = pyqtSignal(object, int, int, int)
-
-    def __init__(self, full_img, lf, tf, wf, hf, tgt_w, tgt_h, interp, left_label, top_label, request_id):
-        super().__init__()
-        self.full_img = full_img
-        self.lf = lf
-        self.tf = tf
-        self.wf = wf
-        self.hf = hf
-        self.tgt_w = tgt_w
-        self.tgt_h = tgt_h
-        self.interp = interp
-        self.left_label = left_label
-        self.top_label = top_label
-        self.request_id = request_id
-        self._cancel = False
-
-    def cancel(self):
+    def __init__(self, labels, parent=None, checked_index=0, btn_w=64, btn_h=24, blue="#757575"):
+        super().__init__(parent)
         try:
-            self._cancel = True
+            from qt_compat.QtWidgets import QPushButton, QHBoxLayout, QButtonGroup
+        except Exception:
+            from PyQt5.QtWidgets import QPushButton, QHBoxLayout, QButtonGroup
+
+        layout = QHBoxLayout(self)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(0)
+        self._buttons = []
+        self._group = QButtonGroup(self)
+        try:
+            self._group.setExclusive(True)
         except Exception:
             pass
 
-    def run(self):
+        qss_base = (
+            # Force square corners by default; we'll round only the outer corners explicitly.
+            "QPushButton { border: 1px solid lightgray; padding: 2px 10px; border-radius: 0px; }"
+            "QPushButton:checked { background-color: " + blue + "; color: white; }"
+            "QPushButton:!checked { background-color: white; color: black; }"
+        )
+
+        for i, lbl in enumerate(labels):
+            b = QPushButton(str(lbl))
+            try:
+                b.setCheckable(True)
+            except Exception:
+                pass
+            try:
+                b.setFixedSize(btn_w, btn_h)
+            except Exception:
+                pass
+            # Set normal (non-bold) font
+            try:
+                f = b.font()
+                f.setBold(False)
+                b.setFont(f)
+            except Exception:
+                pass
+            # apply corner styling depending on position
+            if i == 0:
+                # Left-most: round only the outer-left corners; keep inner-right corners square.
+                b.setStyleSheet(
+                    qss_base
+                    + "QPushButton { border-top-left-radius: 10px; border-bottom-left-radius: 10px; border-top-right-radius: 0px; border-bottom-right-radius: 0px; border-right: none; font-weight: normal; }"
+                )
+            elif i == len(labels) - 1:
+                # Right-most: round only the outer-right corners; keep inner-left corners square.
+                b.setStyleSheet(
+                    qss_base
+                    + "QPushButton { border-top-right-radius: 10px; border-bottom-right-radius: 10px; border-top-left-radius: 0px; border-bottom-left-radius: 0px; border-left: none; font-weight: normal; }"
+                )
+            else:
+                # Middle segments: all corners square.
+                b.setStyleSheet(qss_base + "QPushButton { border-radius: 0px; border-left: none; border-right: none; font-weight: normal; }")
+            layout.addWidget(b)
+            self._group.addButton(b, i)
+            self._buttons.append(b)
+
+        self._callback = None
         try:
-            tf = int(self.tf); lf = int(self.lf); wf = int(self.wf); hf = int(self.hf)
-            if getattr(self, '_cancel', False):
-                self.finished.emit(None, self.left_label, self.top_label, self.request_id)
-                return
-            patch = self.full_img[tf:tf+hf, lf:lf+wf]
-            if getattr(self, '_cancel', False):
-                self.finished.emit(None, self.left_label, self.top_label, self.request_id)
-                return
-            if patch is None or patch.size == 0:
-                self.finished.emit(None, self.left_label, self.top_label, self.request_id)
-                return
-            patch_resized = cv2.resize(patch, (max(1, int(self.tgt_w)), max(1, int(self.tgt_h))), interpolation=self.interp)
-            if getattr(self, '_cancel', False):
-                self.finished.emit(None, self.left_label, self.top_label, self.request_id)
-                return
-            self.finished.emit(patch_resized, self.left_label, self.top_label, self.request_id)
+            self._group.buttonClicked[int].connect(self._on_clicked)
         except Exception:
             try:
-                self.finished.emit(None, self.left_label, self.top_label, self.request_id)
+                self._group.buttonClicked.connect(self._on_clicked)
             except Exception:
                 pass
 
+        if 0 <= checked_index < len(self._buttons):
+            try:
+                self._buttons[checked_index].setChecked(True)
+            except Exception:
+                pass
+
+    def _on_clicked(self, idx):
+        try:
+                if callable(self._callback):
+                    # idx may be an int (QButtonGroup.buttonClicked[int]) or a QAbstractButton (PySide)
+                    try:
+                        # integer id
+                        i = int(idx)
+                    except Exception:
+                        try:
+                            # assume idx is the button object; find its index
+                            i = self._buttons.index(idx)
+                        except Exception:
+                            try:
+                                # try QButtonGroup id lookup
+                                i = self._group.id(idx)
+                            except Exception:
+                                i = -1
+                    try:
+                        if i >= 0:
+                            self._callback(int(i))
+                    except Exception:
+                        pass
+        except Exception:
+            pass
+
+    def set_on_changed(self, cb):
+        self._callback = cb
+
+    def setCheckedIndex(self, idx: int):
+        try:
+            if 0 <= idx < len(self._buttons):
+                self._buttons[idx].setChecked(True)
+        except Exception:
+            pass
+
+    def checkedIndex(self):
+        try:
+            for i, b in enumerate(self._buttons):
+                try:
+                    if b.isChecked():
+                        return i
+                except Exception:
+                    continue
+        except Exception:
+            pass
+        return -1
+
+
+class AreaHistogramWidget(QWidget):
+    """軽量な面積ヒストグラム描画ウィジェット（Qtペイント、曲線接続、ログ軸）。"""
+
+    rangeChanged = pyqtSignal(float, float)
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self._bins = None
+        self._vals = None
+        self._counts = None  # 粒子数
+        self._sel_min = None
+        self._sel_max = None
+        self._dragging = None  # 'min'|'max'|None
+        self._user_set_selection = False
+        self._autoset_done = False
+        try:
+            self.setMinimumHeight(180)
+        except Exception:
+            pass
+
+    def set_data(self, bins, vals, counts=None):
+        self._bins = bins
+        self._vals = vals
+        self._counts = counts
+        # Initialize selection to full range if not set yet.
+        try:
+            if self._bins and len(self._bins) >= 2:
+                b0 = float(self._bins[0]); b1 = float(self._bins[-1])
+                if self._sel_min is None:
+                    self._sel_min = b0
+                if self._sel_max is None:
+                    self._sel_max = b1
+                # clamp
+                self._sel_min = max(b0, min(b1, float(self._sel_min)))
+                self._sel_max = max(b0, min(b1, float(self._sel_max)))
+                if self._sel_min > self._sel_max:
+                    self._sel_min, self._sel_max = self._sel_max, self._sel_min
+        except Exception:
+            pass
+        try:
+            self.update()
+        except Exception:
+            pass
+
+    def clear(self):
+        self._bins = None
+        self._vals = None
+        self._counts = None
+        self._sel_min = None
+        self._sel_max = None
+        self._dragging = None
+        try:
+            self.update()
+        except Exception:
+            pass
+
+    def set_selection(self, sel_min, sel_max):
+        """Set selection in area units (pixel^2). sel_max can be None to mean current max."""
+        self._user_set_selection = True
+        self._sel_min = None if sel_min is None else float(sel_min)
+        self._sel_max = None if sel_max is None else float(sel_max)
+        try:
+            if self._bins and len(self._bins) >= 2:
+                b0 = float(self._bins[0]); b1 = float(self._bins[-1])
+                if self._sel_min is None:
+                    self._sel_min = b0
+                if self._sel_max is None:
+                    self._sel_max = b1
+                self._sel_min = max(b0, min(b1, float(self._sel_min)))
+                self._sel_max = max(b0, min(b1, float(self._sel_max)))
+                if self._sel_min > self._sel_max:
+                    self._sel_min, self._sel_max = self._sel_max, self._sel_min
+        except Exception:
+            pass
+        try:
+            self.update()
+        except Exception:
+            pass
+
+    def selection(self):
+        return self._sel_min, self._sel_max
+
+    def maybe_autoset_selection(self, sel_min, sel_max):
+        """Auto-set initial selection once (startup) unless user already adjusted it."""
+        try:
+            if bool(getattr(self, '_user_set_selection', False)):
+                return
+        except Exception:
+            return
+        try:
+            if bool(getattr(self, '_autoset_done', False)):
+                return
+        except Exception:
+            return
+        try:
+            self._sel_min = None if sel_min is None else float(sel_min)
+            self._sel_max = None if sel_max is None else float(sel_max)
+            if self._bins and len(self._bins) >= 2:
+                b0 = float(self._bins[0]); b1 = float(self._bins[-1])
+                if self._sel_min is None:
+                    self._sel_min = b0
+                if self._sel_max is None:
+                    self._sel_max = b1
+                self._sel_min = max(b0, min(b1, float(self._sel_min)))
+                self._sel_max = max(b0, min(b1, float(self._sel_max)))
+                if self._sel_min > self._sel_max:
+                    self._sel_min, self._sel_max = self._sel_max, self._sel_min
+        except Exception:
+            pass
+        try:
+            self._autoset_done = True
+        except Exception:
+            pass
+        try:
+            self.update()
+        except Exception:
+            pass
+
+    def _plot_geom(self):
+        w = self.width(); h = self.height()
+        # Keep extra bottom space for x-axis label without overlapping tick labels.
+        # margin_t includes room for the title.
+        margin_l, margin_r, margin_t, margin_b = 50, 20, 30, 50
+        rect_w = max(10, w - margin_l - margin_r)
+        rect_h = max(10, h - margin_t - margin_b)
+        x0 = margin_l; y0 = margin_t + rect_h
+        return x0, y0, rect_w, rect_h, margin_t
+
+    def _x_to_area(self, x):
+        if not self._bins or len(self._bins) < 2:
+            return None
+        import math
+        x0, _y0, rect_w, _rect_h, _mt = self._plot_geom()
+        t = (float(x) - float(x0)) / float(max(1.0, rect_w))
+        t = max(0.0, min(1.0, t))
+        b0 = float(self._bins[0]); b1 = float(self._bins[-1])
+        if b0 <= 0 or b1 <= 0:
+            return None
+        lv = math.log(b0) + t * (math.log(b1) - math.log(b0))
+        return float(math.exp(lv))
+
+    def _area_to_x(self, area):
+        if not self._bins or len(self._bins) < 2:
+            return None
+        import math
+        x0, _y0, rect_w, _rect_h, _mt = self._plot_geom()
+        b0 = float(self._bins[0]); b1 = float(self._bins[-1])
+        if area is None or area <= 0 or b0 <= 0 or b1 <= 0:
+            return x0
+        t = (math.log(float(area)) - math.log(b0)) / (math.log(b1) - math.log(b0) + 1e-9)
+        t = max(0.0, min(1.0, t))
+        return x0 + rect_w * t
+
+    def mousePressEvent(self, event):
+        try:
+            if event.button() != Qt.LeftButton:
+                return
+        except Exception:
+            return
+        if not self._bins or len(self._bins) < 2:
+            return
+        try:
+            self._user_set_selection = True
+        except Exception:
+            pass
+        x = event.position().x() if hasattr(event, 'position') else event.x()
+        try:
+            xmin = self._area_to_x(self._sel_min)
+            xmax = self._area_to_x(self._sel_max)
+            if abs(float(x) - float(xmin)) <= abs(float(x) - float(xmax)):
+                self._dragging = 'min'
+            else:
+                self._dragging = 'max'
+        except Exception:
+            self._dragging = 'min'
+
+    def mouseMoveEvent(self, event):
+        if not self._dragging:
+            return
+        if not self._bins or len(self._bins) < 2:
+            return
+        x = event.position().x() if hasattr(event, 'position') else event.x()
+        v = self._x_to_area(x)
+        if v is None:
+            return
+        b0 = float(self._bins[0]); b1 = float(self._bins[-1])
+        v = max(b0, min(b1, float(v)))
+        if self._dragging == 'min':
+            self._sel_min = v
+            if self._sel_max is not None and self._sel_min > self._sel_max:
+                self._sel_max = self._sel_min
+        else:
+            self._sel_max = v
+            if self._sel_min is not None and self._sel_max < self._sel_min:
+                self._sel_min = self._sel_max
+        try:
+            self.rangeChanged.emit(float(self._sel_min or b0), float(self._sel_max or b1))
+        except Exception:
+            pass
+        try:
+            self.update()
+        except Exception:
+            pass
+
+    def mouseReleaseEvent(self, event):
+        self._dragging = None
+
+    def paintEvent(self, event):
+        from qt_compat.QtGui import QPainterPath
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.Antialiasing, True)
+        w = self.width(); h = self.height()
+        margin_l, margin_r, margin_t, margin_b = 50, 20, 30, 50
+        rect_w = max(10, w - margin_l - margin_r)
+        rect_h = max(10, h - margin_t - margin_b)
+        # Background: follow surrounding palette (avoid hard-coded white)
+        try:
+            bg = None
+            try:
+                p = self.parentWidget()
+                if p is not None:
+                    bg = p.palette().color(QPalette.Window)
+            except Exception:
+                bg = None
+            if bg is None:
+                bg = QApplication.palette().color(QPalette.Window)
+            painter.fillRect(self.rect(), bg)
+        except Exception:
+            pass
+
+        tick_color = QColor("#444")
+        axis_pen = QPen(QColor("#000")); axis_pen.setWidth(2)
+        painter.setPen(axis_pen)
+        x0 = margin_l; y0 = margin_t + rect_h
+        painter.drawLine(x0, margin_t, x0, y0)
+        painter.drawLine(x0, y0, x0 + rect_w, y0)
+
+        # Right-side axis (for area curve)
+        try:
+            painter.setPen(axis_pen)
+            painter.drawLine(x0 + rect_w, margin_t, x0 + rect_w, y0)
+        except Exception:
+            pass
+
+        # Title
+        try:
+            painter.setPen(QPen(QColor("#000")))
+            painter.setFont(self.font())
+            # Align title with other left-column labels (e.g., 'Number of Groups').
+            painter.drawText(QRect(0, 0, max(10, w), max(10, margin_t - 6)), Qt.AlignLeft | Qt.AlignVCenter, "Grain Size Threshold (pix)")
+        except Exception:
+            pass
+
+        if not self._bins or not self._vals:
+            return
+        bins = self._bins; vals = self._vals
+        counts = self._counts
+        if len(bins) < 2 or len(vals) == 0:
+            return
+        
+        import math
+        
+        # Get range for area (red curve)
+        try:
+            vmax = max([v for v in vals if v > 0] + [1.0])
+            vmin = min([v for v in vals if v > 0] + [vmax])
+        except Exception:
+            vmax = 1.0
+            vmin = 1.0
+        if vmax <= 0 or vmin <= 0:
+            return
+            
+        # Get range for counts (gray curve) if available
+        cmax = cmin = None
+        if counts:
+            try:
+                cmax = max([c for c in counts if c > 0] + [1.0])
+                cmin = min([c for c in counts if c > 0] + [cmax])
+            except Exception:
+                cmax = cmin = None
+        
+        def _xpos(v):
+            try:
+                return x0 + rect_w * ((math.log(v) - math.log(bins[0])) / (math.log(bins[-1]) - math.log(bins[0]) + 1e-9))
+            except Exception:
+                return x0
+        
+        def _ypos_area(v):
+            try:
+                if v <= 0:
+                    return y0
+                return y0 - rect_h * ((math.log(v) - math.log(vmin)) / (math.log(vmax) - math.log(vmin) + 1e-9))
+            except Exception:
+                return y0
+        
+        def _ypos_count(v):
+            try:
+                if v <= 0 or cmin is None or cmax is None:
+                    return y0
+                return y0 - rect_h * ((math.log(v) - math.log(cmin)) / (math.log(cmax) - math.log(cmin) + 1e-9))
+            except Exception:
+                return y0
+
+        # Fill selection range (Min..Max) with light gray
+        try:
+            sel_min, sel_max = self._sel_min, self._sel_max
+            if sel_min is not None and sel_max is not None:
+                xmn = float(self._area_to_x(sel_min))
+                xmx = float(self._area_to_x(sel_max))
+                if xmn > xmx:
+                    xmn, xmx = xmx, xmn
+                xmn = max(float(x0), min(float(x0 + rect_w), xmn))
+                xmx = max(float(x0), min(float(x0 + rect_w), xmx))
+                fill_col = QColor("lightgray")
+                try:
+                    fill_col.setAlpha(60)
+                except Exception:
+                    pass
+                painter.fillRect(QRect(int(xmn), int(margin_t), int(max(1.0, xmx - xmn)), int(rect_h)), fill_col)
+        except Exception:
+            pass
+
+        # Draw count curve (gray) on log-log scale
+        if counts and cmax and cmin:
+            count_pen = QPen(QColor("#888")); count_pen.setWidth(2)
+            painter.setPen(count_pen)
+            path_count = QPainterPath()
+            first_point = True
+            for i in range(len(counts)):
+                if counts[i] <= 0:
+                    continue
+                if i + 1 >= len(bins):
+                    break
+                bc = math.sqrt(bins[i] * bins[i+1])
+                px = _xpos(bc)
+                py = _ypos_count(counts[i])
+                if first_point:
+                    path_count.moveTo(px, py)
+                    first_point = False
+                else:
+                    path_count.lineTo(px, py)
+            painter.drawPath(path_count)
+
+        # Draw area curve (red) on log-log scale
+        curve_pen = QPen(QColor("#bb2a2a")); curve_pen.setWidth(2)
+        painter.setPen(curve_pen)
+        path = QPainterPath()
+        first_point = True
+        for i in range(len(vals)):
+            if vals[i] <= 0:
+                continue
+            if i + 1 >= len(bins):
+                break
+            bc = math.sqrt(bins[i] * bins[i+1])
+            px = _xpos(bc)
+            py = _ypos_area(vals[i])
+            if first_point:
+                path.moveTo(px, py)
+                first_point = False
+            else:
+                path.lineTo(px, py)
+        painter.drawPath(path)
+
+        # Draw selection (min/max) as vertical dashed lines
+        try:
+            sel_min, sel_max = self._sel_min, self._sel_max
+            if sel_min is not None and sel_max is not None:
+                sel_pen = QPen(QColor("#888")); sel_pen.setWidth(1)
+                try:
+                    sel_pen.setStyle(Qt.DashLine)
+                except Exception:
+                    pass
+                painter.setPen(sel_pen)
+                xmn = self._area_to_x(sel_min)
+                xmx = self._area_to_x(sel_max)
+                painter.drawLine(int(xmn), margin_t, int(xmn), y0)
+                painter.drawLine(int(xmx), margin_t, int(xmx), y0)
+                # small labels
+                painter.setPen(QPen(QColor("#666")))
+                painter.drawText(int(xmn) - 12, margin_t + 12, "Min")
+                painter.drawText(int(xmx) - 12, margin_t + 12, "Max")
+        except Exception:
+            pass
+
+        # Axis labels with nice round numbers
+        try:
+            painter.setPen(QPen(tick_color))
+            
+            # X-axis: nice round numbers
+            def _nice_log_labels(vmin, vmax, num_labels=3):
+                """Generate nice round numbers for log scale"""
+                labels = []
+                log_min = math.log10(vmin)
+                log_max = math.log10(vmax)
+                magnitude_min = math.floor(log_min)
+                magnitude_max = math.ceil(log_max)
+                for mag in range(int(magnitude_min), int(magnitude_max) + 1):
+                    val = 10 ** mag
+                    if vmin <= val <= vmax:
+                        labels.append(val)
+                return labels
+            
+            x_labels = _nice_log_labels(bins[0], bins[-1])
+            for xl in x_labels:
+                px = _xpos(xl)
+                if xl >= 1000:
+                    label_text = f"{int(xl/1000)}k" if xl % 1000 == 0 else f"{int(xl)}"
+                elif xl >= 1:
+                    label_text = f"{int(xl)}"
+                else:
+                    label_text = f"{xl:.1f}"
+                painter.drawText(int(px - 10), y0 + 18, label_text)
+            
+            # Y-axis numeric labels are intentionally omitted.
+
+            # Axis labels: left=count (gray), right=area (red)
+            try:
+                painter.setPen(QPen(QColor("#888")))
+                f = QFont(self.font());
+                try:
+                    f.setBold(True)
+                except Exception:
+                    pass
+                painter.save()
+                painter.setFont(f)
+                # Move slightly right to avoid hugging the edge
+                painter.translate(22, margin_t + rect_h / 2.0)
+                painter.rotate(-90)
+                painter.drawText(QRect(-rect_h // 2, -10, rect_h, 20), Qt.AlignHCenter | Qt.AlignVCenter, "Grain No.")
+                painter.restore()
+            except Exception:
+                pass
+            try:
+                painter.setPen(QPen(QColor("#bb2a2a")))
+                f = QFont(self.font());
+                try:
+                    f.setBold(True)
+                except Exception:
+                    pass
+                painter.save()
+                painter.setFont(f)
+                painter.translate(x0 + rect_w + 14, margin_t + rect_h / 2.0)
+                # Flip reading direction (180° from previous): use +90 instead of -90
+                painter.rotate(90)
+                painter.drawText(QRect(-rect_h // 2, -10, rect_h, 20), Qt.AlignHCenter | Qt.AlignVCenter, "Area")
+                painter.restore()
+            except Exception:
+                pass
+
+            # X-axis label: bold, same color as tick labels.
+            painter.setPen(QPen(tick_color))
+            try:
+                fx = QFont(self.font()); fx.setBold(True)
+                painter.setFont(fx)
+            except Exception:
+                pass
+            painter.drawText(QRect(x0, y0 + 26, rect_w, 20), Qt.AlignHCenter | Qt.AlignVCenter, "Area (pix)")
+        except Exception:
+            pass
 
 class TitleBar(QWidget):
     """Custom title bar: dark red background, app title and basic window buttons."""
@@ -323,7 +866,10 @@ class CentroidFinderWindow(QMainWindow):
         def _dbg(msg):
             if DEBUG:
                 try:
-                    print(f"[DEBUG] {msg}")
+                    print(f"[DEBUG] {msg}", flush=True)
+                    # Also write to file for persistent logging
+                    with open("debug_px2xy.log", "a", encoding="utf-8") as f:
+                        f.write(f"[DEBUG] {msg}\n")
                 except Exception:
                     pass
         self._dbg = _dbg
@@ -338,7 +884,7 @@ class CentroidFinderWindow(QMainWindow):
         self.centroid_processor = None  # CentroidProcessor インスタンス
         self.centroids = []            # 検出された重心リスト [(group_no, x, y), ...]
         self.selected_index = None     # 選択中の重心インデックス
-        self.select_radius_display = 10.0  # 画像上の選択半径 (px)
+        self.select_radius_display = 10.0  # 画像上の選択半径 (pix)
 
         # 参照点関連
         self.ref_points = [None] * 10  # 参照点リスト [(x_proc, y_proc) or None]
@@ -348,21 +894,22 @@ class CentroidFinderWindow(QMainWindow):
         # UI 状態
         self.visible_ref_cols = 3      # 表示する参照点列数
         self.flip_mode = 'auto'        # 左右反転モード ('auto', 'normal', 'flip')
-        self.overlay_mix = 50          # オーバーレイ混合率 (%)
+        self.overlay_mode = 'Original'  # Overlay display mode: Original / Posterized
         # Display labels: editable display strings separate from internal keys
         # Internal keys should be code-safe identifiers; change display text here.
         self.display_labels = {
-            'overlay_ratio': 'Posterization overlay',
-            'poster_level': 'Number of colors',
-            'min_area': 'Min grain Area (px)',
-            'trim': 'Boundary offset (px)'
+            'overlay_ratio': 'Display Mode',
+            'poster_level': 'Number of Groups',
+            'min_area': 'Minimum Grain Area (pix)',
+            'trim': 'Boundary Offset (pix)'
         }
         self.levels_value = 4          # PosterLevel の内部値
         self.show_boundaries = True    # 境界線表示フラグ
+        self.view_orientation = 'Image'  # View Orientation (Image/Stage)
 
         # 画像表示関連
         # 仮想キャンバス関連: 実際の表示はビューポート分のみだが、スクロール範囲は仮想的に拡張する
-        self._virtual_canvas_size = (0, 0)  # 仮想キャンバス幅,高さ (px)
+        self._virtual_canvas_size = (0, 0)  # 仮想キャンバス幅,高さ (pix)
         # パッチ生成の安全弁 (パッチのピクセル数上限)
         self.MAX_PATCH_PIXELS = 4096 * 4096  # 大きなパッチ作成を防ぐ
 
@@ -373,6 +920,8 @@ class CentroidFinderWindow(QMainWindow):
         self._display_img_size = (0, 0) # 表示画像サイズ
         self._display_pm_base = None   # ベース Pixmap
         self._initial_center_done = False  # 初期センタリング完了フラグ
+        self._last_stage_info = None   # 最新のステージ座標変換情報（グリッド再利用用）
+        self._last_pm_image_grid = None  # Imageモード用に最後に描いたグリッド付きPixmapを保持
 
         # パン/フリック関連
         self._mouse_pressed = False
@@ -392,7 +941,7 @@ class CentroidFinderWindow(QMainWindow):
             "img_id": None,      # 画像 ID (id(proc_img))
             "levels": None,      # PosterLevel
             "min_area": None,    # Min Area
-            "trim_px": None,     # Trim (px)
+            "trim_px": None,     # Trim (pix)
             "poster": None,      # ポスタライズ画像
             "centroids": None,   # 重心リスト
         }
@@ -483,6 +1032,70 @@ class CentroidFinderWindow(QMainWindow):
         except Exception:
             pass
 
+        # Setup pseudo-headers in table_ref and table for 2-row header appearance
+        try:
+            # Ensure minimum rows for headers
+            if self.table_ref.rowCount() < 2:
+                self.table_ref.setRowCount(2)
+            if self.table.rowCount() < 2:
+                self.table.setRowCount(2)
+            
+            # Apply pseudo-headers
+            self._setup_pseudo_headers_ref(self.table_ref)
+            self._setup_pseudo_headers_between(self.table)
+            
+            # Enforce row heights for headers and data rows
+            try:
+                vh_ref = self.table_ref.verticalHeader()
+                vh_ref.setSectionResizeMode(QHeaderView.Fixed)
+                vh_ref.setDefaultSectionSize(24)
+                self.table_ref.setRowHeight(0, 24)
+                self.table_ref.setRowHeight(1, 20)
+            except Exception:
+                pass
+
+            try:
+                vh_table = self.table.verticalHeader()
+                vh_table.setSectionResizeMode(QHeaderView.Fixed)
+                vh_table.setDefaultSectionSize(24)
+                self.table.setRowHeight(0, 24)
+                self.table.setRowHeight(1, 20)
+            except Exception:
+                pass
+        except Exception:
+            pass
+            
+        # Startup tasks with QTimer to allow layout to settle
+        try:
+            # Store initial button sizes
+            try:
+                self._action_btn_base_w = 100  # Default base width
+                self._action_btn_base_h = 56   # Default base height (increased for better visibility)
+                # Try to measure from Add button if available
+                add_btn = getattr(self, 'btn_add_ref', None)
+                if add_btn is not None:
+                    try:
+                        w = int(add_btn.width() or 0)
+                        h = int(add_btn.height() or 0)
+                        if w > 0:
+                            self._action_btn_base_w = max(100, w)
+                        if h > 0:
+                            self._action_btn_base_h = max(56, h)
+                    except Exception:
+                        pass
+            except Exception:
+                pass
+            
+            # Apply styles and enforce heights
+            QTimer.singleShot(0, self._apply_button_styles)
+            QTimer.singleShot(50, self._enforce_button_heights)
+            
+            # Create frozen headers on startup
+            QTimer.singleShot(100, self._create_frozen_header_tables)
+            # Adjust column widths for Z column and others
+            QTimer.singleShot(150, self._adjust_table_column_widths)
+        except Exception:
+            pass
         # 編集トリガー設定
         # 右テーブル: 編集不可
         self.table.setEditTriggers(QTableWidget.NoEditTriggers)
@@ -582,48 +1195,36 @@ class CentroidFinderWindow(QMainWindow):
         self.control_area_width = 100
         self.max_levels = 255
 
-        # 残すのは PosterLevel と Min Area に加え、Trim(px)
+        # 残すのは PosterLevel と Min Area に加え、Trim(pix)
         # Use code-safe internal keys for widgets; display text comes from self.display_labels
         self.edit_levels, self.slider_levels = self._make_spin_slider('poster_level', 4, 2, 20, 1)
         self.edit_min_area, self.slider_min_area = self._make_spin_slider('min_area', 50, 10, 5000, 1)
         self.edit_trim, self.slider_trim = self._make_spin_slider('trim', 0, 0, 10, 1)
+        self.edit_neck_sep, self.slider_neck_sep = self._make_spin_slider('neck_separation', 0, 0, 10, 1)
+        self.edit_shape_complex, self.slider_shape_complex = self._make_spin_slider('shape_complexity', 10, 0, 10, 1)
 
         # PosterLevelの内部値（スライダー上限20を超えても保持）
         self.levels_value = self.slider_levels.value()
 
         # ボタン（画像開く / エクスポート）を作る（配置は後で画像ヘッダ等へ移動する）
-        open_btn = QPushButton(STR.BUTTON_OPEN_IMAGE)
-        open_btn.setFixedWidth(100)
-        open_btn.clicked.connect(self.open_image)
+        self.btn_open = QPushButton(STR.BUTTON_OPEN_IMAGE)
+        self.btn_open.setFixedHeight(40)
+        self.btn_open.clicked.connect(self.open_image)
         # Export ボタンは短くして隣に Clipboard を追加
-        export_btn = QPushButton("Export")
-        export_btn.setFixedWidth(100)
-        export_btn.clicked.connect(self.export_centroids)
-        clipboard_btn = QPushButton("Clipboard")
-        clipboard_btn.setFixedWidth(100)
-        clipboard_btn.clicked.connect(self._copy_centroids_to_clipboard)
+        self.btn_export = QPushButton("Export")
+        self.btn_export.setFixedHeight(40)
+        self.btn_export.clicked.connect(self.export_centroids)
+        self.btn_clipboard = QPushButton("Clipboard")
+        self.btn_clipboard.setFixedHeight(40)
+        self.btn_clipboard.clicked.connect(self._copy_centroids_to_clipboard)
 
-        # 補間モード（表示時の補間法）と自動更新/手動再計算の UI 部品を先に作成
-        from qt_compat.QtWidgets import QComboBox, QCheckBox
-        self.interp_mode = 'auto'  # 'auto' | 'nearest' | 'linear'
-        self.cmb_interp = QComboBox()
-        self.cmb_interp.addItems(['Auto', 'Nearest', 'Smooth'])
-        self.cmb_interp.setCurrentIndex(0)
-        def _on_interp_changed(idx):
-            try:
-                # nested ternary: 'auto' if idx==0, 'nearest' if idx==1, otherwise 'linear'
-                self.interp_mode = 'auto' if idx == 0 else ('nearest' if idx == 1 else 'linear')
-                self.schedule_update(force=True)
-            except Exception:
-                pass
-        self.cmb_interp.currentIndexChanged.connect(_on_interp_changed)
-
+        # 自動更新/手動再計算の UI 部品を先に作成
+        # Auto Update の ON/OFF 表示・選択は不要なので、常に auto_update_mode=True とする
+        self.interp_mode = 'auto'  # 常に auto モード（ズーム倍率で自動選択）
         self.auto_update_mode = True
-        self.chk_auto_update = QCheckBox("Auto Update")
-        self.chk_auto_update.setChecked(True)
-        self.chk_auto_update.stateChanged.connect(lambda s: self._on_toggle_auto_update(bool(s)))
-        self.btn_recalc = QPushButton("Recalculate Centroids")
-        self.btn_recalc.clicked.connect(self._on_manual_recalc)
+        self.chk_auto_update = None
+        # Recalc ボタン表示は不要
+        self.btn_recalc = None
 
         # ピックモード（ルーペ制御）
         self.pick_mode = None  # None / 'add' / 'update'
@@ -655,52 +1256,140 @@ class CentroidFinderWindow(QMainWindow):
         self.img_label_proc.setCursor(QCursor(Qt.OpenHandCursor))
 
         # 画像右上用の「境界線」トグルボタン（先に生成しておく）
+        # 画像右上用の「境界線」トグル（Show/Hide の2択）
         self.show_boundaries = True
-        self.btn_toggle_edges = QPushButton(STR.BUTTON_TOGGLE_BOUNDARIES)
-        self.btn_toggle_edges.setCheckable(True)
-        self.btn_toggle_edges.setChecked(True)
-        self.btn_toggle_edges.toggled.connect(self._on_toggle_boundaries)
-
-        # 左右反転モード切替（Auto / Normal / Flip）
-        self.flip_mode = 'auto'  # 'auto' | 'normal' | 'flip'
-        self.btn_flip_mode = QPushButton(f"{STR.FLIP_PREFIX}{STR.FLIP_LABELS.get('auto','Auto')}")
-        self.btn_flip_mode.setCheckable(False)
         try:
-            self.btn_flip_mode.setToolTip(STR.FLIP_TOOLTIP)
-            self.btn_flip_mode.setAccessibleName("flip-mode-toggle")
+            self.boundary_toggle = SegmentControl(["Show", "Hide"], checked_index=0, btn_w=64, btn_h=24)
+            # connect change: index 0 => show True, index 1 => show False
+            try:
+                self.boundary_toggle.set_on_changed(lambda idx: self._on_toggle_boundaries(bool(idx == 0)))
+            except Exception:
+                pass
+            # expose button refs for backward compatibility
+            try:
+                # map to names used elsewhere if needed
+                self.btn_boundary_show = self.boundary_toggle._buttons[0]
+                self.btn_boundary_hide = self.boundary_toggle._buttons[1]
+            except Exception:
+                self.btn_boundary_show = None
+                self.btn_boundary_hide = None
         except Exception:
-            pass
-        self.btn_flip_mode.clicked.connect(self._on_cycle_flip_mode)
+            self.boundary_toggle = None
+            self.btn_boundary_show = None
+            self.btn_boundary_hide = None
 
-        # 画像領域レイアウト：上にボタン群（画像左上に Open、中央上に Export/自動系、右上に Flip/境界）
+        # Boundary ラベル + Show/Hide トグルをひとまとめに（右上に配置）
+        try:
+            if getattr(self, 'boundary_toggle', None) is not None:
+                self.boundary_controls = QWidget()
+                bcl = QHBoxLayout(self.boundary_controls)
+                bcl.setContentsMargins(0, 0, 0, 0)
+                bcl.setSpacing(6)
+                self.lbl_boundary = QLabel("Boundary")
+                try:
+                    from qt_compat.QtGui import QFont as _QFont
+                    fb = _QFont('Segoe UI', 12)
+                    try:
+                        fb.setBold(True)
+                    except Exception:
+                        pass
+                    self.lbl_boundary.setFont(fb)
+                    try:
+                        self.lbl_boundary.setStyleSheet('font-weight: bold;')
+                    except Exception:
+                        pass
+                except Exception:
+                    try:
+                        f = self.lbl_boundary.font()
+                        f.setBold(True)
+                        self.lbl_boundary.setFont(f)
+                    except Exception:
+                        pass
+                bcl.addWidget(self.lbl_boundary)
+                bcl.addWidget(self.boundary_toggle)
+                # View Orientation トグル（Image / Stage）を右隣に追加
+                try:
+                    self.view_orientation_toggle = SegmentControl(["Image", "Stage"], checked_index=0, btn_w=69, btn_h=24)
+                    try:
+                        self.view_orientation_toggle.set_on_changed(lambda idx: self._on_toggle_view_orientation(int(idx)))
+                    except Exception:
+                        pass
+                    try:
+                        self.btn_view_image = self.view_orientation_toggle._buttons[0]
+                        self.btn_view_stage = self.view_orientation_toggle._buttons[1]
+                    except Exception:
+                        self.btn_view_image = None
+                        self.btn_view_stage = None
+                    # small label for the control
+                    self.lbl_view_orientation = QLabel("View Orientation")
+                    try:
+                        from qt_compat.QtGui import QFont as _QFont
+                        fv = _QFont('Segoe UI', 12)
+                        try:
+                            fv.setBold(True)
+                        except Exception:
+                            pass
+                        self.lbl_view_orientation.setFont(fv)
+                        try:
+                            self.lbl_view_orientation.setStyleSheet('font-weight: bold;')
+                        except Exception:
+                            pass
+                    except Exception:
+                        try:
+                            f2 = self.lbl_view_orientation.font()
+                            f2.setBold(True)
+                            self.lbl_view_orientation.setFont(f2)
+                        except Exception:
+                            pass
+                    # pack into a small widget so it can be positioned independently
+                    self.view_orientation_controls = QWidget()
+                    vocl = QHBoxLayout(self.view_orientation_controls)
+                    vocl.setContentsMargins(0, 0, 0, 0)
+                    vocl.setSpacing(6)
+                    vocl.addWidget(self.lbl_view_orientation)
+                    vocl.addWidget(self.view_orientation_toggle)
+                except Exception:
+                    self.view_orientation_toggle = None
+                    self.btn_view_image = None
+                    self.btn_view_stage = None
+                    self.lbl_view_orientation = None
+                    self.view_orientation_controls = None
+            else:
+                self.boundary_controls = None
+                self.lbl_boundary = None
+        except Exception:
+            self.boundary_controls = None
+            self.lbl_boundary = None
+
+        # 左右反転モードは UI で操作しない（常に Auto 固定）
+        self.flip_mode = 'auto'  # 'auto' | 'normal' | 'flip'
+        # flip_mode remains fixed to 'auto' and no UI control is created
+        self.combo_flip_mode = None
+        self.lbl_display_mode = None
+
+        # 画像領域レイアウト：上にボタン群（左に Open/Export/Clipboard、中央に補間/自動系、右に Flip/境界）
         img_layout = QVBoxLayout()
         img_header = QHBoxLayout()
-        # 左上に Open ボタン
+        # 左上に Open/Export/Clipboard ボタンを横並びに配置
         try:
-            img_header.addWidget(open_btn, 0, Qt.AlignLeft)
+            button_row = QHBoxLayout()
+            button_row.setContentsMargins(0, 9, 0, 0)
+            button_row.setSpacing(6)
+            button_row.addWidget(self.btn_open, 0)
+            img_header.addLayout(button_row)
         except Exception:
             pass
-        # 中央上には補間/自動更新/手動再計算をまとめる（Export は table_between の上へ移動）
+        # 中央上には自動更新/手動再計算をまとめる
         try:
             center_controls = QHBoxLayout()
-            # 補間/自動更新/手動再計算は中央上へ移動
-            try:
-                center_controls.addWidget(self.cmb_interp)
-            except Exception:
-                pass
-            try:
-                center_controls.addWidget(self.chk_auto_update)
-            except Exception:
-                pass
-            try:
-                center_controls.addWidget(self.btn_recalc)
-            except Exception:
-                pass
+            # Auto Update の UI 表示は不要
+            # Recalc は不要
             img_header.addLayout(center_controls)
         except Exception:
             pass
         img_header.addStretch(1)
-        # 右上に Overlay スライダー（Flipの左）と Flip、境界トグルを配置
+        # 右上コントロール（左→右）: View Orientation, Boundary, Posterization Overlay
+        overlay_ctrl = None
         try:
             # small overlay control placed at right-top next to Flip
             overlay_ctrl = QWidget()
@@ -710,38 +1399,87 @@ class CentroidFinderWindow(QMainWindow):
                 ol_layout.setSpacing(4)
                 lbl_ol = QLabel(self.display_labels.get('overlay_ratio', STR.NAME_OVERLAY_RATIO))
                 try:
-                    lbl_ol.setFont(QFont('Segoe UI', 11))
+                    # IMPORTANT: copy the exact font from the other header labels so it matches visually.
+                    # (Some environments render 'bold' subtly; copying avoids any mismatch.)
+                    base_font = None
+                    try:
+                        base_font = getattr(self, 'lbl_view_orientation', None)
+                        base_font = base_font.font() if base_font is not None else None
+                    except Exception:
+                        base_font = None
+                    if base_font is None:
+                        try:
+                            base_font = getattr(self, 'lbl_boundary', None)
+                            base_font = base_font.font() if base_font is not None else None
+                        except Exception:
+                            base_font = None
+                    if base_font is None:
+                        base_font = lbl_ol.font()
+
+                    try:
+                        base_font.setBold(True)
+                    except Exception:
+                        pass
+                    lbl_ol.setFont(base_font)
+                    try:
+                        # Extra fallback: enforce bold with stylesheet
+                        lbl_ol.setStyleSheet('font-weight: bold;')
+                    except Exception:
+                        pass
                 except Exception:
                     pass
                 ol_layout.addWidget(lbl_ol)
-                self.slider_overlay = QSlider(Qt.Horizontal)
-                self.slider_overlay.setMinimum(0)
-                self.slider_overlay.setMaximum(100)
-                self.slider_overlay.setSingleStep(1)
-                self.slider_overlay.setValue(self.overlay_mix)
                 try:
-                    self.slider_overlay.setFixedWidth(140)
+                    # Two-state: Original / Posterized. Widen buttons so text doesn't clip.
+                    self.overlay_mode_toggle = SegmentControl(["Original", "Posterized"], checked_index=0, btn_w=108, btn_h=24)
+                    try:
+                        self.overlay_mode_toggle.set_on_changed(lambda idx: self._on_overlay_mode_changed(int(idx)))
+                    except Exception:
+                        pass
+                    ol_layout.addWidget(self.overlay_mode_toggle)
                 except Exception:
-                    pass
-                self.slider_overlay.valueChanged.connect(self._on_overlay_ratio_changed)
-                ol_layout.addWidget(self.slider_overlay)
+                    self.overlay_mode_toggle = None
             except Exception:
                 pass
-            try:
-                img_header.addWidget(overlay_ctrl, 0, Qt.AlignRight)
-            except Exception:
-                img_header.addWidget(overlay_ctrl)
         except Exception:
             pass
-        # 右上に Flip と境界トグルを配置
+
+        # 右上: View Orientation と Boundary を先に配置
         try:
-            img_header.addWidget(self.btn_flip_mode, 0, Qt.AlignRight)
+            if getattr(self, 'view_orientation_controls', None) is not None:
+                try:
+                    img_header.addWidget(self.view_orientation_controls, 0, Qt.AlignRight)
+                except Exception:
+                    pass
+            if getattr(self, 'boundary_controls', None) is not None:
+                try:
+                    # spacing between view orientation and boundary
+                    if getattr(self, 'view_orientation_controls', None) is not None:
+                        img_header.addSpacing(8)
+                except Exception:
+                    pass
+                img_header.addWidget(self.boundary_controls, 0, Qt.AlignRight)
+            elif getattr(self, 'boundary_toggle', None) is not None:
+                img_header.addWidget(self.boundary_toggle, 0, Qt.AlignRight)
         except Exception:
             pass
+
+        # 右上: 最後に Posterization Overlay
         try:
-            img_header.addWidget(self.btn_toggle_edges, 0, Qt.AlignRight)
+            if overlay_ctrl is not None:
+                try:
+                    # spacing between boundary and overlay
+                    if getattr(self, 'boundary_controls', None) is not None or getattr(self, 'boundary_toggle', None) is not None or getattr(self, 'view_orientation_controls', None) is not None:
+                        img_header.addSpacing(12)
+                except Exception:
+                    pass
+                try:
+                    img_header.addWidget(overlay_ctrl, 0, Qt.AlignRight)
+                except Exception:
+                    img_header.addWidget(overlay_ctrl)
         except Exception:
             pass
+
         img_layout.addLayout(img_header, 0)
         img_layout.addWidget(self.proc_scroll, 1)
 
@@ -756,25 +1494,36 @@ class CentroidFinderWindow(QMainWindow):
             ctrl_font = QFont()
         # make rows a little taller / more airy so controls don't feel cramped
         try:
-            sliders_layout.setSpacing(18)
-            sliders_layout.setContentsMargins(6, 6, 6, 6)
+            # Reduce vertical gaps so labels feel tighter
+            sliders_layout.setSpacing(10)
+            sliders_layout.setContentsMargins(6, 2, 6, 2)
         except Exception:
             pass
 
         # NOTE: overlay slider moved to image header (right-top). See img_header insertion below.
 
         # Helper to build a single-row control with label, slider, and numeric box (+/-)
-        def _build_control_row(name, edit_widget, slider_widget, nudger_minus, nudger_plus):
+        def _build_control_row(key, name, edit_widget, slider_widget, nudger_minus, nudger_plus):
             try:
                 row = QHBoxLayout()
+                try:
+                    row.setContentsMargins(0, 0, 0, 0)
+                    row.setSpacing(6)
+                except Exception:
+                    pass
                 lbl = QLabel(name)
                 try:
-                    lbl.setFont(ctrl_font)
+                    # Bold only the left-column labels requested by user
+                    f = QFont(ctrl_font)
+                    if str(key) in ('poster_level', 'min_area'):
+                        f.setBold(True)
+                    lbl.setFont(f)
                 except Exception:
                     pass
                 try:
                     # 固定幅にして、すぐ隣に数値ボックスが来るようにする（ラベルと数値の間に可変スペースを入れない）
-                    lbl.setFixedWidth(140)
+                    # Give labels more room so text doesn't clip; this also narrows the slider area.
+                    lbl.setFixedWidth(180)
                     lbl.setAlignment(Qt.AlignVCenter | Qt.AlignLeft)
                 except Exception:
                     pass
@@ -832,9 +1581,9 @@ class CentroidFinderWindow(QMainWindow):
 
                 # add widgets with explicit equal spacers between them
                 bhl.addWidget(minus_btn)
-                bhl.addSpacing(6)            # gap between minus and number
+                bhl.addSpacing(5)            # gap between minus and number
                 bhl.addWidget(edit_widget)
-                bhl.addSpacing(6)            # gap between number and plus (same as above)
+                bhl.addSpacing(45)            # gap between number and plus
                 bhl.addWidget(plus_btn)
 
                 row.addWidget(box)
@@ -849,29 +1598,111 @@ class CentroidFinderWindow(QMainWindow):
             except Exception:
                 return None
 
-        # PosterLevel row
+        # Helper to build Number of Groups row for Basic mode
+        def _build_num_groups_row_widget():
+            try:
+                self.edit_num_groups, self.slider_num_groups = self._make_spin_slider('num_groups', 2, 2, 20, 1)
+                r = _build_control_row('num_groups', 'Number of Groups', self.edit_num_groups, self.slider_num_groups, self._nudge_num_groups, self._nudge_num_groups)
+                if r is not None:
+                    roww = QWidget()
+                    roww.setLayout(r)
+                    return roww
+            except Exception as e:
+                print(f"Error building num_groups row: {e}")
+            return None
+
+        # Basic mode: Number of Groups row
         try:
-            r = _build_control_row(self.display_labels.get('poster_level', STR.NAME_POSTERLEVEL), self.edit_levels, self.slider_levels, self._nudge_levels, self._nudge_levels)
+            self.row_num_groups = _build_num_groups_row_widget()
+            if self.row_num_groups is not None:
+                sliders_layout.addWidget(self.row_num_groups)
+        except Exception:
+            self.row_num_groups = None
+
+        # PosterLevel row (Advanced)
+        try:
+            r = _build_control_row('poster_level', self.display_labels.get('poster_level', STR.NAME_POSTERLEVEL), self.edit_levels, self.slider_levels, self._nudge_levels, self._nudge_levels)
             if r is not None:
-                sliders_layout.addLayout(r)
+                try:
+                    self.row_poster_level = QWidget()
+                    self.row_poster_level.setLayout(r)
+                    sliders_layout.addWidget(self.row_poster_level)
+                except Exception:
+                    sliders_layout.addLayout(r)
+                    self.row_poster_level = None
         except Exception:
             pass
 
-        # Min Area row
+        # Min Area row (Common)
         try:
-            r = _build_control_row(self.display_labels.get('min_area', STR.NAME_MIN_AREA), self.edit_min_area, self.slider_min_area, self._nudge_min_area, self._nudge_min_area)
+            r = _build_control_row('min_area', self.display_labels.get('min_area', STR.NAME_MIN_AREA), self.edit_min_area, self.slider_min_area, self._nudge_min_area, self._nudge_min_area)
             if r is not None:
-                sliders_layout.addLayout(r)
+                try:
+                    self.row_min_area = QWidget()
+                    self.row_min_area.setLayout(r)
+                    sliders_layout.addWidget(self.row_min_area)
+                except Exception:
+                    sliders_layout.addLayout(r)
+                    self.row_min_area = None
         except Exception:
             pass
 
-        # Trim row
+        # Area histogram (Advanced only; shown below Min Area)
         try:
-            r = _build_control_row(self.display_labels.get('trim', STR.NAME_TRIM), self.edit_trim, self.slider_trim, self._nudge_trim, self._nudge_trim)
+            self.area_hist = AreaHistogramWidget()
+            try:
+                self.area_hist.setFont(ctrl_font)
+            except Exception:
+                pass
+            try:
+                self.area_hist.rangeChanged.connect(self._on_area_hist_range_changed)
+            except Exception:
+                pass
+            sliders_layout.addWidget(self.area_hist)
+        except Exception:
+            self.area_hist = None
+
+        # Trim row (Advanced - Boundary Offset)
+        try:
+            r = _build_control_row('trim', self.display_labels.get('trim', STR.NAME_TRIM), self.edit_trim, self.slider_trim, self._nudge_trim, self._nudge_trim)
             if r is not None:
-                sliders_layout.addLayout(r)
+                try:
+                    self.row_trim = QWidget()
+                    self.row_trim.setLayout(r)
+                    sliders_layout.addWidget(self.row_trim)
+                except Exception:
+                    sliders_layout.addLayout(r)
+                    self.row_trim = None
         except Exception:
             pass
+
+        # Neck Separation row (Advanced)
+        try:
+            r = _build_control_row('neck_separation', 'Neck Separation', self.edit_neck_sep, self.slider_neck_sep, self._nudge_neck_sep, self._nudge_neck_sep)
+            if r is not None:
+                try:
+                    self.row_neck_sep = QWidget()
+                    self.row_neck_sep.setLayout(r)
+                    sliders_layout.addWidget(self.row_neck_sep)
+                except Exception:
+                    sliders_layout.addLayout(r)
+                    self.row_neck_sep = None
+        except Exception:
+            self.row_neck_sep = None
+
+        # Shape Complexity row (Advanced)
+        try:
+            r = _build_control_row('shape_complexity', 'Shape Complexity', self.edit_shape_complex, self.slider_shape_complex, self._nudge_shape_complex, self._nudge_shape_complex)
+            if r is not None:
+                try:
+                    self.row_shape_complex = QWidget()
+                    self.row_shape_complex.setLayout(r)
+                    sliders_layout.addWidget(self.row_shape_complex)
+                except Exception:
+                    sliders_layout.addLayout(r)
+                    self.row_shape_complex = None
+        except Exception:
+            self.row_shape_complex = None
 
         # MinAreaとテーブルの間にボタン行（左詰め）を追加
         actions_row = QHBoxLayout()
@@ -885,8 +1716,7 @@ class CentroidFinderWindow(QMainWindow):
         actions_row.addWidget(self.btn_add_ref)
         actions_row.addWidget(self.btn_update_xy)
         actions_row.addWidget(self.btn_clear_ref)
-        # Flipボタンを Clear の右隣に配置
-        actions_row.addWidget(self.btn_flip_mode)
+        # Flip は右上（画像ヘッダー）に配置
         actions_row.addStretch(1)  # 左詰め
         
 
@@ -905,6 +1735,7 @@ class CentroidFinderWindow(QMainWindow):
             self.left_top_image.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Fixed)
             base_dir = os.path.dirname(__file__)
             candidates = [
+                os.path.join(base_dir, "PiXY.png"),
                 os.path.join(base_dir, "px2XY2.png"),
                 os.path.join(base_dir, "px2XY.png"),
                 os.path.join(base_dir, "app_icon.png"),
@@ -921,11 +1752,12 @@ class CentroidFinderWindow(QMainWindow):
             if pix is not None:
                 try:
                     # Scale the logo up to a maximum width of 400px and fix label width
-                    target_w = min(500, pix.width())
-                    self._left_top_pix = pix.scaledToWidth(target_w, Qt.SmoothTransformation)
+                    target_w = 450
+                    target_h = 200
+                    self._left_top_pix = pix.scaled(target_w, target_h, Qt.KeepAspectRatio, Qt.SmoothTransformation)
                     self.left_top_image.setPixmap(self._left_top_pix)
                     try:
-                        self.left_top_image.setFixedWidth(500)
+                        self.left_top_image.setFixedSize(target_w, target_h)
                     except Exception:
                         pass
                 except Exception:
@@ -933,16 +1765,16 @@ class CentroidFinderWindow(QMainWindow):
                     self.left_top_image.setPixmap(pix)
             else:
                 self._left_top_pix = None
-                self.left_top_image.setText("Px2XY")
+                self.left_top_image.setText("PiXY")
                 try:
-                    self.left_top_image.setFixedWidth(500)
+                    self.left_top_image.setFixedSize(450, 200)
                 except Exception:
                     pass
         except Exception:
-            self.left_top_image = QLabel("Px2XY")
+            self.left_top_image = QLabel("PiXY")
             self._left_top_pix = None
             try:
-                self.left_top_image.setFixedWidth(500)
+                self.left_top_image.setFixedSize(450, 200)
             except Exception:
                 pass
 
@@ -955,6 +1787,12 @@ class CentroidFinderWindow(QMainWindow):
             self.table_ref_view.setVerticalScrollMode(QAbstractItemView.ScrollPerPixel)
             self.table_ref_view.setHorizontalScrollMode(QAbstractItemView.ScrollPerPixel)
             self.table_ref_view.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Expanding)
+            # Keep scrollbar presence stable so widths don't jitter after Add/update
+            try:
+                self.table_ref_view.setVerticalScrollBarPolicy(Qt.ScrollBarAlwaysOn)
+                self.table_ref_view.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+            except Exception:
+                pass
             try:
                 # 固定幅にして左カラム内の表の横幅を左コンテナに合わせる
                 self.table_ref_view.setFixedWidth(500)
@@ -964,6 +1802,12 @@ class CentroidFinderWindow(QMainWindow):
                 self.table_ref_view.verticalHeader().setDefaultAlignment(Qt.AlignHCenter | Qt.AlignVCenter)
             except Exception:
                 pass
+        except Exception:
+            pass
+
+        # Apply initial visibility for Basic/Advanced groups
+        try:
+            self._apply_grain_ident_visibility()
         except Exception:
             pass
         # Connect edits in the view back to the data table
@@ -989,8 +1833,9 @@ class CentroidFinderWindow(QMainWindow):
         self.table_between = QTableWidget()
         try:
             self.table_between.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Expanding)
-            self.table_between.setVerticalScrollBarPolicy(Qt.ScrollBarAsNeeded)
-            self.table_between.setHorizontalScrollBarPolicy(Qt.ScrollBarAsNeeded)
+            # Keep scrollbar presence stable so the center column doesn't jitter
+            self.table_between.setVerticalScrollBarPolicy(Qt.ScrollBarAlwaysOn)
+            self.table_between.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
             try:
                 self.table_between.verticalHeader().setDefaultAlignment(Qt.AlignHCenter | Qt.AlignVCenter)
             except Exception:
@@ -1007,10 +1852,71 @@ class CentroidFinderWindow(QMainWindow):
 
         left_col = QVBoxLayout()
         left_col.addWidget(self.left_top_image, 0, Qt.AlignTop)
-        left_col.addLayout(sliders_layout, 0)
+
+        # Build Grain Identification block (to be placed below ref table)
+        try:
+            self.grain_ident_mode = 'basic'
+        except Exception:
+            pass
+        try:
+            self.grain_ident_controls = QWidget()
+            gil = QHBoxLayout(self.grain_ident_controls)
+            try:
+                gil.setContentsMargins(0, 0, 0, 0)
+                gil.setSpacing(6)
+            except Exception:
+                pass
+            self.lbl_grain_ident = QLabel("Grain Identification")
+            try:
+                from qt_compat.QtGui import QFont as _QFont
+                fgi = _QFont('Segoe UI', 12)
+                try:
+                    fgi.setBold(True)
+                except Exception:
+                    pass
+                self.lbl_grain_ident.setFont(fgi)
+                try:
+                    self.lbl_grain_ident.setStyleSheet('font-weight: bold;')
+                except Exception:
+                    pass
+            except Exception:
+                try:
+                    fgi2 = self.lbl_grain_ident.font()
+                    fgi2.setBold(True)
+                    self.lbl_grain_ident.setFont(fgi2)
+                except Exception:
+                    pass
+            gil.addWidget(self.lbl_grain_ident)
+            try:
+                # Match Display Mode toggle size (btn_w=108, btn_h=24)
+                self.toggle_grain_ident = SegmentControl(["Basic", "Advanced"], checked_index=0, btn_w=108, btn_h=24)
+                try:
+                    self.toggle_grain_ident.set_on_changed(lambda idx: self._on_toggle_grain_ident(int(idx)))
+                except Exception:
+                    pass
+                gil.addWidget(self.toggle_grain_ident)
+            except Exception:
+                self.toggle_grain_ident = None
+        except Exception:
+            self.grain_ident_controls = None
+
+        try:
+            self.grain_section = QWidget()
+            gl = QVBoxLayout(self.grain_section)
+            gl.setContentsMargins(0, 0, 0, 0)
+            gl.setSpacing(6)
+            if getattr(self, 'grain_ident_controls', None) is not None:
+                gl.addWidget(self.grain_ident_controls, 0)
+            gl.addLayout(sliders_layout)
+        except Exception:
+            self.grain_section = None
         # 左カラムの表の上に Add/Update/Clear ボタンを配置
         try:
             left_controls = QHBoxLayout()
+            try:
+                left_controls.setContentsMargins(0, 0, 0, 0)
+            except Exception:
+                pass
             try:
                 left_controls.addWidget(self.btn_add_ref)
             except Exception:
@@ -1023,40 +1929,336 @@ class CentroidFinderWindow(QMainWindow):
                 left_controls.addWidget(self.btn_clear_ref)
             except Exception:
                 pass
+            try:
+                left_controls.addStretch(1)
+            except Exception:
+                pass
             left_col.addLayout(left_controls, 0)
         except Exception:
             pass
+
+        # Fixed 2-row header (does not scroll vertically) for the left transposed table.
+        try:
+            self.table_ref_view_header = QTableWidget()
+            hdr = self.table_ref_view_header
+            hdr.setRowCount(2)
+            # Pre-allocate columns to ensure labels can be written on init;
+            # prefer to match the current view column count when available.
+            try:
+                pref = max(9, int(getattr(self, 'table_ref_view', None).columnCount() or 9))
+            except Exception:
+                pref = 9
+            hdr.setColumnCount(pref)
+            try:
+                # Show vertical header so header table reserves the same left gutter
+                # as the main transposed table (prevents 1-column visual shift).
+                hdr.verticalHeader().setVisible(True)
+            except Exception:
+                pass
+            try:
+                hdr.horizontalHeader().setVisible(False)
+            except Exception:
+                pass
+            # Ensure both header rows are visible (explicit row heights + enough frame slack)
+            try:
+                hdr.setRowHeight(0, 24)
+                hdr.setRowHeight(1, 20)
+            except Exception:
+                pass
+            hdr.setFixedHeight(60)
+            try:
+                hdr.setEditTriggers(QTableWidget.NoEditTriggers)
+            except Exception:
+                pass
+            try:
+                hdr.setSelectionMode(QAbstractItemView.NoSelection)
+            except Exception:
+                pass
+            try:
+                # Keep scrollbar hidden for the fixed header (no vertical scrolling)
+                hdr.setVerticalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+                hdr.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+                try:
+                    hdr.verticalHeader().setStyleSheet('QHeaderView::section { background-color: lightgray; color: lightgray; }')
+                except Exception:
+                    pass
+            except Exception:
+                pass
+            try:
+                hdr.setFixedWidth(500)
+            except Exception:
+                pass
+            try:
+                self._setup_pseudo_headers_ref(hdr)
+            except Exception:
+                pass
+            try:
+                # Sync horizontal scrolling between main view and fixed header
+                try:
+                    self.table_ref_view.horizontalScrollBar().valueChanged.connect(
+                        lambda val: hdr.horizontalScrollBar().setValue(val)
+                    )
+                    hdr.horizontalScrollBar().valueChanged.connect(
+                        lambda val: self.table_ref_view.horizontalScrollBar().setValue(val)
+                    )
+                except Exception:
+                    pass
+            except Exception:
+                pass
+            left_col.addWidget(hdr, 0)
+        except Exception:
+            self.table_ref_view_header = None
+
         left_col.addWidget(self.table_ref_view, 1)
+        # Place Grain Identification block below the RefPoint table
+        try:
+            if getattr(self, 'grain_section', None) is not None:
+                left_col.addWidget(self.grain_section, 0)
+        except Exception:
+            pass
         # Wrap left column layout in a QWidget and cap its maximum width so it doesn't grow too wide
         left_container = QWidget()
         left_container.setLayout(left_col)
         try:
             # 固定幅にして左カラムを確実に400pxにする
-            left_container.setFixedWidth(500)
+            left_container.setFixedWidth(477)
         except Exception:
             try:
-                left_container.setMaximumWidth(500)
+                left_container.setMaximumWidth(477)
             except Exception:
                 pass
         main_row.addWidget(left_container, 0)
         # Center area: place the transposed bottom table between left and image
-        # Create a center column layout so we can place Export button above the table_between
+        # Create a center column layout for the table_between
         try:
             center_col = QVBoxLayout()
+            # Fixed 2-row header (does not scroll vertically) for the middle transposed table.
             try:
-                center_col.addWidget(export_btn, 0, Qt.AlignTop)
+                # Add Export/Clipboard buttons above center table (aligned vertically with Open Image)
+                try:
+                    center_btn_row = QHBoxLayout()
+                    center_btn_row.setContentsMargins(0, 0, 0, 0)
+                    center_btn_row.setSpacing(6)
+                    center_btn_row.addWidget(self.btn_export, 0)
+                    center_btn_row.addWidget(self.btn_clipboard, 0)
+                    center_btn_row.addStretch(1)
+                    center_col.addLayout(center_btn_row, 0)
+                except Exception:
+                    pass
+
+                self.table_between_header = QTableWidget()
+                hdr_mid = self.table_between_header
+                hdr_mid.setRowCount(2)
+                # Pre-allocate 5 columns to ensure labels can be written on init
+                hdr_mid.setColumnCount(5)
+                try:
+                    hdr_mid.verticalHeader().setVisible(True)
+                except Exception:
+                    pass
+                try:
+                    hdr_mid.horizontalHeader().setVisible(False)
+                except Exception:
+                    pass
+                # Ensure both header rows are visible (explicit row heights + enough frame slack)
+                try:
+                    hdr_mid.setRowHeight(0, 24)
+                    hdr_mid.setRowHeight(1, 20)
+                    try:
+                        vhw = self.table.verticalHeader().width()
+                        if vhw > 0:
+                            try:
+                                hdr_mid.verticalHeader().setFixedWidth(vhw)
+                            except Exception:
+                                pass
+                    except Exception:
+                        pass
+                except Exception:
+                    pass
+                # Ensure initial column count covers the main table_between columns
+                try:
+                    pref_mid = max(5, int(getattr(self, 'table_between', None).columnCount() or 5))
+                except Exception:
+                    pref_mid = 5
+                hdr_mid.setColumnCount(pref_mid)
+                hdr_mid.setFixedHeight(60)
+                try:
+                    hdr_mid.setEditTriggers(QTableWidget.NoEditTriggers)
+                except Exception:
+                    pass
+                try:
+                    hdr_mid.setSelectionMode(QAbstractItemView.NoSelection)
+                except Exception:
+                    pass
+                try:
+                    hdr_mid.setVerticalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+                    hdr_mid.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+                    try:
+                        hdr_mid.verticalHeader().setStyleSheet('QHeaderView::section { background-color: lightgray; color: lightgray; }')
+                    except Exception:
+                        pass
+                except Exception:
+                    pass
+                try:
+                    self._setup_pseudo_headers_between(hdr_mid)
+                except Exception:
+                    pass
+                try:
+                    # Sync horizontal scrolling between center transposed and its fixed header
+                    try:
+                        self.table_between.horizontalScrollBar().valueChanged.connect(
+                            lambda val: hdr_mid.horizontalScrollBar().setValue(val)
+                        )
+                        hdr_mid.horizontalScrollBar().valueChanged.connect(
+                            lambda val: self.table_between.horizontalScrollBar().setValue(val)
+                        )
+                    except Exception:
+                        pass
+                    # Keep header columns in sync with the main middle table (counts, widths, content)
+                    try:
+                        def _sync_mid_header():
+                            try:
+                                hdr_mid.setColumnCount(self.table_between.columnCount())
+                                for col in range(min(hdr_mid.columnCount(), self.table_between.columnCount())):
+                                    w = self.table_between.columnWidth(col)
+                                    if w > 0:
+                                        hdr_mid.setColumnWidth(col, w)
+                                # copy header rows (row 0-1) from table_between
+                                for row in range(min(2, self.table_between.rowCount())):
+                                    for col in range(self.table_between.columnCount()):
+                                        src_item = self.table_between.item(row, col)
+                                        if src_item is not None:
+                                            new_item = QTableWidgetItem(src_item.text())
+                                            new_item.setBackground(QColor("lightgray"))
+                                            new_item.setForeground(QColor("black"))
+                                            try:
+                                                # Group header row (Image/Stage) should be left-aligned
+                                                if int(row) == 0:
+                                                    new_item.setTextAlignment(Qt.AlignLeft | Qt.AlignVCenter)
+                                                else:
+                                                    new_item.setTextAlignment(Qt.AlignHCenter | Qt.AlignVCenter)
+                                            except Exception:
+                                                pass
+                                            try:
+                                                f = new_item.font()
+                                                f.setBold(True)
+                                                new_item.setFont(f)
+                                            except Exception:
+                                                pass
+                                            hdr_mid.setItem(row, col, new_item)
+
+                                # Ensure header/container are wide enough so the last column (e.g., Z) isn't clipped
+                                try:
+                                    total_w = 0
+                                    for c in range(self.table_between.columnCount()):
+                                        cw = self.table_between.columnWidth(c)
+                                        if cw <= 0:
+                                            cw = 50
+                                        total_w += cw
+                                    try:
+                                        vgw = self.table_between.verticalHeader().width() or 0
+                                    except Exception:
+                                        vgw = 0
+                                    needed_w = int(total_w + vgw + 10)
+                                    try:
+                                        hdr_mid.setMinimumWidth(needed_w)
+                                    except Exception:
+                                        pass
+                                    try:
+                                        cc = getattr(self, 'center_container', None)
+                                        if cc is not None:
+                                            cc.setFixedWidth(needed_w)
+                                    except Exception:
+                                        pass
+                                except Exception:
+                                    pass
+                            except Exception:
+                                pass
+                        try:
+                            # Keep header width and center container width in sync when columns are resized
+                            self.table_between.horizontalHeader().sectionResized.connect(
+                                lambda idx, old, new: (
+                                    hdr_mid.setColumnWidth(idx, new),
+                                    QTimer.singleShot(0, _sync_mid_header)
+                                )
+                            )
+                        except Exception:
+                            pass
+                        try:
+                            mdl = self.table_between.model()
+                            try:
+                                mdl.modelReset.connect(_sync_mid_header)
+                            except Exception:
+                                pass
+                            try:
+                                mdl.columnsInserted.connect(lambda parent, start, end: _sync_mid_header())
+                            except Exception:
+                                pass
+                            try:
+                                mdl.columnsRemoved.connect(lambda parent, start, end: _sync_mid_header())
+                            except Exception:
+                                pass
+                        except Exception:
+                            pass
+                        # initial sync
+                        try:
+                            _sync_mid_header()
+                        except Exception:
+                            pass
+                    except Exception:
+                        pass
+                except Exception:
+                    pass
+                center_col.addWidget(hdr_mid, 0)
+                try:
+                    # Ensure header widget is wide enough to show all columns (prevent Z cutoff)
+                    try:
+                        total_w = 0
+                        for col in range(self.table_between.columnCount()):
+                            w = self.table_between.columnWidth(col)
+                            if w <= 0:
+                                w = 50
+                            total_w += w
+                        # include vertical gutter width if visible
+                        try:
+                            vgw = hdr_mid.verticalHeader().width() or 0
+                        except Exception:
+                            vgw = 0
+                        try:
+                            hdr_mid.setMinimumWidth(total_w + vgw + 8)
+                        except Exception:
+                            pass
+                    except Exception:
+                        pass
+                    # If _sync_mid_header exists, call it now to copy texts/widths
+                    try:
+                        _sync_mid_header()
+                    except Exception:
+                        pass
+                except Exception:
+                    pass
             except Exception:
-                pass
-            try:
-                center_col.addWidget(clipboard_btn, 0, Qt.AlignTop)
-            except Exception:
-                pass
+                self.table_between_header = None
             center_col.addWidget(self.table_between, 1)
             # Wrap the center column in a QWidget so we can control the column width
             self.center_container = QWidget()
             self.center_container.setLayout(center_col)
             try:
                 self.center_container.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Expanding)
+            except Exception:
+                pass
+            # Ensure center container starts wide enough to show all middle-table columns
+            try:
+                total_w = 0
+                for c in range(self.table_between.columnCount()):
+                    cw = self.table_between.columnWidth(c)
+                    if cw <= 0:
+                        cw = 50
+                    total_w += cw
+                try:
+                    vgw = self.table_between.verticalHeader().width() or 0
+                except Exception:
+                    vgw = 0
+                self.center_container.setFixedWidth(int(total_w + vgw + 24 + 30))
             except Exception:
                 pass
             main_row.addWidget(self.center_container, 0)
@@ -1155,6 +2357,8 @@ class CentroidFinderWindow(QMainWindow):
         self._wire_levels()
         self._wire(self.edit_min_area, self.slider_min_area)
         self._wire(self.edit_trim, self.slider_trim)
+        self._wire(self.edit_neck_sep, self.slider_neck_sep)
+        self._wire(self.edit_shape_complex, self.slider_shape_complex)
         # Ref の Obs.* 入力保持用（内部容量は10）
         self.ref_obs = [{"x": "", "y": "", "z": ""} for _ in range(10)]
         # 入力変更を監視（半角正規化）
@@ -1240,17 +2444,122 @@ class CentroidFinderWindow(QMainWindow):
         except Exception:
             pass
 
+        # Enforce button heights after layout settles
+        try:
+            QTimer.singleShot(300, self._enforce_button_heights)
+        except Exception:
+            pass
+
+        # Apply button styling (colors, widths, bold, rounded corners)
+        try:
+            QTimer.singleShot(0, self._apply_button_styles)
+        except Exception:
+            pass
+
         self.open_image()
 
-    # オーバーレイ比率スライダー変更ハンドラ
-    def _on_overlay_ratio_changed(self, v):
-        self.overlay_mix = int(v)
+    # オーバーレイ表示モード（Original/Posterized）変更ハンドラ
+    def _on_overlay_mode_changed(self, idx):
+        try:
+            modes = ['Original', 'Posterized']
+            mode = modes[int(idx)] if 0 <= int(idx) < len(modes) else 'Original'
+        except Exception:
+            mode = 'Original'
+        self.overlay_mode = mode
+        # keep a numeric mix for any legacy callers (0/100)
+        try:
+            self.overlay_mix = {'Original': 0, 'Posterized': 100}.get(mode, 0)
+        except Exception:
+            pass
         self.schedule_update(force=True)
 
     # 境界線表示トグルハンドラ
     def _on_toggle_boundaries(self, checked):
         self.show_boundaries = bool(checked)
+        try:
+            if getattr(self, 'btn_boundary_show', None) is not None and getattr(self, 'btn_boundary_hide', None) is not None:
+                # keep segmented toggle in sync even when called programmatically
+                try:
+                    self.btn_boundary_show.setChecked(bool(self.show_boundaries))
+                    self.btn_boundary_hide.setChecked(not bool(self.show_boundaries))
+                except Exception:
+                    pass
+        except Exception:
+            pass
         self.schedule_update(force=True)
+
+    # View Orientation トグルハンドラ
+    def _on_toggle_view_orientation(self, idx):
+        try:
+            if int(idx) == 0:
+                self.view_orientation = 'Image'
+            else:
+                self.view_orientation = 'Stage'
+        except Exception:
+            self.view_orientation = 'Image'
+        try:
+            if getattr(self, 'btn_view_image', None) is not None and getattr(self, 'btn_view_stage', None) is not None:
+                try:
+                    self.btn_view_image.setChecked(self.view_orientation == 'Image')
+                    self.btn_view_stage.setChecked(self.view_orientation == 'Stage')
+                except Exception:
+                    pass
+        except Exception:
+            pass
+        # 更新をスケジュール（必要なら表示を更新するため）
+        try:
+            self.schedule_update(force=True)
+        except Exception:
+            pass
+
+    # Grain Identification トグルハンドラ（Basic/Advanced）
+    def _on_toggle_grain_ident(self, idx):
+        try:
+            if int(idx) == 0:
+                self.grain_ident_mode = 'basic'
+            else:
+                self.grain_ident_mode = 'advanced'
+        except Exception:
+            self.grain_ident_mode = 'basic'
+        # 詳細度に応じて将来の処理分岐が可能（現状は表示更新のみ）
+        try:
+            self._apply_grain_ident_visibility()
+            self.schedule_update(force=True)
+        except Exception:
+            pass
+
+    def _apply_grain_ident_visibility(self):
+        mode = str(getattr(self, 'grain_ident_mode', 'basic'))
+        show_basic = bool(mode == 'basic')
+        try:
+            if getattr(self, 'row_num_groups', None) is not None:
+                # Number of Groups is shared between Basic/Advanced
+                self.row_num_groups.setVisible(True)
+        except Exception:
+            pass
+        # Min Area slider is hidden; selection is done on the histogram in both modes.
+        try:
+            if getattr(self, 'row_min_area', None) is not None:
+                self.row_min_area.setVisible(False)
+        except Exception:
+            pass
+        # Advanced-only
+        for name in ('row_poster_level', 'row_trim', 'row_neck_sep', 'row_shape_complex'):
+            try:
+                w = getattr(self, name, None)
+                if w is not None:
+                    # Posterization Steps row is deprecated; keep hidden.
+                    if name == 'row_poster_level':
+                        w.setVisible(False)
+                    else:
+                        w.setVisible(not show_basic)
+            except Exception:
+                pass
+        try:
+            if getattr(self, 'area_hist', None) is not None:
+                self.area_hist.setVisible(True)
+        except Exception:
+            pass
 
     # スピンボックスとスライダーのペアを作成するヘルパーメソッド
     def _make_spin_slider(self, name, init, mn, mx, tick):
@@ -1370,6 +2679,49 @@ class CentroidFinderWindow(QMainWindow):
             v = 1
         if v > self.max_levels:
             v = self.max_levels
+
+        self.levels_value = v
+        try:
+            self.edit_levels.setText(str(v))
+        except Exception:
+            pass
+        try:
+            # クリップ範囲内ならスライダーも同期
+            if v <= self.slider_levels.maximum():
+                self.slider_levels.setValue(v)
+        except Exception:
+            pass
+        self.schedule_update()
+
+    # Number of Groups の+/-ボタンで値を調整
+    def _nudge_num_groups(self, delta):
+        try:
+            cur = int(self.edit_num_groups.text().strip())
+        except Exception:
+            try:
+                cur = int(getattr(self, 'slider_num_groups', None).value() if hasattr(self, 'slider_num_groups') else 4)
+            except Exception:
+                cur = 4
+        try:
+            d = int(delta)
+        except Exception:
+            d = 0
+
+        v = cur + d
+        if v < 2:
+            v = 2
+        if v > 20:
+            v = 20
+
+        try:
+            self.edit_num_groups.setText(str(v))
+        except Exception:
+            pass
+        try:
+            self.slider_num_groups.setValue(v)
+        except Exception:
+            pass
+        self.schedule_update()
 
         # Keep internal value even if it exceeds slider maximum
         self.levels_value = int(v)
@@ -1608,6 +2960,26 @@ class CentroidFinderWindow(QMainWindow):
         self.edit_trim.setText(str(cur))
         self.schedule_update(force=True)
 
+    def _nudge_neck_sep(self, delta):
+        try:
+            cur = int(self.edit_neck_sep.text())
+        except Exception:
+            cur = self.slider_neck_sep.value()
+        cur = max(self.slider_neck_sep.minimum(), min(self.slider_neck_sep.maximum(), cur + int(delta)))
+        self.slider_neck_sep.setValue(cur)
+        self.edit_neck_sep.setText(str(cur))
+        self.schedule_update(force=True)
+
+    def _nudge_shape_complex(self, delta):
+        try:
+            cur = int(self.edit_shape_complex.text())
+        except Exception:
+            cur = self.slider_shape_complex.value()
+        cur = max(self.slider_shape_complex.minimum(), min(self.slider_shape_complex.maximum(), cur + int(delta)))
+        self.slider_shape_complex.setValue(cur)
+        self.edit_shape_complex.setText(str(cur))
+        self.schedule_update(force=True)
+
     # 画像ファイルを開くダイアログを表示
     def open_image(self):
         last_path = load_last_image_path()
@@ -1807,11 +3179,145 @@ class CentroidFinderWindow(QMainWindow):
 
         # 現在の処理パラメータを取得
     def _get_params(self):
-        return dict(
-            levels=self.levels_value,
-            min_area=self.slider_min_area.value(),
+        # Number of Groups is the single source of truth for k-means levels.
+        try:
+            levels = int(getattr(self, 'slider_num_groups', None).value() if hasattr(self, 'slider_num_groups') else 2)
+        except Exception:
+            levels = 2
+
+        # Grain size thresholds: use histogram selection in both Basic/Advanced.
+        if getattr(self, 'area_hist', None) is not None:
+            try:
+                sel_min, sel_max = self.area_hist.selection()
+            except Exception:
+                sel_min, sel_max = (None, None)
+        else:
+            sel_min, sel_max = (None, None)
+
+        try:
+            min_area = int(round(float(sel_min))) if sel_min is not None else int(self.slider_min_area.value())
+        except Exception:
+            min_area = int(self.slider_min_area.value())
+        try:
+            max_area = int(round(float(sel_max))) if sel_max is not None else None
+        except Exception:
+            max_area = None
+
+        params = dict(
+            levels=levels,
+            min_area=min_area,
+            max_area=max_area,
             trim_px=self.slider_trim.value(),
+            neck_separation=int(getattr(self, 'slider_neck_sep', None).value() if hasattr(self, 'slider_neck_sep') else 0),
+            shape_complexity=int(getattr(self, 'slider_shape_complex', None).value() if hasattr(self, 'slider_shape_complex') else 10),
         )
+        return params
+
+    def _on_area_hist_range_changed(self, sel_min, sel_max):
+        # Histogram selection drives Advanced min/max area filters.
+        try:
+            # Keep the hidden slider in sync for consistency (best-effort; clamped).
+            v = int(round(float(sel_min)))
+            v = max(self.slider_min_area.minimum(), min(self.slider_min_area.maximum(), v))
+            try:
+                self.slider_min_area.setValue(v)
+            except Exception:
+                pass
+            try:
+                self.edit_min_area.setText(str(v))
+            except Exception:
+                pass
+        except Exception:
+            pass
+        try:
+            self.schedule_update()
+        except Exception:
+            pass
+
+    def _update_area_histogram(self, areas):
+        if getattr(self, 'area_hist', None) is None:
+            return
+        try:
+            import numpy as _np
+            import math
+            arr = _np.array([a for a in areas if a is not None and a > 0], dtype=float)
+            if arr.size == 0:
+                self.area_hist.clear(); return
+            mn = float(arr.min()); mx = float(arr.max())
+            if mx <= 0:
+                self.area_hist.clear(); return
+            if mn <= 0:
+                mn = min([v for v in arr if v > 0] + [1.0])
+            if mx <= mn:
+                mx = mn * 1.1
+            bins = _np.logspace(math.log10(mn), math.log10(mx), num=21)
+            # 面積の総和（赤線）
+            vals, edges = _np.histogram(arr, bins=bins, weights=arr)
+            # 粒子数（灰色線）
+            counts, _ = _np.histogram(arr, bins=bins)
+            self.area_hist.set_data(edges.tolist(), vals.tolist(), counts.tolist())
+
+            # Auto-initialize Min/Max based on curve inflection points.
+            # Min: left inflection of particle count peak
+            # Max: right inflection of area peak
+            try:
+                if counts.size > 0 and vals.size > 0:
+                    # Find particle count (Grain No.) peak
+                    if counts.max() > 0:
+                        count_peak_idx = int(_np.argmax(counts))
+                        
+                        # Find left inflection point of counts curve (max slope on left side)
+                        if count_peak_idx > 1:
+                            left_counts = counts[:count_peak_idx + 1]
+                            # Compute derivative
+                            diff_counts = _np.diff(left_counts)
+                            if diff_counts.size > 0:
+                                # Find where slope is steepest (max derivative)
+                                max_slope_idx = int(_np.argmax(_np.abs(diff_counts)))
+                                sel_min = float(edges[max_slope_idx])
+                            else:
+                                sel_min = float(edges[0])
+                        else:
+                            sel_min = float(edges[0])
+                    else:
+                        sel_min = float(edges[0])
+                    
+                    # Find area (total area) peak
+                    if vals.max() > 0:
+                        area_peak_idx = int(_np.argmax(vals))
+                        
+                        # Find right inflection point of area curve (max slope on right side)
+                        if area_peak_idx < len(vals) - 1:
+                            right_vals = vals[area_peak_idx:]
+                            # Compute derivative
+                            diff_vals = _np.diff(right_vals)
+                            if diff_vals.size > 0:
+                                # Find where slope is steepest (max derivative on right)
+                                max_slope_idx = int(_np.argmax(_np.abs(diff_vals)))
+                                sel_max = float(edges[area_peak_idx + max_slope_idx + 1])
+                            else:
+                                sel_max = float(edges[-1])
+                        else:
+                            sel_max = float(edges[-1])
+                    else:
+                        sel_max = float(edges[-1])
+                    
+                    # Clamp to valid range
+                    sel_min = max(float(mn), min(float(mx), sel_min))
+                    sel_max = max(float(mn), min(float(mx), sel_max))
+                    if sel_min > sel_max:
+                        sel_min, sel_max = sel_max, sel_min
+                    
+                    self.area_hist.maybe_autoset_selection(sel_min, sel_max)
+            except Exception as e:
+                if DEBUG:
+                    print(f"[DEBUG] Auto-init histogram selection failed: {e}")
+                pass
+        except Exception:
+            try:
+                self.area_hist.clear()
+            except Exception:
+                pass
 
     def _update_image_actual(self):
         if self._painting:
@@ -1823,6 +3329,11 @@ class CentroidFinderWindow(QMainWindow):
                 self._safe_populate_tables(self.table_ref, self.table, self.ref_points, self.ref_obs, [], self.selected_index, self.ref_selected_index, flip_mode=self.flip_mode, visible_ref_cols=self.visible_ref_cols)
                 self.centroids = []
                 self._img_base_size = None
+                try:
+                    if getattr(self, 'area_hist', None) is not None:
+                        self.area_hist.clear()
+                except Exception:
+                    pass
                 return
             # 単一ビュー表示のため、左側原画像の描画は廃止
             params = self._get_params()
@@ -1835,14 +3346,22 @@ class CentroidFinderWindow(QMainWindow):
                 cache_img_id = self._cache.get("img_id")
                 cache_levels = self._cache.get("levels")
                 cache_min_area = self._cache.get("min_area")
+                cache_max_area = self._cache.get("max_area")
                 cache_trim = self._cache.get("trim_px")
+                cache_neck = self._cache.get("neck_separation")
+                cache_shape = self._cache.get("shape_complexity")
                 cache_poster = self._cache.get("poster")
                 cache_centroids = self._cache.get("centroids")
+                cache_areas = self._cache.get("areas")
+                areas_now = cache_areas
+                boundary_mask_now = self._cache.get("boundary_mask")
 
                 need_poster_recalc = (
                     cache_poster is None
                     or cache_levels != params["levels"]
                     or cache_img_id != id(self.proc_img)
+                    or cache_neck != params.get("neck_separation")
+                    or cache_shape != params.get("shape_complexity")
                 )
 
                 # 自動モードでは通常通り重い処理を行う
@@ -1850,33 +3369,53 @@ class CentroidFinderWindow(QMainWindow):
                     if need_poster_recalc:
                         poster = kmeans_posterize(self.proc_img, params["levels"])
                         centroids = self.centroid_processor.get_centroids(params, poster=poster)
+                        areas_now = getattr(self.centroid_processor, 'last_component_areas', [])
+                        boundary_mask_now = getattr(self.centroid_processor, 'last_boundary_mask', None)
                         self._cache.update({
                             "img_id": id(self.proc_img),
                             "levels": params["levels"],
                             "min_area": params["min_area"],
+                            "max_area": params.get("max_area"),
                             "trim_px": params["trim_px"],
+                            "neck_separation": params.get("neck_separation"),
+                            "shape_complexity": params.get("shape_complexity"),
                             "poster": poster,
                             "centroids": centroids,
+                            "areas": areas_now,
+                            "boundary_mask": boundary_mask_now,
                         })
                     else:
                         # reuse cached poster
                         poster = cache_poster
                         # If only min_area/trim changed, recompute centroids from cached poster
                         if (cache_poster is not None) and (
-                            cache_min_area != params.get("min_area") or cache_trim != params.get("trim_px")
+                            cache_min_area != params.get("min_area")
+                            or cache_max_area != params.get("max_area")
+                            or cache_trim != params.get("trim_px")
+                            or cache_neck != params.get("neck_separation")
+                            or cache_shape != params.get("shape_complexity")
                         ):
                             try:
                                 centroids = self.centroid_processor.get_centroids(params, poster=poster)
+                                areas_now = getattr(self.centroid_processor, 'last_component_areas', [])
+                                boundary_mask_now = getattr(self.centroid_processor, 'last_boundary_mask', None)
                                 # update cached params and centroids (keep poster and img_id/levels)
                                 self._cache.update({
-                                    "min_area": params["min_area"],
                                     "trim_px": params["trim_px"],
+                                    "max_area": params.get("max_area"),
+                                    "neck_separation": params.get("neck_separation"),
+                                    "shape_complexity": params.get("shape_complexity"),
                                     "centroids": centroids,
+                                    "areas": areas_now,
+                                    "boundary_mask": boundary_mask_now,
                                 })
                             except Exception:
                                 centroids = cache_centroids
+                                areas_now = cache_areas
                         else:
                             centroids = cache_centroids
+                            areas_now = cache_areas
+                            boundary_mask_now = self._cache.get("boundary_mask")
                 else:
                     # 手動モード: 可能ならキャッシュを使い、重い poster 再生成は行わない
                     if cache_poster is not None and cache_img_id == id(self.proc_img):
@@ -1884,21 +3423,42 @@ class CentroidFinderWindow(QMainWindow):
                         # Use centroid_processor to recompute centroids from cached poster with current params
                         try:
                             centroids = self.centroid_processor.get_centroids(params, poster=poster)
+                            areas_now = getattr(self.centroid_processor, 'last_component_areas', [])
+                            boundary_mask_now = getattr(self.centroid_processor, 'last_boundary_mask', None)
+                            # Keep cache in sync for histogram/boundary reuse
+                            self._cache.update({
+                                "trim_px": params.get("trim_px"),
+                                "max_area": params.get("max_area"),
+                                "neck_separation": params.get("neck_separation"),
+                                "shape_complexity": params.get("shape_complexity"),
+                                "centroids": centroids,
+                                "areas": areas_now,
+                                "boundary_mask": boundary_mask_now,
+                            })
                         except Exception:
                             # fallback to cached centroids if recompute fails
                             if cache_centroids is not None:
                                 centroids = cache_centroids
+                                areas_now = cache_areas
+                                boundary_mask_now = self._cache.get("boundary_mask")
                     else:
                         # キャッシュが無ければフォールバックで軽めに計算（呼び出し元でエラーは吸収）
                         poster = kmeans_posterize(self.proc_img, params["levels"])
                         centroids = self.centroid_processor.get_centroids(params, poster=poster)
+                        areas_now = getattr(self.centroid_processor, 'last_component_areas', [])
+                        boundary_mask_now = getattr(self.centroid_processor, 'last_boundary_mask', None)
                         self._cache.update({
                             "img_id": id(self.proc_img),
                             "levels": params["levels"],
                             "min_area": params["min_area"],
+                            "max_area": params.get("max_area"),
                             "trim_px": params["trim_px"],
+                            "neck_separation": params.get("neck_separation"),
+                            "shape_complexity": params.get("shape_complexity"),
                             "poster": poster,
                             "centroids": centroids,
+                            "areas": areas_now,
+                            "boundary_mask": boundary_mask_now,
                         })
                 # 表示用にポスター画像をフル解像度へ拡大
                 scale = 1.0 / self.scale_proc_to_full
@@ -1906,12 +3466,25 @@ class CentroidFinderWindow(QMainWindow):
                     new_w = self.img_full.shape[1]
                     new_h = self.img_full.shape[0]
                     poster_full = cv2.resize(poster, (new_w, new_h), interpolation=cv2.INTER_LINEAR)
+                    # Boundary のエッジ検出は最近傍で拡大したポスターを使う（線が太くなる原因を避ける）
+                    poster_edges_full = cv2.resize(poster, (new_w, new_h), interpolation=cv2.INTER_NEAREST)
                 else:
                     poster_full = poster.copy()
-                # 乗算オーバーレイ: base=poster_full, overlay=img_full の multiply を比率で補間
-                mix = max(0.0, min(1.0, (self.overlay_mix or 0) / 100.0))
-                mult = cv2.multiply(poster_full, self.img_full, scale=1.0/255.0)
-                overlay_full = cv2.addWeighted(poster_full, 1.0 - mix, mult, mix, 0)
+                    poster_edges_full = poster_full
+                # Overlay selection by mode: Original / Posterized (Mixed removed)
+                try:
+                    overlay_mode = str(getattr(self, 'overlay_mode', 'Mixed')).lower()
+                except Exception:
+                    overlay_mode = 'original'
+                if overlay_mode == 'original':
+                    overlay_full = self.img_full.copy()
+                else:
+                    overlay_full = poster_full.copy()
+
+                try:
+                    self._update_area_histogram(areas_now or [])
+                except Exception:
+                    pass
                 # ポスタリゼーション境界に白線を描画（オプション）
                 try:
                     if self.show_boundaries:
@@ -1922,8 +3495,8 @@ class CentroidFinderWindow(QMainWindow):
                         except Exception:
                             trim_px_full = 0
                         try:
-                            # poster_full is already at full resolution
-                            poster_fe = poster_full.copy()
+                            # edge detection uses nearest-upscaled poster to avoid thick edges
+                            poster_fe = poster_edges_full.copy()
                             if trim_px_full > 0:
                                 kf = int(trim_px_full)
                                 ker = np.ones((3, 3), np.uint8)
@@ -1943,16 +3516,56 @@ class CentroidFinderWindow(QMainWindow):
                             except Exception:
                                 edge_src = poster
                         h, w = edge_src.shape[:2]
-                        # 隣接画素の色が異なる箇所を検出（横/縦）
-                        diff_h = np.any(edge_src[:, 1:, :] != edge_src[:, :-1, :], axis=2)
-                        diff_v = np.any(edge_src[1:, :, :] != edge_src[:-1, :, :], axis=2)
-                        edge_mask = np.zeros((h, w), dtype=np.uint8)
-                        edge_mask[:, 1:][diff_h] = 255
-                        edge_mask[1:, :][diff_v] = 255
+                        edge_mask = None
+                        # Prefer using the post-filter boundary mask from centroid_processor if available.
+                        try:
+                            if boundary_mask_now is not None:
+                                bm = boundary_mask_now
+                                if bm.shape[:2] != (h, w):
+                                    bm = cv2.resize(bm, (w, h), interpolation=cv2.INTER_NEAREST)
+                                edge_mask = bm.astype(np.uint8)
+                        except Exception:
+                            edge_mask = None
+
+                        if edge_mask is None:
+                            # Use Canny edge detector on nearest-upscaled poster to get crisp 1px edges.
+                            try:
+                                gray = cv2.cvtColor(edge_src, cv2.COLOR_BGR2GRAY)
+                                # thresholds chosen to be permissive; poster edges are high-contrast
+                                edges = cv2.Canny(gray, 30, 100)
+                                # If Canny finds nothing (possible for some posters), fallback to diff-based
+                                if edges is None or not edges.any():
+                                    diff_h = np.any(edge_src[:, 1:, :] != edge_src[:, :-1, :], axis=2)
+                                    diff_v = np.any(edge_src[1:, :, :] != edge_src[:-1, :, :], axis=2)
+                                    edge_mask = np.zeros((h, w), dtype=np.uint8)
+                                    edge_mask[:, 1:][diff_h] = 255
+                                    edge_mask[1:, :][diff_v] = 255
+                                else:
+                                    edge_mask = edges.copy()
+                            except Exception:
+                                # Fallback to difference-based detection if Canny fails
+                                diff_h = np.any(edge_src[:, 1:, :] != edge_src[:, :-1, :], axis=2)
+                                diff_v = np.any(edge_src[1:, :, :] != edge_src[:-1, :, :], axis=2)
+                                edge_mask = np.zeros((h, w), dtype=np.uint8)
+                                edge_mask[:, 1:][diff_h] = 255
+                                edge_mask[1:, :][diff_v] = 255
                         # 黒枠は不要 → スムージング（ガウシアン）で柔らかい白線へ
-                        # 小さなぼかしで1px相当の境界を滑らかにする
-                        blurred = cv2.GaussianBlur(edge_mask, (3, 3), 0.8)
-                        alpha = (blurred.astype(np.float32) / 255.0).reshape(h, w, 1)
+                        # trim_px_full==0 のときは、重なって太く見えるのを抑えるため
+                        # - 事前に軽く erode して線を細くする
+                        # - ブラー強度を小さくして細い線を作る
+                        # - 最終的な alpha を少し抑えて視覚的な太さを揃える
+                        try:
+                            is_zero = int(trim_px_full) == 0
+                        except Exception:
+                            is_zero = False
+                        # Keep boundaries thin: avoid blur (which makes them look thicker)
+                        # Note: avoid aggressive erosion which can remove 1px edges.
+                        try:
+                            alpha = (edge_mask.astype(np.float32) / 255.0).reshape(h, w, 1)
+                            # Make edges clearly visible but not too heavy; slightly lower weight for trim=0 case
+                            alpha *= 0.60 if is_zero else 0.80
+                        except Exception:
+                            alpha = (edge_mask.astype(np.float32) / 255.0).reshape(h, w, 1)
                         # 白を alpha でブレンド
                         overlay_full = overlay_full.astype(np.float32)
                         overlay_full = overlay_full * (1.0 - alpha) + 255.0 * alpha
@@ -2053,46 +3666,139 @@ class CentroidFinderWindow(QMainWindow):
 
     def _apply_proc_zoom(self):
         # Simplified rendering: do not use virtual canvas or PatchWorker.
-        # Build a pixmap for the current overlay (or proc_img fallback) and set it directly on the label.
-        if self._last_overlay_full is None:
-            # Fallback to proc_img if available
-            if self.proc_img is not None:
-                try:
-                    pm, (off_x, off_y), (new_w, new_h) = build_zoomed_canvas(
-                        self.proc_img,
-                        self.proc_zoom,
-                        self.view_padding,
-                        self.centroids,
-                        self.selected_index,
-                        self.ref_points,
-                        self.scale_proc_to_full,
-                        colors=None,
-                        interp_mode=self.interp_mode,
-                    )
-                    if pm is not None:
-                        try:
-                            self.img_label_proc.setPixmap(pm)
-                            self.img_label_proc.resize(pm.width(), pm.height())
-                        except Exception:
-                            pass
-                        # Compute display_scale based on actual drawn pixels to keep coordinate mapping correct
-                        try:
-                            pad = int(self.view_padding)
-                            full_w = int(self._img_base_size[0]) if self._img_base_size is not None else max(1, new_w)
-                            drawn_w = max(1, pm.width() - 2 * pad)
-                            self._display_scale = float(drawn_w) / float(full_w)
-                            # physical offset (in label coordinates) is pad
-                            self._display_offset = (pad, pad)
-                        except Exception:
-                            self._display_offset = (off_x, off_y)
-                            self._display_scale = float(self.proc_zoom)
-                        self._display_img_size = (new_w, new_h)
-                        self._display_pm_base = pm
-                        return
-                except Exception:
-                    pass
+        # Build a pixmap for the current overlay (or proc_img fallback) and then draw grid/rotation if needed.
+        source_img = self._last_overlay_full if self._last_overlay_full is not None else self.proc_img
+        if source_img is None:
             self.img_label_proc.clear()
             return
+
+        try:
+            pm, (off_x, off_y), (new_w, new_h) = build_zoomed_canvas(
+                source_img,
+                self.proc_zoom,
+                self.view_padding,
+                self.centroids,
+                self.selected_index,
+                self.ref_points,
+                self.scale_proc_to_full,
+                colors=None,
+                interp_mode=self.interp_mode,
+            )
+        except Exception:
+            pm = None
+            off_x = off_y = 0
+            new_w = new_h = 0
+
+        if pm is None:
+            self.img_label_proc.clear()
+            return
+
+        # Helper: compute similarity transform (scale, rotation, translation)
+        def _compute_similarity_transform(img_pts, stage_pts):
+            try:
+                import numpy as _np
+                if len(img_pts) < 2 or len(stage_pts) < 2:
+                    return None
+                src = _np.asarray(img_pts, dtype=_np.float64)
+                dst = _np.asarray(stage_pts, dtype=_np.float64)
+                # use Umeyama-like similarity estimation
+                src_mean = src.mean(axis=0)
+                dst_mean = dst.mean(axis=0)
+                src_c = src - src_mean
+                dst_c = dst - dst_mean
+                # covariance
+                cov = (dst_c.T @ src_c) / src.shape[0]
+                U, S, Vt = _np.linalg.svd(cov)
+                R = U @ Vt
+                # ensure proper rotation (no accidental reflection)
+                det = _np.linalg.det(R)
+                reflect = False
+                if det < 0:
+                    # force proper rotation by flipping sign on last column of U
+                    U[:, -1] *= -1
+                    R = U @ Vt
+                    reflect = True
+                # scale
+                var_src = (src_c ** 2).sum() / src.shape[0]
+                s = _np.trace(_np.diag(S)) / var_src if var_src > 1e-12 else 1.0
+                t = dst_mean - s * (R @ src_mean)
+                # rotation angle (radians)
+                angle = _np.arctan2(R[1, 0], R[0, 0])
+                return {'s': float(s), 'R': R, 't': t, 'angle_rad': float(angle), 'angle_deg': float(_np.degrees(angle)), 'reflect': bool(reflect)}
+            except Exception:
+                return None
+
+        # Helper: build stage transform info from available reference points
+        def _get_stage_alignment_info():
+            try:
+                pts_img = []
+                pts_stage = []
+                # Gather pairs where we have both image (proc->full) and numeric stage obs
+                for i, rp in enumerate(getattr(self, 'ref_points', []) or []):
+                    if rp is None:
+                        continue
+                    # image full coords
+                    try:
+                        x_full = float(rp[0]) * float(getattr(self, 'scale_proc_to_full', 1.0))
+                        y_full = float(rp[1]) * float(getattr(self, 'scale_proc_to_full', 1.0))
+                    except Exception:
+                        continue
+                    # stage obs
+                    try:
+                        ro = (getattr(self, 'ref_obs', []) or [])
+                        ro_i = ro[i] if i < len(ro) else None
+                        if not ro_i:
+                            continue
+                        sx = ro_i.get('x', '')
+                        sy = ro_i.get('y', '')
+                        if sx is None or sy is None:
+                            continue
+                        sx_f = float(str(sx).replace(',', '').strip())
+                        sy_f = float(str(sy).replace(',', '').strip())
+                    except Exception:
+                        continue
+                    pts_img.append((x_full, y_full))
+                    pts_stage.append((sx_f, sy_f))
+                self._dbg(f"Stage alignment: found {len(pts_img)} valid point pairs")
+                if len(pts_img) < 2:
+                    self._dbg(f"Insufficient ref points for stage transform (need ≥2, have {len(pts_img)})")
+                    return None
+                result = _compute_similarity_transform(pts_img, pts_stage)
+                if result:
+                    self._dbg(f"Transform computed: angle={result.get('angle_deg', 0):.2f}deg, scale={result.get('s', 1):.3f}")
+                return result
+            except Exception as e:
+                self._dbg(f"Stage alignment error: {e}")
+                return None
+
+        # Helper: map a stage point to display pixmap coords given build_zoomed_canvas outputs
+        def _stage_to_display(p_stage, info, off_x, off_y, display_scale, pad, img_full_w, img_full_h, angle_deg, reflect):
+            try:
+                import math
+                import numpy as _np
+                # inverse similarity: img = (1/s) R^T (stage - t)
+                s = float(info['s'])
+                R = _np.asarray(info['R'], dtype=_np.float64)
+                t = _np.asarray(info['t'], dtype=_np.float64)
+                stage = _np.asarray(p_stage, dtype=_np.float64)
+                img_full = (1.0 / s) * (R.T @ (stage - t))
+                # display coords before rotation/flip
+                xd = float(img_full[0]) * display_scale + off_x
+                yd = float(img_full[1]) * display_scale + off_y
+                # rotate around image center
+                cx = pad + (img_full_w * display_scale) / 2.0
+                cy = pad + (img_full_h * display_scale) / 2.0
+                theta = -math.radians(angle_deg)
+                # apply flip if needed (reflect implies mirror across X in stage->image, map to horizontal flip of image)
+                x_rel = xd - cx
+                y_rel = yd - cy
+                if reflect:
+                    x_rel = -x_rel
+                xr = x_rel * math.cos(theta) - y_rel * math.sin(theta)
+                yr = x_rel * math.sin(theta) + y_rel * math.cos(theta)
+                return (int(round(cx + xr)), int(round(cy + yr)))
+            except Exception:
+                return None
 
         # Build pixmap from the full overlay and display it directly
         pm, (off_x, off_y), (new_w, new_h) = build_zoomed_canvas(
@@ -2118,28 +3824,292 @@ class CentroidFinderWindow(QMainWindow):
             try:
                 self._display_scale = float(self.proc_zoom)
             except Exception:
-                self._display_scale = float(self.proc_zoom)
+                self._display_scale = 1.0
             self._display_offset = (off_x, off_y)
         if pm is None:
             self.img_label_proc.clear()
             return
         self._display_img_size = (new_w, new_h)
         self._display_pm_base = pm
-        # update statusbar with interp info
+        # update statusbar
         try:
-            actual_interp = 'nearest' if self.interp_mode == 'nearest' else ('linear' if self.interp_mode == 'linear' else ('nearest' if (self.proc_zoom > 1.5) else 'linear'))
-            msg = f"補間モード={self.interp_mode} (描画補間={actual_interp})"
+            msg = ""
             if getattr(self, '_large_file_hint', False):
-                msg += " ｜ 軽負荷モード有効"
-            self.ui_footer.showMessage(msg)
+                msg = "軽負荷モード有効"
+            if msg:
+                self.ui_footer.showMessage(msg)
         except Exception:
             pass
 
         # Directly set pixmap and resize label to match pixmap size (no virtual canvas)
         try:
-            self.img_label_proc.setPixmap(pm)
+            # If we have at least 2-3 reference points with observed stage coords, compute alignment
             try:
-                self.img_label_proc.resize(pm.width(), pm.height())
+                info = _get_stage_alignment_info()
+            except Exception as e:
+                import traceback
+                self._dbg(f"_get_stage_alignment_info failed: {e}")
+                self._dbg(traceback.format_exc())
+                info = None
+
+            # Reuse last valid stage transform in Stage mode so grid/images don't vanish when alignment is temporarily unavailable
+            try:
+                current_orient = getattr(self, 'view_orientation', 'Image')
+                if info is not None:
+                    self._last_stage_info = info
+                elif current_orient == 'Stage' and getattr(self, '_last_stage_info', None) is not None:
+                    info = self._last_stage_info
+            except Exception:
+                pass
+
+            pm_to_show = pm
+            try:
+                # Apply rotation when Stage is selected, grid for both modes
+                view_orient = getattr(self, 'view_orientation', 'Image')
+                if view_orient == 'Stage':
+                    if info is None:
+                        self._dbg(f"Stage mode selected but transform info not available (need ≥2 ref points with obs)")
+                    else:
+                        self._dbg(f"Applying Stage rotation: angle={info.get('angle_deg', 0.0):.2f}deg")
+                
+                # Draw rotated image for Stage mode
+                if info is not None and view_orient == 'Stage':
+                    # draw rotated/possibly reflected image and overlay grid
+                    from qt_compat.QtGui import QPixmap, QPainter, QTransform, QPen, QColor
+                    pad = int(self.view_padding)
+                    draw_w, draw_h = (new_w, new_h)
+                    # copy base pixmap and extract the drawn image region
+                    try:
+                        img_region = pm.copy(pad, pad, draw_w, draw_h)
+                    except Exception:
+                        img_region = pm
+                    # create transform: rotate by -angle so stage X -> right, Y -> up
+                    angle = float(info.get('angle_deg', 0.0))
+                    transform = QTransform()
+                    # rotate around center
+                    cx = img_region.width() / 2.0
+                    cy = img_region.height() / 2.0
+                    # If reflection was detected, apply horizontal flip
+                    if info.get('reflect', False):
+                        transform.translate(cx, cy)
+                        transform.scale(-1, 1)
+                        transform.translate(-cx, -cy)
+                    # rotate so that stage X points to the right (negative because displayed Y axis is downward)
+                    transform.translate(cx, cy)
+                    transform.rotate(-angle)
+                    transform.translate(-cx, -cy)
+                    rotated = img_region.transformed(transform, Qt.SmoothTransformation)
+                    # compose new canvas sized to fit the rotated pixmap (avoid clipping)
+                    rot_w = rotated.width()
+                    rot_h = rotated.height()
+                    pm2 = QPixmap(rot_w + 2 * pad, rot_h + 2 * pad)
+                    pm2.fill(QColor(30, 30, 30))
+                    p = QPainter(pm2)
+                    p.drawPixmap(pad, pad, rotated)
+
+                    # Draw stage grid lines on rotated image (simple orthogonal grid)
+                    try:
+                        import numpy as _np
+                        import math
+                        
+                        # After rotation, draw straight grid based on stage coordinates
+                        display_scale = getattr(self, '_display_scale', None)
+                        if display_scale is None:
+                            display_scale = float(self.proc_zoom)
+                        
+                        # Determine stage pixel scale: display pixels per stage unit = display_scale / s
+                        s = float(info.get('s', 1.0))
+                        px_per_stage = display_scale / max(1e-12, s)
+                        
+                        # Choose nice spacing in stage units so spacing in px is in [50,200]
+                        target_px = 100.0
+                        candidates = []
+                        base = [1, 2, 5]
+                        for e in range(-3, 6):
+                            for b in base:
+                                candidates.append(b * (10 ** e))
+                        spacing = candidates[0]
+                        for c in candidates:
+                            if 50 <= (c * px_per_stage) <= 220:
+                                spacing = c
+                                break
+                        
+                        # Get stage bounds
+                        w_full = int(self._img_base_size[0]) if getattr(self, '_img_base_size', None) else draw_w
+                        h_full = int(self._img_base_size[1]) if getattr(self, '_img_base_size', None) else draw_h
+                        corners = [(0.0, 0.0), (w_full, 0.0), (w_full, h_full), (0.0, h_full)]
+                        R = _np.asarray(info.get('R'))
+                        t = _np.asarray(info.get('t'))
+                        s_val = float(info.get('s', 1.0))
+                        stage_pts = [_np.asarray([c[0], c[1]]) for c in corners]
+                        stage_corners = [s_val * (R @ p) + t for p in stage_pts]
+                        xs = [p[0] for p in stage_corners]
+                        ys = [p[1] for p in stage_corners]
+                        xmin, xmax = min(xs), max(xs)
+                        ymin, ymax = min(ys), max(ys)
+                        
+                        start_x = math.floor(xmin / spacing) * spacing
+                        end_x = math.ceil(xmax / spacing) * spacing
+                        start_y = math.floor(ymin / spacing) * spacing
+                        end_y = math.ceil(ymax / spacing) * spacing
+                        
+                        pen = QPen(QColor(200, 200, 200, 140))
+                        pen.setWidth(1)
+                        p.setPen(pen)
+                        font = p.font()
+                        font.setPointSize(9)
+                        p.setFont(font)
+                        
+                        # Image is already rotated, so draw straight orthogonal grid
+                        # Map stage coords to rotated canvas coords
+                        # Center of rotated image
+                        cx = pad + rotated.width() / 2.0
+                        cy = pad + rotated.height() / 2.0
+                        
+                        # Draw vertical lines (constant stage X)
+                        x = start_x
+                        while x <= end_x + 1e-9:
+                            # In stage coords: vertical line at x, from ymin to ymax
+                            # Convert to display: stage units to pixels, centered on rotated canvas
+                            # Stage origin to display
+                            x_offset = (x - (xmin + xmax) / 2.0) * px_per_stage
+                            x_disp = cx + x_offset
+                            y_top = pad
+                            y_bottom = pad + rotated.height()
+                            p.drawLine(int(x_disp), int(y_top), int(x_disp), int(y_bottom))
+                            try:
+                                lbl = f"{x:.3g}"
+                                p.drawText(int(x_disp) + 4, int(y_top) + 14, lbl)
+                            except Exception:
+                                pass
+                            x += spacing
+                        
+                        # Draw horizontal lines (constant stage Y)
+                        y = start_y
+                        while y <= end_y + 1e-9:
+                            # In stage coords: horizontal line at y, from xmin to xmax
+                            y_offset = (y - (ymin + ymax) / 2.0) * px_per_stage
+                            y_disp = cy + y_offset
+                            x_left = pad
+                            x_right = pad + rotated.width()
+                            p.drawLine(int(x_left), int(y_disp), int(x_right), int(y_disp))
+                            try:
+                                lbl = f"{y:.3g}"
+                                p.drawText(int(x_left) + 4, int(y_disp) - 4, lbl)
+                            except Exception:
+                                pass
+                            y += spacing
+                    except Exception:
+                        pass
+                    try:
+                        p.end()
+                    except Exception:
+                        pass
+                    pm_to_show = pm2
+                
+                # Draw pixel grid overlay for Image mode (simple pixel coordinates)
+                elif view_orient == 'Image':
+                    try:
+                        from qt_compat.QtGui import QPixmap, QPainter, QPen, QColor
+                        import math
+                        
+                        # Create a copy to draw grid on
+                        pm2 = QPixmap(pm)
+                        p = QPainter(pm2)
+                        
+                        pad = int(self.view_padding)
+                        
+                        # For Image mode, use pixel coordinates
+                        display_scale = getattr(self, '_display_scale', None)
+                        if display_scale is None or display_scale <= 0:
+                            try:
+                                display_scale = float(self.proc_zoom)
+                            except Exception:
+                                display_scale = 1.0
+                        display_scale = max(1e-4, float(display_scale))
+
+                        # Choose spacing so that about ~8 lines appear across the visible area.
+                        # Compute spacing in DISPLAY pixels, then convert to image pixels.
+                        visible_w = max(20.0, pm.width() - 2 * pad)
+                        target_lines = 8.0
+                        spacing_display = max(30.0, min(180.0, visible_w / target_lines))
+                        pixel_spacing = spacing_display / display_scale
+                        # snap to nearest 10px in image coords for cleaner labels
+                        pixel_spacing = max(10.0, round(pixel_spacing / 10.0) * 10.0)
+                        
+                        w_full = int(self._img_base_size[0]) if getattr(self, '_img_base_size', None) else new_w
+                        h_full = int(self._img_base_size[1]) if getattr(self, '_img_base_size', None) else new_h
+                        
+                        pen = QPen(QColor(200, 200, 200, 140))
+                        pen.setWidth(1)
+                        p.setPen(pen)
+                        font = p.font()
+                        font.setPointSize(9)
+                        p.setFont(font)
+                        
+                        # Vertical lines (constant X in image pixels)
+                        x_px = 0.0
+                        while x_px <= w_full + 1e-6:
+                            x_disp = pad + x_px * display_scale
+                            y_top = pad
+                            y_bottom = pad + h_full * display_scale
+                            p.drawLine(int(x_disp), int(y_top), int(x_disp), int(y_bottom))
+                            try:
+                                lbl = f"{int(round(x_px))}"
+                                p.drawText(int(x_disp) + 4, int(y_top) + 14, lbl)
+                            except Exception:
+                                pass
+                            x_px += pixel_spacing
+
+                        # Horizontal lines (constant Y in image pixels)
+                        y_px = 0.0
+                        while y_px <= h_full + 1e-6:
+                            x_left = pad
+                            x_right = pad + w_full * display_scale
+                            y_disp = pad + y_px * display_scale
+                            p.drawLine(int(x_left), int(y_disp), int(x_right), int(y_disp))
+                            try:
+                                lbl = f"{int(round(y_px))}"
+                                p.drawText(int(x_left) + 4, int(y_disp) - 4, lbl)
+                            except Exception:
+                                pass
+                            y_px += pixel_spacing
+                        
+                        p.end()
+                        pm_to_show = pm2
+                        try:
+                            self._last_pm_image_grid = pm2
+                        except Exception:
+                            pass
+                    except Exception as e:
+                        self._dbg(f"Image grid drawing failed: {e}")
+                        # fallback: reuse last successful grid pixmap if available
+                        try:
+                            if getattr(self, '_last_pm_image_grid', None) is not None:
+                                pm_to_show = self._last_pm_image_grid
+                            else:
+                                pm_to_show = pm
+                        except Exception:
+                            pm_to_show = pm
+                        
+            except Exception as e:
+                import traceback
+                self._dbg(f"Stage rotation failed with exception: {e}")
+                self._dbg(traceback.format_exc())
+                pm_to_show = pm
+
+            # IMPORTANT: keep the latest rendered pixmap (including grid/rotation) as the base.
+            # Some interaction handlers restore `img_label_proc` from `_display_pm_base` after a click
+            # to clear transient overlays (e.g., crosshair). If `_display_pm_base` is kept as the
+            # pre-grid pixmap, the grid appears to "disappear" right after Add/Update.
+            try:
+                self._display_pm_base = pm_to_show
+            except Exception:
+                pass
+
+            self.img_label_proc.setPixmap(pm_to_show)
+            try:
+                self.img_label_proc.resize(pm_to_show.width(), pm_to_show.height())
             except Exception:
                 pass
         except Exception:
@@ -2304,11 +4274,19 @@ class CentroidFinderWindow(QMainWindow):
         try:
             if curRow is None or curRow < 0:
                 return
-            self.ref_selected_index = int(curRow)
+            header_rows = 2
+            if int(curRow) < header_rows:
+                return
+            self.ref_selected_index = int(curRow) - header_rows
         except Exception:
             pass
 
     def _on_add_ref_point(self):
+        # キャンセルモード中なら、ピックモードを終了
+        if self.pick_mode == 'add':
+            self._end_pick_mode()
+            return
+        
         # 空きのRef列があればそこを選択し、RefクリックモードをON。
         # Ensure any pending edits in the transposed left view are committed
         try:
@@ -2338,14 +4316,21 @@ class CentroidFinderWindow(QMainWindow):
         # 左テーブル側の選択を更新
         try:
             self.table_ref.blockSignals(True)
-            self.table_ref.setCurrentCell(0, target)
+            # canonical table_ref has 2 pseudo-header rows
+            self.table_ref.setCurrentCell(2, target)
             self.table_ref.selectColumn(target)
         finally:
             self.table_ref.blockSignals(False)
         # ピックモード開始（Add）
         self._start_pick_mode('add', ref_index=target)
+        # カーソルを画像中心にジャンプ
+        self._move_cursor_to_image_center()
 
     def _on_update_xy(self):
+        # Toggle pick-mode（Update）: 押し直すとキャンセル
+        if self.pick_mode == 'update':
+            self._end_pick_mode()
+            return
         # ピックモード開始（Update）
         if not (0 <= self.ref_selected_index < len(self.ref_points)):
             return
@@ -2373,6 +4358,23 @@ class CentroidFinderWindow(QMainWindow):
                 global_pt = self.img_label_proc.mapToGlobal(local_pt)
                 QCursor.setPos(global_pt)
                 # ルーペは廃止
+                # 十字線を即時表示
+                self._draw_crosshair(local_pt)
+
+    def _move_cursor_to_image_center(self):
+        """カーソルを右画像の中心にジャンプさせる"""
+        x_full = y_full = None
+        if self._img_base_size is not None:
+            x_full = self._img_base_size[0] / 2.0
+            y_full = self._img_base_size[1] / 2.0
+        if x_full is not None and y_full is not None:
+            # まず対象座標が見えるようスクロール
+            self._ensure_full_pos_visible(x_full, y_full)
+            dxy = self._full_to_display(x_full, y_full)
+            if dxy is not None:
+                local_pt = QPoint(int(round(dxy[0])), int(round(dxy[1])))
+                global_pt = self.img_label_proc.mapToGlobal(local_pt)
+                QCursor.setPos(global_pt)
                 # 十字線を即時表示
                 self._draw_crosshair(local_pt)
 
@@ -2408,18 +4410,68 @@ class CentroidFinderWindow(QMainWindow):
         # Auto -> Normal -> Flip -> Auto と循環
         cur = str(getattr(self, 'flip_mode', 'auto')).lower()
         nxt = 'normal' if cur == 'auto' else ('flip' if cur == 'normal' else 'auto')
-        self.flip_mode = nxt
         try:
-            label = 'Auto' if nxt == 'auto' else ('Normal' if nxt == 'normal' else 'Flip')
-            self.btn_flip_mode.setText(f"Flip:{label}")
+            self._set_flip_mode(nxt)
+        except Exception:
+            # fallback (shouldn't happen)
+            self.flip_mode = nxt
+    def _set_flip_mode(self, mode: str, refresh: bool = True):
+        try:
+            m = str(mode or '').lower().strip()
+        except Exception:
+            m = 'auto'
+        if m not in ('auto', 'normal', 'flip'):
+            m = 'auto'
+        self.flip_mode = m
+
+        # combobox の選択を更新
+        try:
+            combo = getattr(self, 'combo_flip_mode', None)
+            idx_map = {'auto': 0, 'normal': 1, 'flip': 2}
+            if combo is not None:
+                old = combo.blockSignals(True)
+                combo.setCurrentIndex(idx_map.get(m, 0))
+                combo.blockSignals(old)
         except Exception:
             pass
+
+        if not refresh:
+            return
+
         # 再描画・テーブル更新
         try:
-            self._safe_populate_tables(self.table_ref, self.table, self.ref_points, self.ref_obs, self.centroids, self.selected_index, self.ref_selected_index, flip_mode=self.flip_mode, visible_ref_cols=self.visible_ref_cols)
+            self._safe_populate_tables(
+                self.table_ref,
+                self.table,
+                self.ref_points,
+                self.ref_obs,
+                self.centroids,
+                self.selected_index,
+                self.ref_selected_index,
+                flip_mode=self.flip_mode,
+                visible_ref_cols=self.visible_ref_cols,
+            )
+            try:
+                self._refresh_transposed_views()
+            except Exception:
+                pass
             self._apply_proc_zoom()
         except Exception:
             pass
+
+    def _on_combo_flip_changed(self, index: int):
+        try:
+            idx_map = {0: 'auto', 1: 'normal', 2: 'flip'}
+            mode = idx_map.get(int(index), 'auto')
+        except Exception:
+            mode = 'auto'
+        try:
+            self._set_flip_mode(mode, refresh=True)
+        except Exception:
+            try:
+                self.flip_mode = mode
+            except Exception:
+                pass
 
 
     def export_centroids(self):
@@ -2441,14 +4493,73 @@ class CentroidFinderWindow(QMainWindow):
                 poster = self._cache.get("poster")
             centroids = self.centroid_processor.get_centroids(params, poster=poster)
         dt_str = datetime.now().strftime("%Y%m%d_%H%M%S")
-        outname = f"{STR.EXPORT_FILENAME_PREFIX}{dt_str}.txt"
+        default_name = f"{STR.EXPORT_FILENAME_PREFIX}{dt_str}.txt"
+
+        # Always ask where to save.
         try:
-            with open(outname, "w", encoding="utf-8") as f:
-                f.write(STR.EXPORT_HEADER)
-                for g, x, y in centroids:
-                    f.write(f"{g},{int(round(x))},{int(round(y))}\n")
+            last_path = load_last_image_path()
+            start_dir = os.path.dirname(last_path) if last_path else os.getcwd()
+        except Exception:
+            start_dir = os.getcwd()
+        try:
+            start_path = os.path.join(start_dir, default_name)
+        except Exception:
+            start_path = default_name
+
+        try:
+            outpath, _ = QFileDialog.getSaveFileName(
+                self,
+                "Export Centroids",
+                start_path,
+                "Text Files (*.txt);;All Files (*)",
+            )
+        except Exception:
+            outpath = ""
+
+        if not outpath:
+            return
+
+        try:
+            with open(outpath, "w", encoding="utf-8") as f:
+                # Header: No,Group,Stage X,Stage Y,Stage Z
+                try:
+                    hdr = getattr(STR, 'EXPORT_HEADER', None)
+                except Exception:
+                    hdr = None
+                if hdr is None or not hdr.strip():
+                    f.write("No,Group,Stage X,Stage Y,Stage Z\n")
+                else:
+                    # If existing header is different, replace with desired header
+                    f.write("No,Group,Stage X,Stage Y,Stage Z\n")
+
+                # Use table items (Calc.* rows) for Stage values when available
+                tbl = getattr(self, 'table', None)
+                for i, cent in enumerate(centroids):
+                    try:
+                        g = ""
+                        try:
+                            g = str(int(round(float(cent[0]))))
+                        except Exception:
+                            g = ""
+                        sx = sy = sz = ""
+                        if tbl is not None and tbl.columnCount() > i:
+                            try:
+                                itx = tbl.item(4, i)
+                                ity = tbl.item(5, i)
+                                itz = tbl.item(6, i)
+                                sx = itx.text() if itx is not None else ""
+                                sy = ity.text() if ity is not None else ""
+                                sz = itz.text() if itz is not None else ""
+                            except Exception:
+                                sx = sy = sz = ""
+                        f.write(f"{i+1},{g},{sx},{sy},{sz}\n")
+                    except Exception:
+                        try:
+                            f.write(f"{i+1},,, ,\n")
+                        except Exception:
+                            pass
             from qt_compat.QtWidgets import QMessageBox
-            QMessageBox.information(self, "Export", f"重心座標を {outname} に保存しました。")
+            QMessageBox.information(self, "Export", f"Saved centroids to:\n{outpath}")
         except Exception as e:
             from qt_compat.QtWidgets import QMessageBox
             QMessageBox.critical(self, "Export Error", str(e))
@@ -2467,7 +4578,10 @@ class CentroidFinderWindow(QMainWindow):
         try:
             if curRow is None or curRow < 0:
                 return
-            idx = int(curRow)
+            header_rows = 2
+            if int(curRow) < header_rows:
+                return
+            idx = int(curRow) - header_rows
             if self.selected_index != idx:
                 self.selected_index = idx
                 self.schedule_update(force=True)
@@ -2481,7 +4595,8 @@ class CentroidFinderWindow(QMainWindow):
     def _on_ref_cell_clicked(self, row, col):
         # 左テーブルクリック時に、Obs.X/Y/Z(行2,3,4)なら即編集を開始する
         try:
-            if row in (2, 3, 4):
+            # canonical table_ref has 2 pseudo-header rows
+            if row in (4, 5, 6):
                 item = self.table_ref.item(row, col)
                 if item is not None and (item.flags() & Qt.ItemIsEditable):
                     # 列選択は維持しつつ、そのセルを編集開始
@@ -2528,6 +4643,74 @@ class CentroidFinderWindow(QMainWindow):
         self.pick_ref_index = ref_index
         self.img_label_proc.setCursor(QCursor(Qt.CrossCursor))
         # ルーペ表示は廃止
+        # While waiting for image click after "Add Ref. Point", gray-invert the button and change text to "Cancel".
+        try:
+            if str(mode) == 'add' or str(mode) == 'update':
+                # pick モード開始時は対応ボタンをキャンセル表示にする
+                target_btn = self.btn_add_ref if str(mode) == 'add' else getattr(self, 'btn_update_xy', None)
+                if target_btn is not None:
+                    # ボタンのテキストを「Cancel」に変更
+                    try:
+                        target_btn.setText(STR.BUTTON_ADD_REF_CANCEL)
+                    except Exception:
+                        pass
+
+                    # Lock current size so switching QSS won't change layout/height.
+                    try:
+                        h0 = int(target_btn.height() or 0)
+                    except Exception:
+                        h0 = 0
+                    if h0 <= 0:
+                        try:
+                            h0 = int(target_btn.sizeHint().height())
+                        except Exception:
+                            h0 = 0
+                    if h0 > 0:
+                        try:
+                            target_btn.setFixedHeight(h0)
+                        except Exception:
+                            pass
+
+                    # Also lock width to avoid becoming thinner.
+                    try:
+                        w0 = int(target_btn.width() or 0)
+                    except Exception:
+                        w0 = 0
+                    if w0 <= 0:
+                        try:
+                            w0 = int(target_btn.sizeHint().width())
+                        except Exception:
+                            w0 = 0
+                    if w0 > 0:
+                        try:
+                            target_btn.setFixedWidth(w0)
+                        except Exception:
+                            pass
+
+                    radius = 8
+                    style_wait = (
+                        f"QPushButton {{ background-color: rgb(230,230,230); color: black; border: none; border-radius: {radius}px; }}"
+                        f"QPushButton:hover {{ background-color: rgb(220,220,220); }}"
+                        f"QPushButton:pressed {{ background-color: rgb(210,210,210); }}"
+                    )
+                    # Also lock height in QSS to avoid style-driven recalculation.
+                    try:
+                        if h0 > 0:
+                            style_wait += f"\nQPushButton {{ min-height: {h0}px; max-height: {h0}px; }}"
+                    except Exception:
+                        pass
+                    # Also lock width in QSS to avoid style-driven recalculation.
+                    try:
+                        if w0 > 0:
+                            style_wait += f"\nQPushButton {{ min-width: {w0}px; max-width: {w0}px; }}"
+                    except Exception:
+                        pass
+                    try:
+                        target_btn.setStyleSheet(style_wait)
+                    except Exception:
+                        pass
+        except Exception:
+            pass
 
     def _end_pick_mode(self):
         self.pick_mode = None
@@ -2535,6 +4718,34 @@ class CentroidFinderWindow(QMainWindow):
         # 通常は手のカーソル
         self.img_label_proc.setCursor(QCursor(Qt.OpenHandCursor))
         # ルーペは存在しない
+        # Restore button styles and text (undo gray-invert and "Cancel" text)
+        try:
+            btn = getattr(self, 'btn_add_ref', None)
+            if btn is not None:
+                btn.setText(STR.BUTTON_ADD_REF)
+        except Exception:
+            pass
+        try:
+            btn_up = getattr(self, 'btn_update_xy', None)
+            if btn_up is not None:
+                btn_up.setText(STR.BUTTON_UPDATE_XY)
+        except Exception:
+            pass
+        try:
+            self._apply_button_styles()
+        except Exception:
+            pass
+        # Re-enforce heights after style change
+        try:
+            QTimer.singleShot(0, self._enforce_button_heights)
+        except Exception:
+            pass
+
+        # Clear any crosshair overlay by re-rendering the base pixmap.
+        try:
+            self._apply_proc_zoom()
+        except Exception:
+            pass
 
     def _handle_image_click(self, pos):
         # クリック座標を右画像の元サイズ（overlay_full）座標に変換（ズームのみ考慮）
@@ -2560,25 +4771,26 @@ class CentroidFinderWindow(QMainWindow):
                         xi = str(int(round(x_proc)))
                         yi = str(int(round(y_proc)))
 
-                        # canonical: table_ref (row 0/1, col idx)
+                        # canonical: table_ref (data starts at row 2 because rows 0-1 are pseudo-headers)
                         t = getattr(self, 'table_ref', None)
                         if t is not None:
                             try:
+                                src_row_offset = 2
                                 if t.columnCount() <= int(idx):
                                     t.setColumnCount(int(idx) + 1)
                                     try:
                                         t.setHorizontalHeaderLabels([str(i + 1) for i in range(t.columnCount())])
                                     except Exception:
                                         pass
-                                if t.rowCount() >= 2:
-                                    itx = t.item(0, int(idx))
+                                if t.rowCount() >= (src_row_offset + 2):
+                                    itx = t.item(src_row_offset + 0, int(idx))
                                     if itx is None:
                                         itx = QTableWidgetItem("")
-                                        t.setItem(0, int(idx), itx)
-                                    ity = t.item(1, int(idx))
+                                        t.setItem(src_row_offset + 0, int(idx), itx)
+                                    ity = t.item(src_row_offset + 1, int(idx))
                                     if ity is None:
                                         ity = QTableWidgetItem("")
-                                        t.setItem(1, int(idx), ity)
+                                        t.setItem(src_row_offset + 1, int(idx), ity)
                                     itx.setText(xi)
                                     ity.setText(yi)
                                     try:
@@ -2589,35 +4801,29 @@ class CentroidFinderWindow(QMainWindow):
                             except Exception:
                                 pass
 
-                        # transposed: table_ref_view (row idx, col 0/1)
+                        # transposed: table_ref_view (row idx + 2 header rows, col 0/1)
                         rv = getattr(self, 'table_ref_view', None)
                         if rv is not None:
                             try:
-                                if rv.rowCount() <= int(idx):
-                                    rv.setRowCount(int(idx) + 1)
-                                    try:
-                                        rv.setVerticalHeaderLabels([str(i + 1) for i in range(rv.rowCount())])
-                                    except Exception:
-                                        pass
+                                header_rows = 2
+                                view_r = int(idx) + header_rows
+                                if rv.rowCount() <= view_r:
+                                    rv.setRowCount(view_r + 1)
                                 # Ensure at least X/Y columns exist
                                 if rv.columnCount() < 2:
                                     try:
                                         rv.setColumnCount(max(2, len(STR.TABLE_LEFT_ROW_LABELS)))
                                     except Exception:
                                         rv.setColumnCount(2)
-                                    try:
-                                        rv.setHorizontalHeaderLabels(list(STR.TABLE_LEFT_ROW_LABELS))
-                                    except Exception:
-                                        pass
                                 if rv.columnCount() >= 2:
-                                    vix = rv.item(int(idx), 0)
+                                    vix = rv.item(view_r, 0)
                                     if vix is None:
                                         vix = QTableWidgetItem("")
-                                        rv.setItem(int(idx), 0, vix)
-                                    viy = rv.item(int(idx), 1)
+                                        rv.setItem(view_r, 0, vix)
+                                    viy = rv.item(view_r, 1)
                                     if viy is None:
                                         viy = QTableWidgetItem("")
-                                        rv.setItem(int(idx), 1, viy)
+                                        rv.setItem(view_r, 1, viy)
                                     vix.setText(xi)
                                     viy.setText(yi)
                                     try:
@@ -2642,14 +4848,16 @@ class CentroidFinderWindow(QMainWindow):
                         self._apply_proc_zoom()  # ref_points を反映して再描画（赤点が即時出る）
                     except Exception:
                         pass
-                    if self.pick_mode == 'add':
+                    # End pick mode for both add and update after handling click
+                    if self.pick_mode in ('add', 'update'):
                         self._end_pick_mode()
 
     def _on_ref_item_changed(self, item):
         # 左テーブル（Ref）の Obs.* 行（2,3,4行目）入力を半角へ正規化し、内部配列に反映
         row = item.row()
         col = item.column()
-        if row not in (2, 3, 4):
+        # canonical table_ref has 2 pseudo-header rows
+        if row not in (4, 5, 6):
             return
         text = item.text() or ""
         # 全角を半角へ（英数記号）
@@ -2661,7 +4869,7 @@ class CentroidFinderWindow(QMainWindow):
                 item.setText(normalized)
             finally:
                 self.table_ref.blockSignals(False)
-        key = 'x' if row == 2 else ('y' if row == 3 else 'z')
+        key = 'x' if row == 4 else ('y' if row == 5 else 'z')
         if 0 <= col < len(self.ref_obs):
             self.ref_obs[col][key] = normalized
 
@@ -2678,9 +4886,14 @@ class CentroidFinderWindow(QMainWindow):
                 return
             r = item.row()
             c = item.column()
-            # transposed: view[r,c] corresponds to source[c,r]
-            src_r = c
-            src_c = r
+            header_rows = 2
+            src_row_offset = 2  # canonical table_ref has 2 pseudo-header rows
+            # Ignore edits in our in-cell header rows
+            if r < header_rows:
+                return
+            # transposed: view[r,c] corresponds to source[src_row_offset + c, r - header_rows]
+            src_r = src_row_offset + c
+            src_c = r - header_rows
             if 0 <= src_r < self.table_ref.rowCount() and 0 <= src_c < self.table_ref.columnCount():
                 try:
                     # prevent recursion on the view; allow the source table to emit its itemChanged
@@ -2717,8 +4930,10 @@ class CentroidFinderWindow(QMainWindow):
 
                     # Update internal ref_obs immediately when editing Obs rows (2,3,4)
                     try:
-                        if src_r in (2, 3, 4) and 0 <= src_c < len(self.ref_obs):
-                            key = 'x' if src_r == 2 else ('y' if src_r == 3 else 'z')
+                        # canonical rows: X,Y,ObsX,ObsY,ObsZ,... start at src_row_offset
+                        obs_rows = (src_row_offset + 2, src_row_offset + 3, src_row_offset + 4)
+                        if src_r in obs_rows and 0 <= src_c < len(self.ref_obs):
+                            key = 'x' if src_r == obs_rows[0] else ('y' if src_r == obs_rows[1] else 'z')
                             self.ref_obs[src_c][key] = txt
                     except Exception:
                         pass
@@ -2740,6 +4955,67 @@ class CentroidFinderWindow(QMainWindow):
             if getattr(self, '_pending_ref_view_refresh', False):
                 from qt_compat.QtCore import QTimer
                 QTimer.singleShot(0, self._refresh_transposed_views)
+        except Exception:
+            pass
+
+        # Fallback: if editor movement didn't occur (delegate didn't handle Return),
+        # move to next editable cell: Obs X (col 2) -> Obs Y (col3), Obs Y -> Obs Z (col4),
+        # Obs Z -> next row Obs X.
+        try:
+            header_rows = 2
+            if item is not None:
+                r = item.row()
+                c = item.column()
+                # only consider movement for data rows (not header rows)
+                if r is not None and c is not None and r >= header_rows:
+                    def _move_next_fallback():
+                        try:
+                            try:
+                                vr = int(r)
+                                vc = int(c)
+                            except Exception:
+                                return
+                            # editable Obs columns in transposed view are 2,3,4
+                            if vc == 2:
+                                tgt_r, tgt_c = vr, 3
+                            elif vc == 3:
+                                tgt_r, tgt_c = vr, 4
+                            elif vc == 4:
+                                tgt_r, tgt_c = vr + 1, 2
+                            else:
+                                return
+                            # bounds check
+                            tv = getattr(self, 'table_ref_view', None)
+                            if tv is None:
+                                return
+                            if tgt_r < 0 or tgt_c < 0:
+                                return
+                            if tgt_r >= tv.rowCount():
+                                return
+                            if tgt_c >= tv.columnCount():
+                                return
+                            try:
+                                tv.setCurrentCell(tgt_r, tgt_c)
+                            except Exception:
+                                pass
+                            try:
+                                itm = tv.item(tgt_r, tgt_c)
+                                from qt_compat.QtCore import Qt as _Qt
+                                if itm is not None and (itm.flags() & getattr(_Qt, 'ItemIsEditable', 0)):
+                                    try:
+                                        tv.setFocus()
+                                        tv.editItem(itm)
+                                    except Exception:
+                                        pass
+                            except Exception:
+                                pass
+                        except Exception:
+                            pass
+                    try:
+                        from qt_compat.QtCore import QTimer
+                        QTimer.singleShot(0, _move_next_fallback)
+                    except Exception:
+                        _move_next_fallback()
         except Exception:
             pass
 
@@ -2795,26 +5071,76 @@ class CentroidFinderWindow(QMainWindow):
                 self.table_ref.blockSignals(True)
             except Exception:
                 pass
-            # Copy each cell from view into the source table (transposed mapping)
+            # Copy only editable cells from the transposed view into the source-of-truth.
+            # IMPORTANT: The transposed view contains 2 in-cell header rows (0-1). Do not
+            # copy those, or header strings like "Stage"/"X" will pollute the data model.
             rv = self.table_ref_view
             if rv is None:
                 return
-            rows = rv.rowCount()
-            cols = rv.columnCount()
-            for r in range(rows):
-                for c in range(cols):
+            header_rows = 2
+            src_row_offset = 2  # canonical table_ref has 2 pseudo-header rows
+            # Only Stage (Obs) columns are editable in the view
+            editable_cols = (2, 3, 4)  # ObsX, ObsY, ObsZ in transposed view
+            header_tokens = {"image", "stage", "residual", "x", "y", "z", "u", "v", "|r|", "|r|\n", "|r|\r\n"}
+            rows = int(rv.rowCount())
+            cols = int(rv.columnCount())
+            max_ref = max(0, rows - header_rows)
+            for r in range(header_rows, rows):
+                ref_idx = int(r) - header_rows
+                if ref_idx < 0:
+                    continue
+                # ensure arrays exist
+                try:
+                    if ref_idx >= len(self.ref_obs):
+                        # extend with empty dicts if needed
+                        self.ref_obs.extend({"x": "", "y": "", "z": ""} for _ in range(ref_idx - len(self.ref_obs) + 1))
+                except Exception:
+                    pass
+                for c in editable_cols:
+                    if c < 0 or c >= cols:
+                        continue
                     try:
                         it = rv.item(r, c)
                         txt = it.text() if it is not None else ""
-                        src_r = c
-                        src_c = r
-                        if 0 <= src_r < self.table_ref.rowCount() and 0 <= src_c < self.table_ref.columnCount():
+                        try:
+                            txt = unicodedata.normalize('NFKC', txt)
+                        except Exception:
+                            pass
+                        # sanitize accidental header tokens
+                        try:
+                            if (txt or "").strip().lower() in header_tokens:
+                                txt = ""
+                        except Exception:
+                            pass
+
+                        # Update internal model
+                        try:
+                            if 0 <= ref_idx < len(self.ref_obs):
+                                key = 'x' if c == 2 else ('y' if c == 3 else 'z')
+                                self.ref_obs[ref_idx][key] = txt
+                        except Exception:
+                            pass
+
+                        # Mirror into canonical table_ref so downstream code stays consistent
+                        try:
+                            src_r = int(src_row_offset + c)  # canonical row
+                            src_c = int(ref_idx)             # canonical column
+                            if src_r >= self.table_ref.rowCount():
+                                self.table_ref.setRowCount(src_r + 1)
+                            if src_c >= self.table_ref.columnCount():
+                                self.table_ref.setColumnCount(src_c + 1)
+                                try:
+                                    self.table_ref.setHorizontalHeaderLabels([str(i + 1) for i in range(self.table_ref.columnCount())])
+                                except Exception:
+                                    pass
                             src_item = self.table_ref.item(src_r, src_c)
                             if src_item is None:
                                 src_item = QTableWidgetItem(txt)
                                 self.table_ref.setItem(src_r, src_c, src_item)
                             else:
                                 src_item.setText(txt)
+                        except Exception:
+                            pass
                     except Exception:
                         pass
         finally:
@@ -2822,20 +5148,6 @@ class CentroidFinderWindow(QMainWindow):
                 self.table_ref.blockSignals(False)
             except Exception:
                 pass
-        # Now update internal ref_obs from table_ref's Obs rows (2,3,4)
-        try:
-            for col in range(self.table_ref.columnCount()):
-                if col >= len(self.ref_obs):
-                    continue
-                for row, key in ((2, 'x'), (3, 'y'), (4, 'z')):
-                    try:
-                        it = self.table_ref.item(row, col)
-                        val = it.text() if it is not None else ""
-                        self.ref_obs[col][key] = val
-                    except Exception:
-                        pass
-        except Exception:
-            pass
         # After flushing edits into `self.ref_obs`, recompute derived values
         try:
             from qt_compat.QtCore import QTimer
@@ -2872,6 +5184,35 @@ class CentroidFinderWindow(QMainWindow):
     def _copy_centroids_to_clipboard(self):
         """Copy sequential index and CalcX/CalcY/CalcZ to the clipboard as TSV."""
         try:
+            # Visual feedback: flash the Clipboard button gray briefly.
+            try:
+                btn = getattr(self, 'btn_clipboard', None)
+                if btn is not None:
+                    prev_style = btn.styleSheet() or ""
+                    try:
+                        btn.setStyleSheet(
+                            "QPushButton { background-color: rgb(140,140,140); color: white; border: none; border-radius: 8px; }"
+                        )
+                    except Exception:
+                        prev_style = None
+
+                    def _restore_btn_style(_btn=btn, _prev=prev_style):
+                        try:
+                            if _prev is not None and _prev != "":
+                                _btn.setStyleSheet(_prev)
+                            else:
+                                # Fallback to standard styling
+                                try:
+                                    self._apply_button_styles()
+                                except Exception:
+                                    pass
+                        except Exception:
+                            pass
+
+                    QTimer.singleShot(150, _restore_btn_style)
+            except Exception:
+                pass
+
             app = QApplication.instance()
             if app is None:
                 return
@@ -2879,20 +5220,27 @@ class CentroidFinderWindow(QMainWindow):
             if tbl is None or tbl.columnCount() == 0:
                 return
             lines = []
-            # header
-            lines.append("No\tCalcX\tCalcY\tCalcZ")
+            # header: No, Group, Stage X, Stage Y, Stage Z
+            lines.append("No\tGroup\tStage X\tStage Y\tStage Z")
             for c in range(tbl.columnCount()):
                 try:
-                    # Calc.* are at rows 2,3,4 per tables.populate_tables
-                    itx = tbl.item(2, c)
-                    ity = tbl.item(3, c)
-                    itz = tbl.item(4, c)
+                    # Group from self.centroids (first element). Stage values are Calc.* at rows 2,3,4 per tables.populate_tables
+                    grp = ""
+                    try:
+                        if getattr(self, 'centroids', None) is not None and 0 <= c < len(self.centroids):
+                            grp = str(int(round(float(self.centroids[c][0]))))
+                    except Exception:
+                        grp = ""
+                    # Calc.* rows live at offsets 4,5,6 (DATA_ROW_OFFSET + 2..4 in tables.populate_tables)
+                    itx = tbl.item(4, c)
+                    ity = tbl.item(5, c)
+                    itz = tbl.item(6, c)
                     sx = itx.text() if itx is not None else ""
                     sy = ity.text() if ity is not None else ""
                     sz = itz.text() if itz is not None else ""
-                    lines.append(f"{c+1}\t{sx}\t{sy}\t{sz}")
+                    lines.append(f"{c+1}\t{grp}\t{sx}\t{sy}\t{sz}")
                 except Exception:
-                    lines.append(f"{c+1}\t\t\t")
+                    lines.append(f"{c+1}\t\t\t\t")
             txt = "\n".join(lines)
             try:
                 QApplication.clipboard().setText(txt)
@@ -2968,6 +5316,23 @@ class CentroidFinderWindow(QMainWindow):
                         populate_tables(*args, **kwargs)
                     except Exception:
                         pass
+                    # Reinstall pseudo-headers after populate (data might overwrite them)
+                    try:
+                        self._setup_pseudo_headers_ref(self.table_ref)
+                        self._setup_pseudo_headers_between(self.table)
+                    except Exception:
+                        pass
+                    # Sync frozen headers after populate completes
+                    try:
+                        self._sync_frozen_headers()
+                    except Exception:
+                        pass
+                    # Re-apply pseudo-headers after populate to ensure they're visible
+                    try:
+                        QTimer.singleShot(50, lambda: self._setup_pseudo_headers_ref(self.table_ref))
+                        QTimer.singleShot(100, lambda: self._setup_pseudo_headers_between(self.table))
+                    except Exception:
+                        pass
                     # If populate_tables was deferred, the caller may already have refreshed
                     # transposed views using stale data. Refresh again now to ensure X/Y and
                     # Calc tables reflect the latest population.
@@ -2982,12 +5347,33 @@ class CentroidFinderWindow(QMainWindow):
             pass
         try:
             populate_tables(*args, **kwargs)
+            # Reinstall pseudo-headers after populate (data might overwrite them)
+            try:
+                self._setup_pseudo_headers_ref(self.table_ref)
+                self._setup_pseudo_headers_between(self.table)
+            except Exception:
+                pass
+            # Sync frozen headers after populate completes
+            try:
+                QTimer.singleShot(100, self._sync_frozen_headers)
+            except Exception:
+                pass
+            # Re-apply pseudo-headers after populate to ensure they're visible
+            try:
+                QTimer.singleShot(150, lambda: self._setup_pseudo_headers_ref(self.table_ref))
+                QTimer.singleShot(200, lambda: self._setup_pseudo_headers_between(self.table))
+            except Exception:
+                pass
         except Exception:
             pass
 
     def _refresh_transposed_views(self):
         # Create/update transposed copies of `self.table_ref` and `self.table`.
         try:
+            header_rows = 2
+            ref_src_row_offset = 2  # canonical table_ref has 2 pseudo-header rows
+            mid_src_row_offset = 2  # canonical table has 2 pseudo-header rows
+
             # If the user is actively editing the transposed left table, do not rebuild
             # *that* view's items. But still refresh the middle table (Calc results)
             # so recomputation is visible immediately after Enter.
@@ -3021,9 +5407,16 @@ class CentroidFinderWindow(QMainWindow):
                             pass
                         try:
                             # Rows in the canonical ref table we want to keep visible even while editing:
-                            # - RefX/RefY (typically row 0/1)
+                            # - RefX/RefY (data starts at ref_src_row_offset)
                             # - Residual rows
-                            update_src_rows = (0, 1, 5, 6, 7, 8)
+                            update_src_rows = (
+                                ref_src_row_offset + 0,
+                                ref_src_row_offset + 1,
+                                ref_src_row_offset + 5,
+                                ref_src_row_offset + 6,
+                                ref_src_row_offset + 7,
+                                ref_src_row_offset + 8,
+                            )
                             cur = None
                             try:
                                 cur = rv.currentItem()
@@ -3035,20 +5428,29 @@ class CentroidFinderWindow(QMainWindow):
                             max_view_rows = rv.rowCount()
                             max_view_cols = rv.columnCount()
 
-                            for view_r in range(max_view_rows):
-                                src_c = view_r  # source column == view row
+                            for view_r in range(header_rows, max_view_rows):
+                                src_c = view_r - header_rows  # source column == view row (minus header rows)
                                 if not (0 <= src_c < src.columnCount()):
                                     continue
                                 for src_r in update_src_rows:
-                                    view_c = src_r  # source row == view column
+                                    view_c = src_r - ref_src_row_offset  # source row == view column (minus src offset)
                                     if not (0 <= view_c < max_view_cols):
                                         continue
                                     # Avoid touching the actively edited cell
                                     if view_r == cur_r and view_c == cur_c:
                                         continue
+                                    # Prefer source-of-truth arrays for Image X/Y so they never get polluted by table items.
                                     try:
-                                        src_item = src.item(src_r, src_c)
-                                        txt = src_item.text() if src_item is not None else ""
+                                        txt = ""
+                                        if src_r == (ref_src_row_offset + 0):
+                                            pt = self.ref_points[src_c] if 0 <= src_c < len(self.ref_points) else None
+                                            txt = "" if pt is None else str(int(round(float(pt[0]))))
+                                        elif src_r == (ref_src_row_offset + 1):
+                                            pt = self.ref_points[src_c] if 0 <= src_c < len(self.ref_points) else None
+                                            txt = "" if pt is None else str(int(round(float(pt[1]))))
+                                        else:
+                                            src_item = src.item(src_r, src_c)
+                                            txt = src_item.text() if src_item is not None else ""
                                     except Exception:
                                         txt = ""
                                     it = None
@@ -3121,64 +5523,339 @@ class CentroidFinderWindow(QMainWindow):
                             pass
                 return tw
 
-            # update left ref view (skip if currently editing)
-            if not editing_left:
+            def _apply_incell_two_row_header(tbl, group_configs, sub_labels):
                 try:
-                    new_ref_view = make_transposed(self.table_ref)
-                    # replace contents of self.table_ref_view
+                    from qt_compat.QtWidgets import QTableWidgetItem
+                    from qt_compat.QtGui import QColor
+                    from qt_compat.QtCore import Qt as _Qt
+
+                    # Hide the built-in header (we render a 2-row header inside the table)
                     try:
-                        self.table_ref_view.blockSignals(True)
-                        self.table_ref_view.setRowCount(new_ref_view.rowCount())
-                        self.table_ref_view.setColumnCount(new_ref_view.columnCount())
-                        # copy headers
+                        tbl.horizontalHeader().setVisible(False)
+                    except Exception:
+                        pass
+
+                    # Row 0 group labels (left-aligned only for group headers)
+                    for col_start, col_span, label in group_configs:
+                        if col_start >= tbl.columnCount():
+                            continue
+                        span = max(1, min(int(col_span), int(tbl.columnCount() - col_start)))
+                        it = QTableWidgetItem(str(label))
                         try:
-                            self.table_ref_view.setHorizontalHeaderLabels([new_ref_view.horizontalHeaderItem(i).text() if new_ref_view.horizontalHeaderItem(i) is not None else "" for i in range(new_ref_view.columnCount())])
+                            it.setTextAlignment(_Qt.AlignLeft | _Qt.AlignVCenter)
+                            f = it.font(); f.setBold(True); it.setFont(f)
+                            it.setBackground(QColor("lightgray"))
+                            it.setForeground(QColor("black"))
+                            it.setFlags(it.flags() & ~getattr(_Qt, 'ItemIsEditable', 0))
                         except Exception:
                             pass
+                        tbl.setItem(0, col_start, it)
                         try:
-                            self.table_ref_view.setVerticalHeaderLabels([new_ref_view.verticalHeaderItem(i).text() if new_ref_view.verticalHeaderItem(i) is not None else "" for i in range(new_ref_view.rowCount())])
+                            tbl.setSpan(0, col_start, 1, span)
                         except Exception:
                             pass
-                        for r in range(new_ref_view.rowCount()):
-                            for c in range(new_ref_view.columnCount()):
-                                try:
-                                    item = new_ref_view.item(r, c)
-                                    if item is not None:
-                                        it = QTableWidgetItem(item.text())
-                                        try:
-                                            # preserve editability/flags where possible so Obs.* remain editable
-                                            it.setFlags(item.flags())
-                                        except Exception:
-                                            pass
-                                        try:
-                                            # Ensure residual rows (original source rows 5..8) are not editable
-                                            # In this transposed loop, `c` is the source row index.
-                                            non_edit_rows = (5, 6, 7, 8)
-                                            if c in non_edit_rows:
-                                                try:
-                                                    from qt_compat.QtCore import Qt as _Qt
-                                                    it.setFlags(it.flags() & ~getattr(_Qt, 'ItemIsEditable', 0))
-                                                except Exception:
-                                                    pass
-                                        except Exception:
-                                            pass
-                                        try:
-                                            it.setTextAlignment(item.textAlignment())
-                                        except Exception:
-                                            pass
-                                        self.table_ref_view.setItem(r, c, it)
-                                    else:
-                                        self.table_ref_view.setItem(r, c, QTableWidgetItem(""))
-                                except Exception:
-                                    pass
-                    finally:
+
+                    # Row 1 sub labels
+                    for c, label in enumerate(sub_labels):
+                        if c >= tbl.columnCount():
+                            break
+                        it = QTableWidgetItem(str(label))
                         try:
-                            self.table_ref_view.blockSignals(False)
+                            it.setTextAlignment(_Qt.AlignHCenter | _Qt.AlignVCenter)
+                            f = it.font(); f.setBold(True); it.setFont(f)
+                            it.setBackground(QColor("lightgray"))
+                            it.setForeground(QColor("black"))
+                            it.setFlags(it.flags() & ~getattr(_Qt, 'ItemIsEditable', 0))
                         except Exception:
                             pass
+                        tbl.setItem(1, c, it)
+
+                    # Fixed heights for the 2 header rows
+                    try:
+                        tbl.setRowHeight(0, 24)
+                        tbl.setRowHeight(1, 20)
+                    except Exception:
+                        pass
                 except Exception:
                     pass
 
+            def _build_ref_transposed_view():
+                src = getattr(self, 'table_ref', None)
+                dst = getattr(self, 'table_ref_view', None)
+                if src is None or dst is None:
+                    return
+                try:
+                    from qt_compat.QtWidgets import QTableWidgetItem
+                    from qt_compat.QtCore import Qt as _Qt
+                    import Strings as STR
+
+                    data_rows = int(src.columnCount())
+                    # Always map columns based on the canonical row-label definition.
+                    # This prevents pseudo-header rows (0-1) from leaking into data.
+                    try:
+                        src_row_count = len(getattr(STR, 'TABLE_LEFT_ROW_LABELS', []) or [])
+                    except Exception:
+                        src_row_count = 0
+                    data_cols = max(0, int(src_row_count))
+                    src_row_map = [ref_src_row_offset + i for i in range(data_cols)]
+                    dst.blockSignals(True)
+                    try:
+                        try:
+                            dst.clearSpans()
+                        except Exception:
+                            pass
+                        try:
+                            dst.clearContents()
+                        except Exception:
+                            pass
+                        dst.setRowCount(data_rows + header_rows)
+                        dst.setColumnCount(data_cols)
+
+                        # Keep scrollbar presence stable to avoid width/layout shifts
+                        try:
+                            dst.setVerticalScrollBarPolicy(_Qt.ScrollBarAlwaysOn)
+                            dst.setHorizontalScrollBarPolicy(_Qt.ScrollBarAlwaysOff)
+                        except Exception:
+                            pass
+
+                        # Vertical header: blank for header rows, then 1..N (source horizontal headers)
+                        try:
+                            hlabels = []
+                            for i in range(src.columnCount()):
+                                hi = src.horizontalHeaderItem(i)
+                                hlabels.append(hi.text() if hi is not None else str(i + 1))
+                            dst.setVerticalHeaderLabels(["", ""] + hlabels)
+                        except Exception:
+                            pass
+
+                        # Fill data (shifted down by header_rows)
+                        for r in range(data_rows):
+                            for c in range(data_cols):
+                                # Render from source-of-truth arrays for Image/Stage values.
+                                # Use canonical table_ref only for computed residual columns.
+                                try:
+                                    txt = ""
+                                    # Columns: 0..8 == X,Y,ObsX,ObsY,ObsZ,ResX,ResY,ResZ,|R|
+                                    if c == 0:
+                                        pt = self.ref_points[r] if 0 <= r < len(self.ref_points) else None
+                                        txt = "" if pt is None else str(int(round(float(pt[0]))))
+                                    elif c == 1:
+                                        pt = self.ref_points[r] if 0 <= r < len(self.ref_points) else None
+                                        txt = "" if pt is None else str(int(round(float(pt[1]))))
+                                    elif c in (2, 3, 4):
+                                        obs = self.ref_obs[r] if 0 <= r < len(self.ref_obs) else None
+                                        if isinstance(obs, dict):
+                                            key = 'x' if c == 2 else ('y' if c == 3 else 'z')
+                                            txt = str(obs.get(key, "") or "")
+                                            # If the model was previously polluted by header labels, hide them.
+                                            try:
+                                                if txt.strip().lower() in {"image", "stage", "residual", "x", "y", "z", "u", "v", "|r|"}:
+                                                    txt = ""
+                                            except Exception:
+                                                pass
+                                        else:
+                                            txt = ""
+                                    else:
+                                        src_item = src.item(src_row_map[c], r)
+                                        txt = src_item.text() if src_item is not None else ""
+                                except Exception:
+                                    txt = ""
+                                it = QTableWidgetItem(str(txt))
+                                try:
+                                    it.setTextAlignment(_Qt.AlignHCenter | _Qt.AlignVCenter)
+                                except Exception:
+                                    pass
+                                # Make Stage columns (X/Y/Z) visually bold in the transposed/ref view
+                                try:
+                                    if c in (2, 3, 4):
+                                        f = it.font(); f.setBold(True); it.setFont(f)
+                                except Exception:
+                                    pass
+                                # Editability: only Obs columns (X/Y/Z) are editable
+                                try:
+                                    if c in (2, 3, 4):
+                                        pass
+                                    else:
+                                        it.setFlags(it.flags() & ~getattr(_Qt, 'ItemIsEditable', 0))
+                                except Exception:
+                                    pass
+                                dst.setItem(header_rows + r, c, it)
+
+                        # Style the row-number gutter (vertical header): bold + readable gray
+                        try:
+                            dst.verticalHeader().setStyleSheet(
+                                'QHeaderView::section { background-color: lightgray; color: gray; font-weight: bold; border: none; }'
+                            )
+                        except Exception:
+                            pass
+
+                        # Apply in-cell 2-row header (Image/Stage/Residual)
+                        group_configs = [(0, 2, "Image"), (2, 3, "Stage (input)"), (5, max(1, data_cols - 5), "Residual")]
+                        # Row 1 labels: Image(u,v), Stage(X,Y,Z), Residual(X,Y,Z,|R|)
+                        sub_labels = ["u", "v", "X", "Y", "Z", "X", "Y", "Z", "|R|"]
+                        if len(sub_labels) != data_cols:
+                            if len(sub_labels) > data_cols:
+                                sub_labels = sub_labels[:data_cols]
+                            else:
+                                sub_labels = sub_labels + [""] * (data_cols - len(sub_labels))
+                        _apply_incell_two_row_header(dst, group_configs, sub_labels)
+
+                        # If a fixed header widget exists, hide in-table header rows
+                        try:
+                            if getattr(self, 'table_ref_view_header', None) is not None and not self.table_ref_view_header.isHidden():
+                                dst.setRowHidden(0, True)
+                                dst.setRowHidden(1, True)
+                        except Exception:
+                            pass
+
+                        # Keep row heights stable to reduce layout shifts
+                        try:
+                            vh = dst.verticalHeader()
+                            vh.setSectionResizeMode(QHeaderView.Fixed)
+                            vh.setDefaultSectionSize(24)
+                        except Exception:
+                            pass
+                    finally:
+                        dst.blockSignals(False)
+                except Exception:
+                    try:
+                        dst.blockSignals(False)
+                    except Exception:
+                        pass
+
+            def _build_mid_transposed_view():
+                src = getattr(self, 'table', None)
+                dst = getattr(self, 'table_between', None)
+                if src is None or dst is None:
+                    return
+                try:
+                    from qt_compat.QtWidgets import QTableWidgetItem
+                    from qt_compat.QtCore import Qt as _Qt
+                    import Strings as STR
+
+                    data_rows = int(src.columnCount())
+                    # Add one extra column at the left for Posterization Level (group_no)
+                    base_cols = 0
+                    try:
+                        base_cols = len(getattr(STR, 'TABLE_RIGHT_ROW_LABELS', []) or [])
+                    except Exception:
+                        base_cols = 0
+                    base_cols = max(0, int(base_cols))
+                    data_cols = base_cols + 1
+                    src_row_map = [mid_src_row_offset + i for i in range(base_cols)]
+                    dst.blockSignals(True)
+                    try:
+                        try:
+                            dst.clearSpans()
+                        except Exception:
+                            pass
+                        try:
+                            dst.clearContents()
+                        except Exception:
+                            pass
+                        dst.setRowCount(data_rows + header_rows)
+                        dst.setColumnCount(data_cols)
+
+                        try:
+                            dst.setVerticalScrollBarPolicy(_Qt.ScrollBarAlwaysOn)
+                            dst.setHorizontalScrollBarPolicy(_Qt.ScrollBarAlwaysOff)
+                        except Exception:
+                            pass
+
+                        # Vertical header: blank for header rows, then 1..N
+                        try:
+                            hlabels = []
+                            for i in range(src.columnCount()):
+                                hi = src.horizontalHeaderItem(i)
+                                hlabels.append(hi.text() if hi is not None else str(i + 1))
+                            dst.setVerticalHeaderLabels(["", ""] + hlabels)
+                        except Exception:
+                            pass
+
+                        for r in range(data_rows):
+                            for c in range(data_cols):
+                                try:
+                                    if c == 0:
+                                        # Posterization level/group number for this centroid
+                                        try:
+                                            g = None
+                                            if self.centroids is not None and 0 <= r < len(self.centroids):
+                                                g = self.centroids[r][0]
+                                            txt = "" if g is None else str(int(g))
+                                        except Exception:
+                                            txt = ""
+                                    else:
+                                        src_item = src.item(src_row_map[c - 1], r)
+                                        txt = src_item.text() if src_item is not None else ""
+                                except Exception:
+                                    txt = ""
+                                it = QTableWidgetItem(str(txt))
+                                try:
+                                    it.setTextAlignment(_Qt.AlignHCenter | _Qt.AlignVCenter)
+                                except Exception:
+                                    pass
+                                # All cells in this transposed view should be non-editable
+                                try:
+                                    it.setFlags(it.flags() & ~getattr(_Qt, 'ItemIsEditable', 0))
+                                except Exception:
+                                    pass
+                                # Bold the leftmost Grp column values
+                                try:
+                                    if c == 0:
+                                        f = it.font(); f.setBold(True); it.setFont(f)
+                                except Exception:
+                                    pass
+                                # Bold Stage X/Y/Z columns for readability
+                                try:
+                                    tmp_sub_labels = ["Lvl", "u", "v", "X", "Y", "Z"]
+                                    sub_lbl = tmp_sub_labels[c] if 0 <= c < len(tmp_sub_labels) else None
+                                    if sub_lbl in ("X", "Y", "Z"):
+                                        f = it.font(); f.setBold(True); it.setFont(f)
+                                except Exception:
+                                    pass
+                                dst.setItem(header_rows + r, c, it)
+
+                        # Style the row-number gutter (vertical header): bold + readable gray
+                        try:
+                            dst.verticalHeader().setStyleSheet(
+                                'QHeaderView::section { background-color: lightgray; color: gray; font-weight: bold; border: none; }'
+                            )
+                        except Exception:
+                            pass
+
+                        # In-cell header (Posterization/Image/Stage)
+                        group_configs = [(0, 1, ""), (1, 2, "Image"), (3, 3, "Stage")]
+                        sub_labels = ["Grp", "u", "v", "X", "Y", "Z"]
+                        _apply_incell_two_row_header(dst, group_configs, sub_labels)
+
+                        # If a fixed header widget exists, hide in-table header rows
+                        try:
+                            if getattr(self, 'table_between_header', None) is not None and not self.table_between_header.isHidden():
+                                dst.setRowHidden(0, True)
+                                dst.setRowHidden(1, True)
+                        except Exception:
+                            pass
+
+                        try:
+                            vh = dst.verticalHeader()
+                            vh.setSectionResizeMode(QHeaderView.Fixed)
+                            vh.setDefaultSectionSize(24)
+                        except Exception:
+                            pass
+                    finally:
+                        dst.blockSignals(False)
+                except Exception:
+                    try:
+                        dst.blockSignals(False)
+                    except Exception:
+                        pass
+
+            # update left ref view (skip if currently editing)
+            if not editing_left:
+                try:
+                    _build_ref_transposed_view()
+                except Exception:
+                    pass
                 try:
                     self._pending_ref_view_refresh = False
                 except Exception:
@@ -3186,49 +5863,29 @@ class CentroidFinderWindow(QMainWindow):
 
             # update bottom/transposed table_between
             try:
-                new_mid = make_transposed(self.table)
-                self.table_between.blockSignals(True)
-                try:
-                    self.table_between.setRowCount(new_mid.rowCount())
-                    self.table_between.setColumnCount(new_mid.columnCount())
-                    try:
-                        self.table_between.setHorizontalHeaderLabels([new_mid.horizontalHeaderItem(i).text() if new_mid.horizontalHeaderItem(i) is not None else "" for i in range(new_mid.columnCount())])
-                    except Exception:
-                        pass
-                    try:
-                        self.table_between.setVerticalHeaderLabels([new_mid.verticalHeaderItem(i).text() if new_mid.verticalHeaderItem(i) is not None else "" for i in range(new_mid.rowCount())])
-                    except Exception:
-                        pass
-                    for r in range(new_mid.rowCount()):
-                        for c in range(new_mid.columnCount()):
-                            try:
-                                item = new_mid.item(r, c)
-                                if item is not None:
-                                    it = QTableWidgetItem(item.text())
-                                    try:
-                                        it.setFlags(item.flags())
-                                    except Exception:
-                                        pass
-                                    try:
-                                        it.setTextAlignment(item.textAlignment())
-                                    except Exception:
-                                        pass
-                                    self.table_between.setItem(r, c, it)
-                                else:
-                                    self.table_between.setItem(r, c, QTableWidgetItem(""))
-                            except Exception:
-                                pass
-                finally:
-                    try:
-                        self.table_between.blockSignals(False)
-                    except Exception:
-                        pass
+                _build_mid_transposed_view()
+            except Exception:
+                pass
+
+            # Rebuild fixed header widgets now that column counts exist
+            try:
+                self._rebuild_fixed_headers()
             except Exception:
                 pass
             # After updating transposed views, ensure fixed pixel widths are applied
             try:
                 # schedule immediately so layout has applied sizes
                 QTimer.singleShot(0, self._shrink_visible_columns)
+            except Exception:
+                pass
+            # After widths are applied, sync fixed headers to final widths
+            try:
+                QTimer.singleShot(0, self._rebuild_fixed_headers)
+            except Exception:
+                pass
+            # Keep center column width stable to avoid subtle layout shifts
+            try:
+                QTimer.singleShot(0, lambda: self._adjust_center_column_widths(fixed_px=350))
             except Exception:
                 pass
         except Exception:
@@ -3257,6 +5914,18 @@ class CentroidFinderWindow(QMainWindow):
                                 tbl.setColumnWidth(i, max(8, w))
                             except Exception:
                                 pass
+                        try:
+                            # center-align existing items
+                            for r in range(tbl.rowCount()):
+                                for c in range(tbl.columnCount()):
+                                    try:
+                                        it = tbl.item(r, c)
+                                        if it is not None:
+                                            it.setTextAlignment(Qt.AlignHCenter | Qt.AlignVCenter)
+                                    except Exception:
+                                        pass
+                        except Exception:
+                            pass
                         try:
                             hdr.setDefaultSectionSize(max(8, int(widths_ref[0])))
                         except Exception:
@@ -3287,18 +5956,38 @@ class CentroidFinderWindow(QMainWindow):
                             except Exception:
                                 pass
                         try:
+                            # center-align existing items in middle transposed
+                            for r in range(tbl2.rowCount()):
+                                for c in range(tbl2.columnCount()):
+                                    try:
+                                        it = tbl2.item(r, c)
+                                        if it is not None:
+                                            it.setTextAlignment(Qt.AlignHCenter | Qt.AlignVCenter)
+                                    except Exception:
+                                        pass
+                        except Exception:
+                            pass
+                        try:
                             if ref_tbl is not None and ref_tbl.columnCount() > 0:
-                                hdr2.setDefaultSectionSize(max(8, int(ref_tbl.columnWidth(0))))
-                            else:
                                 hdr2.setDefaultSectionSize(max(8, 40))
                         except Exception:
                             pass
                 except Exception:
                     pass
+
+            # Sync fixed header tables (if present) to the resized column widths
+            try:
+                self._sync_fixed_header_table(getattr(self, 'table_ref_view_header', None), getattr(self, 'table_ref_view', None))
+            except Exception:
+                pass
+            try:
+                self._sync_fixed_header_table(getattr(self, 'table_between_header', None), getattr(self, 'table_between', None))
+            except Exception:
+                pass
         except Exception:
             pass
 
-    def _adjust_center_column_widths(self, fixed_px: int = 150):
+    def _adjust_center_column_widths(self, fixed_px: int = 300):
         """Fix the middle column and `table_between` width to a constant (px)."""
         tbl = getattr(self, 'table_between', None)
         if tbl is None:
@@ -3348,12 +6037,14 @@ class CentroidFinderWindow(QMainWindow):
                 pass
             # Select corresponding row in transposed middle table (row == original column index)
             try:
-                if hasattr(self, 'table_between') and 0 <= idx < self.table_between.rowCount():
+                header_rows = 2
+                view_r = int(idx) + header_rows
+                if hasattr(self, 'table_between') and 0 <= view_r < self.table_between.rowCount():
                     try:
                         self.table_between.blockSignals(True)
                         # choose column 0 for current cell; selection behavior is rows
-                        self.table_between.setCurrentCell(idx, 0)
-                        self.table_between.selectRow(idx)
+                        self.table_between.setCurrentCell(view_r, 0)
+                        self.table_between.selectRow(view_r)
                     finally:
                         try:
                             self.table_between.blockSignals(False)
@@ -3367,7 +6058,7 @@ class CentroidFinderWindow(QMainWindow):
     def _narrow_center_column(self):
         """Compatibility shim: adjust center widths after layout settle."""
         try:
-            self._adjust_center_column_widths(fixed_px=150)
+            self._adjust_center_column_widths(fixed_px=300)
         except Exception:
             pass
 
@@ -3404,6 +6095,11 @@ class CentroidFinderWindow(QMainWindow):
                 # ensure a visually large minimum so logo is prominent
                 min_display = 500
                 w = max(min_display, content_w + vh + pad)
+                # Left column is fixed-width; do not grow beyond it.
+                try:
+                    w = min(int(w), 500)
+                except Exception:
+                    pass
             except Exception:
                 # ultimate fallback: widget width
                 w = tbl.width()
@@ -3466,12 +6162,22 @@ class CentroidFinderWindow(QMainWindow):
                     new_w = self.img_full.shape[1]
                     new_h = self.img_full.shape[0]
                     poster_full = cv2.resize(poster, (new_w, new_h), interpolation=cv2.INTER_LINEAR)
+                    # Boundary edge detection should use nearest to prevent thick/blurred edges
+                    poster_edges_full = cv2.resize(poster, (new_w, new_h), interpolation=cv2.INTER_NEAREST)
                 else:
                     poster_full = poster.copy()
-                # multiply overlay and blend
-                mix = max(0.0, min(1.0, (self.overlay_mix or 0) / 100.0))
-                mult = cv2.multiply(poster_full, self.img_full, scale=1.0/255.0)
-                overlay_full = cv2.addWeighted(poster_full, 1.0 - mix, mult, mix, 0)
+                    poster_edges_full = poster_full
+                # Overlay selection by mode: Original / Mixed(50:50) / Posterized
+                try:
+                    overlay_mode = str(getattr(self, 'overlay_mode', 'Mixed')).lower()
+                except Exception:
+                    overlay_mode = 'mixed'
+                if overlay_mode == 'original':
+                    overlay_full = self.img_full.copy()
+                elif overlay_mode == 'posterized':
+                    overlay_full = poster_full.copy()
+                else:
+                    overlay_full = cv2.addWeighted(self.img_full, 0.5, poster_full, 0.5, 0)
                 # draw boundaries if enabled
                 try:
                     if self.show_boundaries:
@@ -3481,7 +6187,7 @@ class CentroidFinderWindow(QMainWindow):
                         except Exception:
                             trim_px_full = 0
                         try:
-                            poster_fe = poster_full.copy()
+                            poster_fe = poster_edges_full.copy()
                             if trim_px_full > 0:
                                 kf = int(trim_px_full)
                                 ker = np.ones((3, 3), np.uint8)
@@ -3502,8 +6208,27 @@ class CentroidFinderWindow(QMainWindow):
                         edge_mask = np.zeros((h, w), dtype=np.uint8)
                         edge_mask[:, 1:][diff_h] = 255
                         edge_mask[1:, :][diff_v] = 255
-                        blurred = cv2.GaussianBlur(edge_mask, (3, 3), 0.8)
-                        alpha = (blurred.astype(np.float32) / 255.0).reshape(h, w, 1)
+                        # trim_px_full==0 のときは見た目が太くなるため軽い erode と alpha 調整を行う
+                        try:
+                            is_zero = int(trim_px_full) == 0
+                        except Exception:
+                            is_zero = False
+                        # Keep boundaries thin: avoid blur (which makes them look thicker) and
+                        # blend a 1px mask with a modest alpha.
+                        try:
+                            if is_zero:
+                                ker = np.ones((2, 2), np.uint8)
+                                try:
+                                    edge_mask = cv2.erode(edge_mask, ker, iterations=1)
+                                except Exception:
+                                    pass
+                        except Exception:
+                            pass
+                        try:
+                            alpha = (edge_mask.astype(np.float32) / 255.0).reshape(h, w, 1)
+                            alpha *= 0.30 if is_zero else 0.45
+                        except Exception:
+                            alpha = (edge_mask.astype(np.float32) / 255.0).reshape(h, w, 1)
                         overlay_full = overlay_full.astype(np.float32)
                         overlay_full = overlay_full * (1.0 - alpha) + 255.0 * alpha
                         overlay_full = np.clip(overlay_full, 0, 255).astype(np.uint8)
@@ -3576,3 +6301,702 @@ class CentroidFinderWindow(QMainWindow):
                     QCursor.setPos(global_pt)
                 return
         super().keyPressEvent(event)
+
+    def _apply_button_styles(self):
+        """Apply button styling: colors, widths, bold font, rounded corners."""
+        try:
+            from qt_compat.QtWidgets import QPushButton
+        except Exception:
+            return
+
+        red = "rgb(160,15,15)"    # Add button color
+        blue = "#757575"          # Update/Clear/Export/Clipboard color (gray)
+        radius = 8
+        
+        # Helper to make button bold
+        def _set_bold(btn):
+            try:
+                f = btn.font()
+                f.setBold(True)
+                btn.setFont(f)
+            except Exception:
+                pass
+
+        # Get base width from stored or compute
+        try:
+            prev_base_w = int(getattr(self, '_action_btn_base_w', 0) or 0)
+        except Exception:
+            prev_base_w = 100
+        
+        base_w = max(90, prev_base_w)
+
+        # Make all buttons bold + rounded corners
+        try:
+            for b in self.findChildren(QPushButton):
+                try:
+                    if (b.text() or "") in ("−", "▢", "✕"):
+                        continue
+                except Exception:
+                    pass
+                _set_bold(b)
+                try:
+                    s = b.styleSheet() or ""
+                    if "border-radius" not in s:
+                        b.setStyleSheet(s + f"\nQPushButton {{ border-radius: {radius}px; }}")
+                except Exception:
+                    pass
+        except Exception:
+            pass
+
+        # Apply color-specific styles and widths
+        try:
+            # Add Ref. Point: dark red, wide width (1.5x)
+            add_btn = getattr(self, 'btn_add_ref', None)
+            if add_btn is not None:
+                try:
+                    style_add = f"QPushButton {{ background-color: {red}; color: white; border: none; border-radius: {radius}px; }}"
+                    add_btn.setStyleSheet(style_add)
+                except Exception:
+                    pass
+                try:
+                    add_btn.setFixedWidth(int(round(base_w * 1.5)))
+                except Exception:
+                    pass
+
+            # Update XY + Clear: blue, same width as Export/Clipboard
+            upd_btn = getattr(self, 'btn_update_xy', None)
+            clr_btn = getattr(self, 'btn_clear_ref', None)
+            for btn in (upd_btn, clr_btn):
+                if btn is not None:
+                    try:
+                        style_blue = f"QPushButton {{ background-color: {blue}; color: white; border: none; border-radius: {radius}px; }}"
+                        btn.setStyleSheet(style_blue)
+                    except Exception:
+                        pass
+                    try:
+                        btn.setFixedWidth(int(base_w) + 10)
+                    except Exception:
+                        pass
+
+            # Export + Clipboard + Open Image (+ Flip): base style (blue) and widths
+            exp_btn = getattr(self, 'btn_export', None)
+            clip_btn = getattr(self, 'btn_clipboard', None)
+            open_btn = getattr(self, 'btn_open', None)
+            flip_btn = getattr(self, 'btn_flip_mode', None)
+            combo_flip = getattr(self, 'combo_flip_mode', None)
+            for btn in (exp_btn, clip_btn, open_btn, flip_btn):
+                if btn is not None:
+                    try:
+                        style_blue = f"QPushButton {{ background-color: {blue}; color: white; border: none; border-radius: {radius}px; }}"
+                        btn.setStyleSheet(style_blue)
+                    except Exception:
+                        pass
+                    try:
+                        btn.setFixedWidth(int(base_w) + 10)
+                    except Exception:
+                        pass
+
+            # Open Image / Export: make them red like "Add Ref. Point"
+            if open_btn is not None:
+                try:
+                    style_red = f"QPushButton {{ background-color: {red}; color: white; border: none; border-radius: {radius}px; }}"
+                    open_btn.setStyleSheet(style_red)
+                except Exception:
+                    pass
+
+            if exp_btn is not None:
+                try:
+                    style_red = f"QPushButton {{ background-color: {red}; color: white; border: none; border-radius: {radius}px; }}"
+                    exp_btn.setStyleSheet(style_red)
+                except Exception:
+                    pass
+
+            # Store the base width for future calls.
+            # NOTE: Do not add padding here; _apply_button_styles may run many times
+            # (e.g. after Update/Add pick-mode), and adding here would grow widths
+            # cumulatively on every call.
+            try:
+                self._action_btn_base_w = int(base_w)
+            except Exception:
+                pass
+            # Style combobox similarly (rounded right corner + down-arrow area)
+            try:
+                if combo_flip is not None:
+                    try:
+                        style_combo = (
+                            f"QComboBox {{ background-color: {blue}; color: white; border: none; border-radius: {radius}px; padding: 6px 8px; }}"
+                            f"QComboBox::drop-down {{ subcontrol-origin: padding; subcontrol-position: top right; width: 28px; border-left: none; }}"
+                            f"QComboBox::down-arrow {{ width: 10px; height: 10px; }}"
+                        )
+                        combo_flip.setStyleSheet(style_combo)
+                    except Exception:
+                        pass
+                    try:
+                        # reduce width by 15px as requested
+                        try:
+                            new_w = int(base_w) + 10 - 15
+                        except Exception:
+                            new_w = int(base_w) if base_w is not None else 80
+                        new_w = max(48, int(new_w))
+                        combo_flip.setFixedWidth(new_w)
+                    except Exception:
+                        pass
+                    try:
+                        combo_flip.setFixedHeight(40)
+                    except Exception:
+                        pass
+            except Exception:
+                pass
+        except Exception:
+            pass
+
+    def _enforce_button_heights(self):
+        """Enforce all buttons to have fixed height of 40px for better visibility."""
+        try:
+            from qt_compat.QtWidgets import QPushButton
+            for b in self.findChildren(QPushButton):
+                try:
+                    if (b.text() or "") in ("−", "▢", "✕"):
+                        continue
+                    b.setFixedHeight(40)
+                except Exception:
+                    pass
+        except Exception:
+            pass
+
+    def _adjust_table_column_widths(self):
+        """Adjust Z column width and ensure no columns are cut off."""
+        try:
+            # Adjust middle table (table) columns if Z column exists
+            if hasattr(self, 'table') and self.table is not None:
+                # Set minimum width for Z column (column index 4 typically)
+                try:
+                    if self.table.columnCount() >= 5:
+                        # Z column is usually the 5th column (index 4)
+                        # Set it to 50px to prevent cutoff
+                        self.table.setColumnWidth(4, 50)
+                except Exception:
+                    pass
+            
+            # Do the same for table_ref if needed
+            if hasattr(self, 'table_ref') and self.table_ref is not None:
+                try:
+                    # Check if there are Z columns to adjust
+                    # table_ref might have multiple Z columns (one per coordinate set)
+                    pass
+                except Exception:
+                    pass
+        except Exception:
+            pass
+
+    def _sync_frozen_headers(self):
+        """Sync frozen header tables with main tables after data update."""
+        try:
+            # Sync table_ref_header with table_ref
+            hdr_ref = getattr(self, 'table_ref_header', None)
+            if hdr_ref is not None:
+                try:
+                    # Update column count
+                    hdr_ref.setColumnCount(self.table_ref.columnCount())
+                    # Sync column widths
+                    for col in range(min(hdr_ref.columnCount(), self.table_ref.columnCount())):
+                        w = self.table_ref.columnWidth(col)
+                        if w > 0:
+                            hdr_ref.setColumnWidth(col, w)
+                    # Refresh display
+                    hdr_ref.update()
+                except Exception:
+                    pass
+            
+            # Sync table_header with table
+            hdr_mid = getattr(self, 'table_header', None)
+            if hdr_mid is not None:
+                try:
+                    # Update column count
+                    hdr_mid.setColumnCount(self.table.columnCount())
+                    # Sync column widths
+                    for col in range(min(hdr_mid.columnCount(), self.table.columnCount())):
+                        w = self.table.columnWidth(col)
+                        if w > 0:
+                            hdr_mid.setColumnWidth(col, w)
+                    # Refresh display
+                    hdr_mid.update()
+                except Exception:
+                    pass
+        except Exception:
+            pass
+
+    def _create_frozen_header_tables(self):
+        """Create and layout separate header tables above main tables for frozen header effect."""
+        try:
+            # ===== Frozen header for table_ref =====
+            try:
+                # Create header table with same column count as main table
+                hdr_ref = getattr(self, 'table_ref_header', None)
+                if hdr_ref is None or hdr_ref.isHidden():
+                    hdr_ref = QTableWidget()
+                    self.table_ref_header = hdr_ref
+                    
+                    # Setup header table
+                    hdr_ref.setRowCount(2)
+                    hdr_ref.setColumnCount(self.table_ref.columnCount())
+                    hdr_ref.verticalHeader().setVisible(False)
+                    # Ensure both header rows are visible (explicit row heights + enough frame slack)
+                    try:
+                        hdr_ref.setRowHeight(0, 24)
+                        hdr_ref.setRowHeight(1, 20)
+                        try:
+                            # Ensure vertical gutter width matches main table_ref view
+                            vhw = self.table_ref.verticalHeader().width()
+                            if vhw > 0:
+                                try:
+                                    hdr_ref.verticalHeader().setFixedWidth(vhw)
+                                except Exception:
+                                    pass
+                        except Exception:
+                            pass
+                    except Exception:
+                        pass
+                    hdr_ref.setFixedHeight(60)
+                    hdr_ref.setSelectionBehavior(QAbstractItemView.SelectColumns)
+                    hdr_ref.setSelectionMode(QAbstractItemView.SingleSelection)
+                    hdr_ref.setEditTriggers(QTableWidget.NoEditTriggers)
+                    
+                    # Disable scrollbars for header table and style gutter text to match background
+                    try:
+                        hdr_ref.setVerticalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+                        hdr_ref.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+                    except Exception:
+                        pass
+                    try:
+                        hdr_ref.verticalHeader().setStyleSheet('QHeaderView::section { background-color: lightgray; color: lightgray; }')
+                    except Exception:
+                        pass
+                    # Sync horizontal scrollbar with main table
+                    try:
+                        self.table_ref.horizontalScrollBar().valueChanged.connect(
+                            lambda val: hdr_ref.horizontalScrollBar().setValue(val)
+                        )
+                        hdr_ref.horizontalScrollBar().valueChanged.connect(
+                            lambda val: self.table_ref.horizontalScrollBar().setValue(val)
+                        )
+                    except Exception:
+                        pass
+                    
+                    # Sync column widths
+                    try:
+                        for col in range(min(hdr_ref.columnCount(), self.table_ref.columnCount())):
+                            w = self.table_ref.columnWidth(col)
+                            if w > 0:
+                                hdr_ref.setColumnWidth(col, w)
+                    except Exception:
+                        pass
+                    
+                    # Copy header row content from main table (row 0-1 content if exists)
+                    try:
+                        for row in range(min(2, self.table_ref.rowCount())):
+                            for col in range(self.table_ref.columnCount()):
+                                src_item = self.table_ref.item(row, col)
+                                if src_item is not None:
+                                    new_item = QTableWidgetItem(src_item.text())
+                                    new_item.setBackground(QColor("lightgray"))
+                                    new_item.setForeground(QColor("black"))
+                                    hdr_ref.setItem(row, col, new_item)
+                    except Exception:
+                        pass
+                    
+                    # Set row heights same as main table
+                    hdr_ref.setRowHeight(0, 24)
+                    hdr_ref.setRowHeight(1, 20)
+            except Exception:
+                pass
+            
+            # ===== Frozen header for table (middle table) =====
+            try:
+                # Create header table with same column count as main table
+                hdr_mid = getattr(self, 'table_header', None)
+                if hdr_mid is None or hdr_mid.isHidden():
+                    hdr_mid = QTableWidget()
+                    self.table_header = hdr_mid
+                    
+                    # Setup header table
+                    hdr_mid.setRowCount(2)
+                    hdr_mid.setColumnCount(self.table.columnCount())
+                    hdr_mid.verticalHeader().setVisible(False)
+                    # Ensure both header rows are visible (explicit row heights + enough frame slack)
+                    try:
+                        hdr_mid.setRowHeight(0, 24)
+                        hdr_mid.setRowHeight(1, 20)
+                    except Exception:
+                        pass
+                    hdr_mid.setFixedHeight(60)
+                    hdr_mid.setSelectionBehavior(QAbstractItemView.SelectColumns)
+                    hdr_mid.setSelectionMode(QAbstractItemView.SingleSelection)
+                    hdr_mid.setEditTriggers(QTableWidget.NoEditTriggers)
+                    
+                    # Disable scrollbars and style gutter for middle header; copy header text from main table
+                    try:
+                        hdr_mid.setVerticalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+                        hdr_mid.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+                    except Exception:
+                        pass
+                    try:
+                        hdr_mid.verticalHeader().setStyleSheet('QHeaderView::section { background-color: lightgray; color: lightgray; }')
+                    except Exception:
+                        pass
+                    # Copy header row content from main table (row 0-1 content if exists)
+                    try:
+                        for row in range(min(2, self.table.rowCount())):
+                            for col in range(self.table.columnCount()):
+                                src_item = self.table.item(row, col)
+                                if src_item is not None:
+                                    new_item = QTableWidgetItem(src_item.text())
+                                    new_item.setBackground(QColor("lightgray"))
+                                    new_item.setForeground(QColor("black"))
+                                    hdr_mid.setItem(row, col, new_item)
+                    except Exception:
+                        pass
+                    # Sync horizontal scrollbar with main table
+                    try:
+                        self.table.horizontalScrollBar().valueChanged.connect(
+                            lambda val: hdr_mid.horizontalScrollBar().setValue(val)
+                        )
+                        hdr_mid.horizontalScrollBar().valueChanged.connect(
+                            lambda val: self.table.horizontalScrollBar().setValue(val)
+                        )
+                    except Exception:
+                        pass
+                    
+                    # Sync column widths
+                    try:
+                        for col in range(min(hdr_mid.columnCount(), self.table.columnCount())):
+                            w = self.table.columnWidth(col)
+                            if w > 0:
+                                hdr_mid.setColumnWidth(col, w)
+                    except Exception:
+                        pass
+                    
+                    # Copy header row content from main table (row 0-1 content if exists)
+                    try:
+                        for row in range(min(2, self.table.rowCount())):
+                            for col in range(self.table.columnCount()):
+                                src_item = self.table.item(row, col)
+                                if src_item is not None:
+                                    new_item = QTableWidgetItem(src_item.text())
+                                    new_item.setBackground(QColor("lightgray"))
+                                    new_item.setForeground(QColor("black"))
+                                    hdr_mid.setItem(row, col, new_item)
+                    except Exception:
+                        pass
+                    
+                    # Set row heights same as main table
+                    hdr_mid.setRowHeight(0, 24)
+                    hdr_mid.setRowHeight(1, 20)
+            except Exception:
+                pass
+        except Exception:
+            pass
+
+    def _setup_pseudo_headers_ref(self, tbl):
+        """Setup pseudo-header rows (0-1) in left reference table using setSpan."""
+        try:
+            # Ensure we have at least 2 rows
+            try:
+                tbl.setRowCount(max(2, tbl.rowCount()))
+            except Exception:
+                pass
+
+            # Row 0: Group labels (Image, Stage, Residual)
+            group_configs = [
+                (0, 2, "Image"),      # cols 0-1
+                (2, 3, "Stage (input)"),      # cols 2-4
+                (5, 4, "Residual"),   # cols 5-8
+            ]
+            for col_start, col_span, label in group_configs:
+                item = QTableWidgetItem(label)
+                try:
+                    item.setTextAlignment(Qt.AlignLeft | Qt.AlignVCenter)
+                    font = item.font()
+                    font.setBold(True)
+                    font.setPointSize(font.pointSize())
+                    item.setFont(font)
+                    item.setBackground(QColor("lightgray"))
+                    item.setForeground(QColor("black"))
+                except Exception:
+                    pass
+                tbl.setItem(0, col_start, item)
+                try:
+                    tbl.setSpan(0, col_start, 1, col_span)
+                except Exception:
+                    pass
+
+            # IMPORTANT: After spans are set on row 0, NOW set row 1 labels
+            # This ensures row 1 doesn't get inadvertently cleared or overwritten
+            # Row 1: Individual labels (u, v, X, Y, Z, X, Y, Z, |R|)
+            sub_labels = ["u", "v", "X", "Y", "Z", "X", "Y", "Z", "|R|"]
+            for col, label in enumerate(sub_labels):
+                item = QTableWidgetItem(label)
+                try:
+                    item.setTextAlignment(Qt.AlignHCenter | Qt.AlignVCenter)
+                    font = item.font()
+                    font.setBold(True)
+                    item.setFont(font)
+                    item.setBackground(QColor("lightgray"))
+                    item.setForeground(QColor("black"))
+                except Exception:
+                    pass
+                tbl.setItem(1, col, item)
+
+            # Set row heights
+            try:
+                tbl.setRowHeight(0, 24)
+                tbl.setRowHeight(1, 20)
+            except Exception:
+                pass
+        except Exception:
+            pass
+
+    def _setup_pseudo_headers_between(self, tbl):
+        """Setup pseudo-header rows (0-1) in middle table using setSpan."""
+        try:
+            # Ensure we have at least 2 rows
+            try:
+                tbl.setRowCount(max(2, tbl.rowCount()))
+            except Exception:
+                pass
+
+            # Row 0: Group labels
+            # - Default (5 cols): Image(u,v) + Stage(X,Y,Z)
+            # - With Level column (6 cols): Posterization(Grp) + Image(u,v) + Stage(X,Y,Z)
+            try:
+                ncols = int(tbl.columnCount() or 0)
+            except Exception:
+                ncols = 0
+
+            if ncols >= 6:
+                group_configs = [
+                    (0, 1, ""),  # col 0
+                    (1, 2, "Image"),          # cols 1-2
+                    (3, 3, "Stage"),          # cols 3-5
+                ]
+                sub_labels = ["Grp", "u", "v", "X", "Y", "Z"]
+            else:
+                group_configs = [
+                    (0, 2, "Image"),      # cols 0-1
+                    (2, 3, "Stage"),      # cols 2-4
+                ]
+                sub_labels = ["u", "v", "X", "Y", "Z"]
+            for col_start, col_span, label in group_configs:
+                item = QTableWidgetItem(label)
+                try:
+                    item.setTextAlignment(Qt.AlignLeft | Qt.AlignVCenter)
+                    font = item.font()
+                    font.setBold(True)
+                    font.setPointSize(font.pointSize())
+                    item.setFont(font)
+                    item.setBackground(QColor("lightgray"))
+                    item.setForeground(QColor("black"))
+                except Exception:
+                    pass
+                tbl.setItem(0, col_start, item)
+                try:
+                    tbl.setSpan(0, col_start, 1, col_span)
+                except Exception:
+                    pass
+
+            # IMPORTANT: After spans are set on row 0, NOW set row 1 labels
+            # This ensures row 1 doesn't get inadvertently cleared or overwritten
+            for col, label in enumerate(sub_labels):
+                item = QTableWidgetItem(label)
+                try:
+                    item.setTextAlignment(Qt.AlignHCenter | Qt.AlignVCenter)
+                    font = item.font()
+                    font.setBold(True)
+                    item.setFont(font)
+                    item.setBackground(QColor("lightgray"))
+                    item.setForeground(QColor("black"))
+                except Exception:
+                    pass
+                tbl.setItem(1, col, item)
+
+            # Set row heights
+            try:
+                tbl.setRowHeight(0, 24)
+                tbl.setRowHeight(1, 20)
+            except Exception:
+                pass
+        except Exception:
+            pass
+
+    def _sync_fixed_header_table(self, header_tbl, main_tbl):
+        """Keep a 2-row fixed header table aligned to the scrolling main table."""
+        try:
+            if header_tbl is None or main_tbl is None:
+                return
+            try:
+                if header_tbl.isHidden():
+                    return
+            except Exception:
+                pass
+
+            # Keep column count aligned
+            try:
+                if header_tbl.columnCount() != main_tbl.columnCount():
+                    header_tbl.setColumnCount(main_tbl.columnCount())
+            except Exception:
+                pass
+
+            # Match column widths
+            try:
+                for col in range(min(header_tbl.columnCount(), main_tbl.columnCount())):
+                    w = main_tbl.columnWidth(col)
+                    if w > 0:
+                        header_tbl.setColumnWidth(col, w)
+            except Exception:
+                pass
+
+            # Also match the left gutter (vertical header width) so columns line up
+            try:
+                vh_w = main_tbl.verticalHeader().width()
+                if vh_w > 0:
+                    try:
+                        header_tbl.verticalHeader().setFixedWidth(vh_w)
+                    except Exception:
+                        pass
+            except Exception:
+                pass
+
+            # Match overall width (best-effort)
+            try:
+                header_tbl.setFixedWidth(main_tbl.width())
+            except Exception:
+                pass
+        except Exception:
+            pass
+
+    def _rebuild_fixed_headers(self):
+        """Rebuild fixed header widgets to match current transposed tables."""
+        try:
+            # Left
+            hdr = getattr(self, 'table_ref_view_header', None)
+            main = getattr(self, 'table_ref_view', None)
+            if hdr is not None and main is not None:
+                try:
+                    hdr.blockSignals(True)
+                except Exception:
+                    pass
+                try:
+                    nc = main.columnCount()
+                    if nc > 0:
+                        # Ensure column count matches main table
+                        try:
+                            hdr.setColumnCount(nc)
+                        except Exception:
+                            pass
+                        # Clear all cells individually before rebuilding
+                        try:
+                            hdr.clearSpans()
+                        except Exception:
+                            pass
+                        try:
+                            for r in range(hdr.rowCount()):
+                                for c in range(hdr.columnCount()):
+                                    try:
+                                        hdr.setItem(r, c, None)
+                                    except Exception:
+                                        pass
+                        except Exception:
+                            pass
+                        # Now rebuild the 2-row pseudo-header
+                        try:
+                            self._setup_pseudo_headers_ref(hdr)
+                        except Exception:
+                            pass
+                        try:
+                            # Row 0 group labels: left aligned; Row 1 sub labels: centered
+                            for r in range(hdr.rowCount()):
+                                for c in range(hdr.columnCount()):
+                                    try:
+                                        it = hdr.item(r, c)
+                                        if it is None:
+                                            continue
+                                        if r == 0:
+                                            it.setTextAlignment(Qt.AlignLeft | Qt.AlignVCenter)
+                                        else:
+                                            it.setTextAlignment(Qt.AlignHCenter | Qt.AlignVCenter)
+                                    except Exception:
+                                        pass
+                        except Exception:
+                            pass
+                finally:
+                    try:
+                        hdr.blockSignals(False)
+                    except Exception:
+                        pass
+                try:
+                    self._sync_fixed_header_table(hdr, main)
+                except Exception:
+                    pass
+
+            # Middle
+            hdrm = getattr(self, 'table_between_header', None)
+            mainm = getattr(self, 'table_between', None)
+            if hdrm is not None and mainm is not None:
+                try:
+                    hdrm.blockSignals(True)
+                except Exception:
+                    pass
+                try:
+                    nc = mainm.columnCount()
+                    if nc > 0:
+                        # Ensure column count matches main table
+                        try:
+                            hdrm.setColumnCount(nc)
+                        except Exception:
+                            pass
+                        # Clear all cells individually before rebuilding
+                        try:
+                            hdrm.clearSpans()
+                        except Exception:
+                            pass
+                        try:
+                            for r in range(hdrm.rowCount()):
+                                for c in range(hdrm.columnCount()):
+                                    try:
+                                        hdrm.setItem(r, c, None)
+                                    except Exception:
+                                        pass
+                        except Exception:
+                            pass
+                        # Now rebuild the 2-row pseudo-header
+                        try:
+                            self._setup_pseudo_headers_between(hdrm)
+                        except Exception:
+                            pass
+                        try:
+                            # Row 0 group labels: left aligned; Row 1 sub labels: centered
+                            for r in range(hdrm.rowCount()):
+                                for c in range(hdrm.columnCount()):
+                                    try:
+                                        it = hdrm.item(r, c)
+                                        if it is None:
+                                            continue
+                                        if r == 0:
+                                            it.setTextAlignment(Qt.AlignLeft | Qt.AlignVCenter)
+                                        else:
+                                            it.setTextAlignment(Qt.AlignHCenter | Qt.AlignVCenter)
+                                    except Exception:
+                                        pass
+                        except Exception:
+                            pass
+                finally:
+                    try:
+                        hdrm.blockSignals(False)
+                    except Exception:
+                        pass
+                try:
+                    self._sync_fixed_header_table(hdrm, mainm)
+                except Exception:
+                    pass
+        except Exception:
+            pass

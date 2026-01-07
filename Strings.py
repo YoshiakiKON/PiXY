@@ -8,14 +8,15 @@ UI文字列とラベルを一元管理するモジュール。
 # Centralized UI strings and labels
 
 # App title
-APP_TITLE = "Px2XY"
+APP_TITLE = "PiXY"
 
 # Button labels
 BUTTON_OPEN_IMAGE = "Open Image"
 BUTTON_EXPORT_CENTROIDS = "Export Centroids"
 BUTTON_TOGGLE_BOUNDARIES = "Boundaries"
 BUTTON_ADD_REF = "Add Ref. Point"
-BUTTON_UPDATE_XY = "Update XY"
+BUTTON_ADD_REF_CANCEL = "Cancel"
+BUTTON_UPDATE_XY = "Update u, v"
 BUTTON_CLEAR = "Clear"
 
 # Flip labels
@@ -27,15 +28,15 @@ FLIP_LABELS = {
 }
 
 # Control/slider names
-NAME_OVERLAY_RATIO = "Overlay Ratio"
+NAME_OVERLAY_RATIO = "Display Mode"
 NAME_POSTERLEVEL = "PosterLevel"
 NAME_MIN_AREA = "Min Area"
 NAME_TRIM = "Trim (px)"
 
 # Table row labels
 TABLE_LEFT_ROW_LABELS = [
-    "X",
-    "Y",
+    "u",
+    "v",
     "Obs.\nX",
     "Obs.\nY",
     "Obs.\nZ",
@@ -46,8 +47,8 @@ TABLE_LEFT_ROW_LABELS = [
 ]
 
 TABLE_RIGHT_ROW_LABELS = [
-    "X",
-    "Y",
+    "u",
+    "v",
     "Calc.\nX",
     "Calc.\nY",
     "Calc.\nZ",
@@ -62,4 +63,4 @@ FLIP_TOOLTIP = "Manual flip mode: cycle Auto → Normal → Flip"
 
 # Export
 EXPORT_FILENAME_PREFIX = "centroids_"
-EXPORT_HEADER = "GroupNo,X,Y\n"
+EXPORT_HEADER = "No,Group,Stage X,Stage Y,Stage Z\n"

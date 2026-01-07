@@ -1,6 +1,6 @@
-# Px2XY
+# PiXY
 
-Px2XY は画像中の粒子の重心を検出し、参照点（RefPoint）を使ってピクセル座標を実世界座標に変換するための GUI ツールです。
+PiXY は画像中の粒子の重心を検出し、参照点（RefPoint）を使ってピクセル座標を実世界座標に変換するための GUI ツールです。
 
 ## 特徴
 - 画像から重心（centroids）を抽出
@@ -13,9 +13,9 @@ Px2XY は画像中の粒子の重心を検出し、参照点（RefPoint）を使
 
 ## インストール（開発用）
 ```powershell
-# Px2XY — Centroid to Real-World Coordinate Converter
+# PiXY — Centroid to Real-World Coordinate Converter
 
-Px2XY detects region centroids in images and converts pixel coordinates to real-world coordinates using user-defined reference points. It provides an interactive GUI for centroid inspection, reference-point editing, and export.
+PiXY detects region centroids in images and converts pixel coordinates to real-world coordinates using user-defined reference points. It provides an interactive GUI for centroid inspection, reference-point editing, and export.
 
 ## Key Features
 
@@ -34,7 +34,7 @@ Px2XY detects region centroids in images and converts pixel coordinates to real-
 PowerShell example:
 
 ```powershell
-cd C:\Python\Px2XY
+cd C:\Python\PiXY
 python -m venv .venv
 .\.venv\Scripts\Activate.ps1
 pip install --upgrade pip

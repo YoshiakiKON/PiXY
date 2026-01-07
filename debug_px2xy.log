@@ -1,0 +1,72 @@
+[DEBUG] _build_processing_image: full size=1280x960, target_width=640
+[DEBUG] _build_processing_image: proc_img size=640x480
+[DEBUG] Stage alignment: found 0 valid point pairs
+[DEBUG] Insufficient ref points for stage transform (need ≥2, have 0)
+[DEBUG] [ROTATION CHECK] view_orientation=Image, info=False
+[DEBUG] [ROTATION CHECK] view_orient=Image, comparing to 'Stage': False
+[DEBUG] Stage alignment: found 0 valid point pairs
+[DEBUG] Insufficient ref points for stage transform (need ≥2, have 0)
+[DEBUG] [ROTATION CHECK] view_orientation=Image, info=False
+[DEBUG] [ROTATION CHECK] view_orient=Image, comparing to 'Stage': False
+[DEBUG] Stage alignment: found 0 valid point pairs
+[DEBUG] Insufficient ref points for stage transform (need ≥2, have 0)
+[DEBUG] [ROTATION CHECK] view_orientation=Image, info=False
+[DEBUG] [ROTATION CHECK] view_orient=Image, comparing to 'Stage': False
+[DEBUG] Stage alignment: found 0 valid point pairs
+[DEBUG] Insufficient ref points for stage transform (need ≥2, have 0)
+[DEBUG] [ROTATION CHECK] view_orientation=Image, info=False
+[DEBUG] [ROTATION CHECK] view_orient=Image, comparing to 'Stage': False
+[DEBUG] Stage alignment: found 0 valid point pairs
+[DEBUG] Insufficient ref points for stage transform (need ≥2, have 0)
+[DEBUG] [ROTATION CHECK] view_orientation=Image, info=False
+[DEBUG] [ROTATION CHECK] view_orient=Image, comparing to 'Stage': False
+[DEBUG] Stage alignment: found 0 valid point pairs
+[DEBUG] Insufficient ref points for stage transform (need ≥2, have 0)
+[DEBUG] [ROTATION CHECK] view_orientation=Image, info=False
+[DEBUG] [ROTATION CHECK] view_orient=Image, comparing to 'Stage': False
+[DEBUG] Stage alignment: found 0 valid point pairs
+[DEBUG] Insufficient ref points for stage transform (need ≥2, have 0)
+[DEBUG] [ROTATION CHECK] view_orientation=Image, info=False
+[DEBUG] [ROTATION CHECK] view_orient=Image, comparing to 'Stage': False
+[DEBUG] Stage alignment: found 0 valid point pairs
+[DEBUG] Insufficient ref points for stage transform (need ≥2, have 0)
+[DEBUG] [ROTATION CHECK] view_orientation=Image, info=False
+[DEBUG] [ROTATION CHECK] view_orient=Image, comparing to 'Stage': False
+[DEBUG] Stage alignment: found 3 valid point pairs
+[DEBUG] Transform computed: angle=-2.14deg, scale=0.003
+[DEBUG] [ROTATION CHECK] view_orientation=Stage, info=True
+[DEBUG] [ROTATION CHECK] view_orient=Stage, comparing to 'Stage': True
+[DEBUG] Applying Stage rotation: angle=-2.14deg
+[DEBUG] [ROTATION] Starting rotation process...
+[DEBUG] Stage rotation failed with exception: 'PySide6.QtGui.QPixmap.transformed' called with wrong argument values:
+  PySide6.QtGui.QPixmap.transformed(PySide6.QtGui.QTransform(0.999303, 0.037333, 0.000000, -0.037333, 0.999303, 0.000000, 18.365883, -23.558363, 1.000000),)
+Found signature:
+  PySide6.QtGui.QPixmap.transformed(arg__1: PySide6.QtGui.QTransform, /, mode: PySide6.QtCore.Qt.TransformationMode = Instance(Qt.FastTransformation))
+[DEBUG] Traceback (most recent call last):
+  File "C:\Python\Px2XY\Ui.py", line 2926, in _apply_proc_zoom
+    rotated = QPixmap(img_region.transformed(transform, mode=1))
+                      ~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^
+ValueError: 'PySide6.QtGui.QPixmap.transformed' called with wrong argument values:
+  PySide6.QtGui.QPixmap.transformed(PySide6.QtGui.QTransform(0.999303, 0.037333, 0.000000, -0.037333, 0.999303, 0.000000, 18.365883, -23.558363, 1.000000),)
+Found signature:
+  PySide6.QtGui.QPixmap.transformed(arg__1: PySide6.QtGui.QTransform, /, mode: PySide6.QtCore.Qt.TransformationMode = Instance(Qt.FastTransformation))
+
+[DEBUG] Stage alignment: found 3 valid point pairs
+[DEBUG] Transform computed: angle=-2.14deg, scale=0.003
+[DEBUG] [ROTATION CHECK] view_orientation=Stage, info=True
+[DEBUG] [ROTATION CHECK] view_orient=Stage, comparing to 'Stage': True
+[DEBUG] Applying Stage rotation: angle=-2.14deg
+[DEBUG] [ROTATION] Starting rotation process...
+[DEBUG] Stage rotation failed with exception: 'PySide6.QtGui.QPixmap.transformed' called with wrong argument values:
+  PySide6.QtGui.QPixmap.transformed(PySide6.QtGui.QTransform(0.999303, 0.037333, 0.000000, -0.037333, 0.999303, 0.000000, 18.365883, -23.558363, 1.000000),)
+Found signature:
+  PySide6.QtGui.QPixmap.transformed(arg__1: PySide6.QtGui.QTransform, /, mode: PySide6.QtCore.Qt.TransformationMode = Instance(Qt.FastTransformation))
+[DEBUG] Traceback (most recent call last):
+  File "C:\Python\Px2XY\Ui.py", line 2926, in _apply_proc_zoom
+    rotated = QPixmap(img_region.transformed(transform, mode=1))
+                      ~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^
+ValueError: 'PySide6.QtGui.QPixmap.transformed' called with wrong argument values:
+  PySide6.QtGui.QPixmap.transformed(PySide6.QtGui.QTransform(0.999303, 0.037333, 0.000000, -0.037333, 0.999303, 0.000000, 18.365883, -23.558363, 1.000000),)
+Found signature:
+  PySide6.QtGui.QPixmap.transformed(arg__1: PySide6.QtGui.QTransform, /, mode: PySide6.QtCore.Qt.TransformationMode = Instance(Qt.FastTransformation))
+

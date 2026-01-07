@@ -1,10 +1,10 @@
 # PowerShell build script for creating a single-file GUI EXE using PyInstaller
 # Usage (run in project root):
-#   .\build_exe.ps1 -Clean -Name Px2XY
+#   .\build_exe.ps1 -Clean -Name PiXY
 
 param(
     [switch]$Clean,
-    [string]$Name = "Px2XY"
+    [string]$Name = "PiXY"
 )
 
 # Ensure working directory is script directory

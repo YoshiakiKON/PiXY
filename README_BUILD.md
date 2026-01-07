@@ -23,10 +23,10 @@ py -m pip install pyinstaller
 3. Run the build script in the project root (this script invokes PyInstaller and bundles common image/data files):
 
 ```powershell
-.\build_exe.ps1 -Name Px2XY
+.\build_exe.ps1 -Name PiXY
 ```
 
-After build completes, the single EXE will be in `dist\Px2XY.exe`.
+After build completes, the single EXE will be in `dist\PiXY.exe`.
 
 Notes and tips
 - If your application loads external image files (bmp/png), include them using `--add-data` (the provided `build_exe.ps1` already includes some common ones). On Windows, separate source;dest by `;`.

@@ -1,1 +1,1 @@
-C:/Python/Px2XY/OD3_BEC.bmp
+C:\Python\Px2XY\DemoBMP.bmp

@@ -28,7 +28,13 @@ def build_zoomed_canvas(overlay_full_img, proc_zoom, view_padding,
     # Allow large proc_zoom values; compute desired pixel count using floats to avoid huge ints
     z = max(0.001, float(proc_zoom))
     # estimate desired pixel count (float) and decide whether to downsample for display
-    MAX_PIXELS = 4096 * 4096
+    # Safety cap for displayed pixel count.
+    # NOTE: If the image is large, zoom can become "visually capped" because we downsample once
+    # desired pixel count exceeds this. Raising this increases the maximum effective magnification.
+    # Display safety cap for rendered pixel count.
+    # Higher cap => higher effective zoom but heavier CPU/RAM.
+    # 6144^2 is a compromise: noticeably higher than the original 4096^2 without the large slowdown of 8192^2.
+    MAX_PIXELS = 6144 * 6144
     desired_pixels = float(w) * float(h) * (z * z)
     # decide interpolation method
     # interp_mode: 'auto'|'nearest'|'linear'

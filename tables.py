@@ -155,11 +155,17 @@ def populate_tables(table_ref, table, ref_points, ref_obs, centroids, selected_i
     try:
         # 左テーブル（Ref）: 右表と下揃えにし、残差行（Res.*）を追加
         row_labels_ref = STR.TABLE_LEFT_ROW_LABELS
-        table_ref.clear()
-        table_ref.setRowCount(len(row_labels_ref))
+        # Don't use clear() as it removes pseudo-headers; instead adjust row count
+        # table_ref.clear()
+        table_ref.setRowCount(len(row_labels_ref) + 2)  # +2 for pseudo-header rows
         total_cols = 10 if visible_ref_cols is None else max(1, min(10, int(visible_ref_cols)))
         table_ref.setColumnCount(total_cols)
-        table_ref.setVerticalHeaderLabels(row_labels_ref)
+        # Set vertical header labels starting from row 2 (skip pseudo-header rows 0-1)
+        for i, label in enumerate(row_labels_ref):
+            try:
+                table_ref.setVerticalHeaderItem(i + 2, QTableWidgetItem(label))
+            except Exception:
+                pass
         try:
             vh = table_ref.verticalHeader()
             func = getattr(vh, "setDefaultAlignment", None)
@@ -170,6 +176,8 @@ def populate_tables(table_ref, table, ref_points, ref_obs, centroids, selected_i
         # 列見出しは太字の数字
         table_ref.setHorizontalHeaderLabels([str(i + 1) for i in range(total_cols)])
         # 左テーブルの水平ヘッダーはデフォルトの外観を維持（スタイルシートは適用しない）
+        # Data starts from row 2 to preserve pseudo-header rows 0-1
+        DATA_ROW_OFFSET = 2
         for c in range(total_cols):
             pt = ref_points[c] if 0 <= c < len(ref_points) else None
             x_item = QTableWidgetItem("" if pt is None else str(int(round(pt[0]))))
@@ -182,8 +190,8 @@ def populate_tables(table_ref, table, ref_points, ref_obs, centroids, selected_i
                 y_item.setFlags(y_item.flags() & ~ITEM_EDITABLE)
             except Exception:
                 pass
-            table_ref.setItem(0, c, x_item)
-            table_ref.setItem(1, c, y_item)
+            table_ref.setItem(DATA_ROW_OFFSET + 0, c, x_item)
+            table_ref.setItem(DATA_ROW_OFFSET + 1, c, y_item)
             # Obs. X/Y/Z は編集可（2,3,4行目）
             obs = ref_obs[c] if 0 <= c < len(ref_obs) else {"x": "", "y": "", "z": ""}
             ox = QTableWidgetItem(obs.get("x", ""))
@@ -197,9 +205,9 @@ def populate_tables(table_ref, table, ref_points, ref_obs, centroids, selected_i
                     f = it.font(); f.setBold(True); it.setFont(f)
                 except Exception:
                     pass
-            table_ref.setItem(2, c, ox)
-            table_ref.setItem(3, c, oy)
-            table_ref.setItem(4, c, oz)
+            table_ref.setItem(DATA_ROW_OFFSET + 2, c, ox)
+            table_ref.setItem(DATA_ROW_OFFSET + 3, c, oy)
+            table_ref.setItem(DATA_ROW_OFFSET + 4, c, oz)
             # 残差セル初期化（編集不可）
             rx = QTableWidgetItem("")
             ry = QTableWidgetItem("")
@@ -211,20 +219,26 @@ def populate_tables(table_ref, table, ref_points, ref_obs, centroids, selected_i
                     it.setFlags(it.flags() & ~ITEM_EDITABLE)
                 except Exception:
                     pass
-            table_ref.setItem(5, c, rx)
-            table_ref.setItem(6, c, ry)
-            table_ref.setItem(7, c, rz)
-            table_ref.setItem(8, c, rr)
+            table_ref.setItem(DATA_ROW_OFFSET + 5, c, rx)
+            table_ref.setItem(DATA_ROW_OFFSET + 6, c, ry)
+            table_ref.setItem(DATA_ROW_OFFSET + 7, c, rz)
+            table_ref.setItem(DATA_ROW_OFFSET + 8, c, rr)
         table_ref.resizeColumnsToContents()
         fix_ref_table_width(table_ref)
 
         # 右テーブル（重心リスト）: Lv 行は不要
         row_labels = STR.TABLE_RIGHT_ROW_LABELS
-        table.clear()
+        # Don't use clear() as it removes pseudo-headers
+        # table.clear()
         if not centroids:
-            table.setRowCount(len(row_labels))
+            table.setRowCount(len(row_labels) + 2)  # +2 for pseudo-header rows
             table.setColumnCount(0)
-            table.setVerticalHeaderLabels(row_labels)
+            # Set vertical header labels starting from row 2
+            for i, label in enumerate(row_labels):
+                try:
+                    table.setVerticalHeaderItem(i + 2, QTableWidgetItem(label))
+                except Exception:
+                    pass
             try:
                 vh = table.verticalHeader()
                 func = getattr(vh, "setDefaultAlignment", None)
@@ -234,9 +248,14 @@ def populate_tables(table_ref, table, ref_points, ref_obs, centroids, selected_i
                 pass
             return
         n = len(centroids)
-        table.setRowCount(len(row_labels))
+        table.setRowCount(len(row_labels) + 2)  # +2 for pseudo-header rows
         table.setColumnCount(n)
-        table.setVerticalHeaderLabels(row_labels)
+        # Set vertical header labels starting from row 2
+        for i, label in enumerate(row_labels):
+            try:
+                table.setVerticalHeaderItem(i + 2, QTableWidgetItem(label))
+            except Exception:
+                pass
         try:
             vh = table.verticalHeader()
             func = getattr(vh, "setDefaultAlignment", None)
@@ -245,14 +264,15 @@ def populate_tables(table_ref, table, ref_points, ref_obs, centroids, selected_i
         except Exception:
             pass
         table.setHorizontalHeaderLabels([str(i + 1) for i in range(n)])
-        # 生のXYとLvを先に埋める
+        # 生のXYとLvを先に埋める（Data starts from row 2）
+        DATA_ROW_OFFSET = 2
         for c, (g, x, y) in enumerate(centroids):
             item_x = QTableWidgetItem(str(int(round(x))))
             item_y = QTableWidgetItem(str(int(round(y))))
             for it in (item_x, item_y):
                 it.setTextAlignment(ALIGN_CENTER)
-            table.setItem(0, c, item_x)
-            table.setItem(1, c, item_y)
+            table.setItem(DATA_ROW_OFFSET + 0, c, item_x)
+            table.setItem(DATA_ROW_OFFSET + 1, c, item_y)
         # Calc.* を計算（回転角度+拡大縮小率ベース: 2D similarity for X/Y + plane for Z）
         # 参照点の収集
         ref_uv = []
@@ -362,9 +382,9 @@ def populate_tables(table_ref, table, ref_points, ref_obs, centroids, selected_i
                         except Exception:
                             pass
                         it.setFlags(it.flags() & ~ITEM_EDITABLE)
-                    table.setItem(2, c, cx)
-                    table.setItem(3, c, cy)
-                    table.setItem(4, c, cz)
+                    table.setItem(DATA_ROW_OFFSET + 2, c, cx)
+                    table.setItem(DATA_ROW_OFFSET + 3, c, cy)
+                    table.setItem(DATA_ROW_OFFSET + 4, c, cz)
 
                 # 参照点の残差を計算して左テーブルへ表示
                 if used_cols:
@@ -427,7 +447,11 @@ def populate_tables(table_ref, table, ref_points, ref_obs, centroids, selected_i
                                 it.setFlags(it.flags() & ~ITEM_EDITABLE)
                             except Exception:
                                 pass
-                            table_ref.setItem(5 + r_offset, col, it)
+                            # Residual rows are offset by DATA_ROW_OFFSET (pseudo-header rows)
+                            try:
+                                table_ref.setItem(DATA_ROW_OFFSET + 5 + r_offset, col, it)
+                            except Exception:
+                                table_ref.setItem(5 + r_offset, col, it)
             except Exception:
                 # 失敗時は空欄のまま
                 pass

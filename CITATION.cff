@@ -5,7 +5,7 @@ version: "1.1.1"
 authors:
   - family-names: "Kon"
     given-names: "Yoshiaki"
-    affiliation: "Independent Researcher"
+    affiliation: "Geological Survey of Japan"
 date-released: 2026-01-08
 license: "MIT"
 doi: "10.5281/zenodo.18174474"

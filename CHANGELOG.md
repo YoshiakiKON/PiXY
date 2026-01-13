@@ -11,6 +11,9 @@ All notable changes to this project will be documented in this file.
 - UI: moved Coordinate/Rotate/Flip controls to second header row; Stage status shows Magnification/Rotation/Shift X/Shift Y/Pitch/Roll
 - Fix: Magnification displayed in proc (u,v) units to match on-screen conversion
 
+## [1.1.3] - 2026-01-13
+- Release: bump version to 1.1.3, packaging rebuild and minor fixes
+
 ## [1.1] - 2026-01-08
 - Neck separation refinement: avoid double-counting areas when splitting components
 - Improved area histogram accuracy: only split areas counted post-split

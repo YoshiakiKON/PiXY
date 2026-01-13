@@ -859,8 +859,36 @@ class CentroidFinderWindow(QMainWindow):
 
     def __init__(self):
         super().__init__()
-        # ウィンドウタイトル設定
-        self.setWindowTitle(STR.APP_TITLE)
+        # ウィンドウタイトル設定（pyproject.toml の version を付加）
+        try:
+            version = None
+            try:
+                # Python 3.11+: tomllib
+                import tomllib
+                with open(os.path.join(os.path.dirname(__file__), 'pyproject.toml'), 'rb') as tf:
+                    data = tomllib.load(tf)
+                    version = data.get('project', {}).get('version')
+            except Exception:
+                # Fallback: simple regex parse
+                try:
+                    import re
+                    pth = os.path.join(os.path.dirname(__file__), 'pyproject.toml')
+                    with open(pth, 'r', encoding='utf-8') as tf:
+                        txt = tf.read()
+                    m = re.search(r"^version\s*=\s*['\"]([^'\"]+)['\"]", txt, re.M)
+                    if m:
+                        version = m.group(1)
+                except Exception:
+                    version = None
+            if version:
+                self.setWindowTitle(f"{STR.APP_TITLE} (Ver. {version})")
+            else:
+                self.setWindowTitle(STR.APP_TITLE)
+        except Exception:
+            try:
+                self.setWindowTitle(STR.APP_TITLE)
+            except Exception:
+                pass
 
         # デバッグ出力ヘルパ
         def _dbg(msg):

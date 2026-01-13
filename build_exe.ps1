@@ -28,16 +28,27 @@ if ($Clean) {
 # Adjust the --add-data entries if you use other assets.
 
 $addData = @(
-    "OD3_BEC.bmp;.",
-    "Otake-fresh-3_XBSE_STD_MINERAL_SAMPLE.bmp;.",
-    "水玉-01.png;.",
-    "last_image_path.txt;."
+    "DemoBMP.bmp;.",
+    "last_image_path.txt;.",
+    "PiXY_splash.png;.",
+    "PiXY_icon.ico;.",
+    "PiXY.png;.",
+    "px2XY2.png;.",
+    "px2XY.png;.",
+    "app_icon.png;.",
+    "splash.ppm;.",
+    "app_icon.ppm;."
 )
 
-$addDataArgs = $addData | ForEach-Object { "--add-data `"$_`"" } | Join-String ' '
+# Build add-data arguments without Join-String (PowerShell 5 compatible)
+$addDataArgs = ($addData | ForEach-Object { "--add-data `"$($_)`"" }) -join ' '
+
+# Exclude PyQt bindings to avoid mixed Qt stacks (we use PySide6 via qt_compat)
+$exclude = @("PyQt5", "PyQt6")
+$excludeArgs = ($exclude | ForEach-Object { "--exclude-module $($_)" }) -join ' '
 
 $main = "Main.py"
-$cmd = "py -m PyInstaller --noconfirm --onefile --windowed --name $Name $addDataArgs $main"
+$cmd = "py -m PyInstaller --noconfirm --onefile --windowed --name $Name $excludeArgs $addDataArgs $main"
 Write-Host "Running: $cmd"
 Invoke-Expression $cmd
 

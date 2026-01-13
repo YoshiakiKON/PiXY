@@ -181,15 +181,24 @@ class ImageViewController(QObject):
                     self._start_kinetic(vx, vy)
                 return True
             elif et == QEvent.Wheel:
+                # Google Maps-like zoom:
+                # Keep the content under the cursor (anchor) fixed while changing zoom.
+                # (Buttons/double-click often use center; wheel uses cursor anchor.)
                 pos_vp = _evt_point(event) if obj is self.ui.proc_scroll.viewport() else self.ui._label_pos_to_viewport_pos(_evt_point(event))
+
                 pos_label_before = self.ui._viewport_pos_to_label_pos(pos_vp)
                 xf_yf = self.ui._display_to_full(pos_label_before)
                 delta = event.angleDelta().y() / 120.0
-                step = 0.1
+                # Exponential scaling feels more map-like than linear scaling.
+                base = 1.2
                 mods = event.modifiers() if hasattr(event, 'modifiers') else Qt.NoModifier
                 if mods & Qt.ControlModifier:
-                    step = 0.05
-                new_zoom = self.ui.proc_zoom * (1.0 + step * delta)
+                    base = 1.1
+                try:
+                    factor = float(base) ** float(delta)
+                except Exception:
+                    factor = 1.0
+                new_zoom = self.ui.proc_zoom * factor
                 # Allow much larger zoom; rendering will downsample for display safety
                 new_zoom = max(0.01, min(1024.0, new_zoom))
                 if abs(new_zoom - self.ui.proc_zoom) > 1e-6:
@@ -198,6 +207,8 @@ class ImageViewController(QObject):
                     if xf_yf is not None:
                         x_full, y_full = xf_yf
                         lx, ly = self.ui._full_to_display(x_full, y_full)
+                        # QScrollArea is aligned top-left (Ui sets AlignLeft|AlignTop), so
+                        # label.pos() already reflects scroll offsets; do NOT add it here.
                         sx = lx - pos_vp.x()
                         sy = ly - pos_vp.y()
                         self.ui._set_scroll(sx, sy)

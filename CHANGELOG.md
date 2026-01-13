@@ -6,6 +6,11 @@ All notable changes to this project will be documented in this file.
 - Performance optimization: replaced Python loop with cv2.dilate for fast marker propagation in neck separation
 - 10-100x speedup in neck separation calculation
 
+## [1.1.2] - 2026-01-13
+- Fix: wheel zoom anchor and center drift on Image/Stage views (align top-left mapping)
+- UI: moved Coordinate/Rotate/Flip controls to second header row; Stage status shows Magnification/Rotation/Shift X/Shift Y/Pitch/Roll
+- Fix: Magnification displayed in proc (u,v) units to match on-screen conversion
+
 ## [1.1] - 2026-01-08
 - Neck separation refinement: avoid double-counting areas when splitting components
 - Improved area histogram accuracy: only split areas counted post-split

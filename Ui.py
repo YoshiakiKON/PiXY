@@ -905,7 +905,7 @@ class CentroidFinderWindow(QMainWindow):
         }
         self.levels_value = 4          # PosterLevel の内部値
         self.show_boundaries = True    # 境界線表示フラグ
-        self.view_orientation = 'Image'  # View Orientation (Image/Stage)
+        self.view_orientation = 'Image'  # Coordinate (Image/Stage)
 
         # 画像表示関連
         # 仮想キャンバス関連: 実際の表示はビューポート分のみだが、スクロール範囲は仮想的に拡張する
@@ -1307,11 +1307,12 @@ class CentroidFinderWindow(QMainWindow):
                         pass
                 bcl.addWidget(self.lbl_boundary)
                 bcl.addWidget(self.boundary_toggle)
-                # View Orientation トグル（Image / Stage）を右隣に追加
+                # Coordinate  トグル（Image / Stage）を右隣に追加
                 try:
                     self.view_orientation_toggle = SegmentControl(["Image", "Stage"], checked_index=0, btn_w=69, btn_h=24)
                     try:
-                        self.view_orientation_toggle.set_on_changed(lambda idx: self._on_toggle_view_orientation(int(idx)))
+                        # Handler name is `_on_toggle_coordinate` (label is "Coordinate"), keep wiring consistent.
+                        self.view_orientation_toggle.set_on_changed(lambda idx: self._on_toggle_coordinate(int(idx)))
                     except Exception:
                         pass
                     try:
@@ -1321,7 +1322,7 @@ class CentroidFinderWindow(QMainWindow):
                         self.btn_view_image = None
                         self.btn_view_stage = None
                     # small label for the control
-                    self.lbl_view_orientation = QLabel("View Orientation")
+                    self.lbl_view_orientation = QLabel("Coordinate")
                     try:
                         from qt_compat.QtGui import QFont as _QFont
                         fv = _QFont('Segoe UI', 12)
@@ -1361,22 +1362,35 @@ class CentroidFinderWindow(QMainWindow):
             self.boundary_controls = None
             self.lbl_boundary = None
 
-        # 左右反転モードは UI で操作しない（常に Auto 固定）
-        self.flip_mode = 'auto'  # 'auto' | 'normal' | 'flip'
-        # flip_mode remains fixed to 'auto' and no UI control is created
-        self.combo_flip_mode = None
-        self.lbl_display_mode = None
+        # 手動画像回転（Imageビュー専用）と左右反転モード（ビュー別）
+        self.manual_image_rotation_deg = 0
+        self.flip_mode_image = 'normal'  # 'normal' | 'flip'
+        self.flip_mode_stage = 'auto'    # 'auto' | 'normal' | 'flip'
+        # Flipトグル（Image/Stage用を用意し、Coordinateに応じて出し分け）
+        self.flip_toggle_image = None
+        self.flip_toggle_stage = None
+        self.lbl_scale_val = None
+        self.lbl_tx_val = None
+        self.lbl_ty_val = None
+        self.lbl_angle_val = None
 
         # 画像領域レイアウト：上にボタン群（左に Open/Export/Clipboard、中央に補間/自動系、右に Flip/境界）
         img_layout = QVBoxLayout()
         img_header = QHBoxLayout()
-        # 左上に Open/Export/Clipboard ボタンを横並びに配置
+        # 1段目: Open / Boundary / Display Mode
         try:
+            left_header_block = QWidget()
+            lhl = QVBoxLayout(left_header_block)
+            lhl.setContentsMargins(0, 0, 0, 0)
+            lhl.setSpacing(4)
+
             button_row = QHBoxLayout()
             button_row.setContentsMargins(0, 9, 0, 0)
             button_row.setSpacing(6)
             button_row.addWidget(self.btn_open, 0)
-            img_header.addLayout(button_row)
+            lhl.addLayout(button_row)
+
+            img_header.addWidget(left_header_block, 0, Qt.AlignLeft)
         except Exception:
             pass
         # 中央上には自動更新/手動再計算をまとめる
@@ -1388,7 +1402,7 @@ class CentroidFinderWindow(QMainWindow):
         except Exception:
             pass
         img_header.addStretch(1)
-        # 右上コントロール（左→右）: View Orientation, Boundary, Posterization Overlay
+        # 右上コントロール（左→右）: Coordinate, Boundary, Posterization Overlay
         overlay_ctrl = None
         try:
             # small overlay control placed at right-top next to Flip
@@ -1444,20 +1458,9 @@ class CentroidFinderWindow(QMainWindow):
         except Exception:
             pass
 
-        # 右上: View Orientation と Boundary を先に配置
+        # 右上: Boundary を配置（Coordinate は左側2段目へ移動）
         try:
-            if getattr(self, 'view_orientation_controls', None) is not None:
-                try:
-                    img_header.addWidget(self.view_orientation_controls, 0, Qt.AlignRight)
-                except Exception:
-                    pass
             if getattr(self, 'boundary_controls', None) is not None:
-                try:
-                    # spacing between view orientation and boundary
-                    if getattr(self, 'view_orientation_controls', None) is not None:
-                        img_header.addSpacing(8)
-                except Exception:
-                    pass
                 img_header.addWidget(self.boundary_controls, 0, Qt.AlignRight)
             elif getattr(self, 'boundary_toggle', None) is not None:
                 img_header.addWidget(self.boundary_toggle, 0, Qt.AlignRight)
@@ -1469,7 +1472,7 @@ class CentroidFinderWindow(QMainWindow):
             if overlay_ctrl is not None:
                 try:
                     # spacing between boundary and overlay
-                    if getattr(self, 'boundary_controls', None) is not None or getattr(self, 'boundary_toggle', None) is not None or getattr(self, 'view_orientation_controls', None) is not None:
+                    if getattr(self, 'boundary_controls', None) is not None or getattr(self, 'boundary_toggle', None) is not None:
                         img_header.addSpacing(12)
                 except Exception:
                     pass
@@ -1481,6 +1484,146 @@ class CentroidFinderWindow(QMainWindow):
             pass
 
         img_layout.addLayout(img_header, 0)
+
+        # 2段目: Coordinate / Image Rotate / Normal/Flip（Stage時はMagnification/X/Y/Z）
+        try:
+            midbar = QWidget()
+            mb = QHBoxLayout(midbar)
+            mb.setContentsMargins(6, 0, 6, 4)
+            mb.setSpacing(10)
+
+            # Coordinate toggle on the left of the 2nd row
+            try:
+                if getattr(self, 'view_orientation_controls', None) is not None:
+                    mb.addWidget(self.view_orientation_controls, 0)
+                    mb.addSpacing(10)
+            except Exception:
+                pass
+
+            # Build 3 groups so we can toggle visibility cleanly by Coordinate.
+            self._mid_rotate_controls = QWidget()
+            self._mid_flip_controls = QWidget()
+            self._mid_stats_controls = QWidget()
+
+            # --- Rotate group (Image only)
+            try:
+                rhl = QHBoxLayout(self._mid_rotate_controls)
+                rhl.setContentsMargins(0, 0, 0, 0)
+                rhl.setSpacing(10)
+
+                lbl_rot = QLabel("Image Rotate")
+                try:
+                    f = lbl_rot.font()
+                    f.setBold(True)
+                    lbl_rot.setFont(f)
+                except Exception:
+                    pass
+
+                self.slider_img_rotate = QSlider(Qt.Horizontal)
+                try:
+                    self.slider_img_rotate.setMinimum(-180)
+                    self.slider_img_rotate.setMaximum(180)
+                    self.slider_img_rotate.setSingleStep(10)
+                    self.slider_img_rotate.setTickInterval(10)
+                    self.slider_img_rotate.setTickPosition(QSlider.TicksBelow)
+                    self.slider_img_rotate.setFixedWidth(280)
+                    self.slider_img_rotate.setValue(int(self.manual_image_rotation_deg))
+                except Exception:
+                    pass
+
+                self.lbl_rot_val = QLabel("0°")
+                self.lbl_rot_val.setFixedWidth(38)
+                self.lbl_rot_val.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
+                try:
+                    self.slider_img_rotate.valueChanged.connect(self._on_manual_image_rotation_changed)
+                except Exception:
+                    pass
+
+                rhl.addWidget(lbl_rot)
+                rhl.addWidget(self.slider_img_rotate)
+                rhl.addWidget(self.lbl_rot_val)
+            except Exception:
+                pass
+
+            # --- Flip group (Image only per latest request)
+            try:
+                fhl = QHBoxLayout(self._mid_flip_controls)
+                fhl.setContentsMargins(0, 0, 0, 0)
+                fhl.setSpacing(6)
+                try:
+                    self.flip_toggle_image = SegmentControl(["Normal", "Flip"], checked_index=0, btn_w=72, btn_h=24)
+                    self.flip_toggle_image.set_on_changed(lambda idx: self._on_flip_changed('image', int(idx)))
+                except Exception:
+                    self.flip_toggle_image = None
+                # Keep stage flip toggle object for backward compatibility, but do not show it here.
+                try:
+                    self.flip_toggle_stage = SegmentControl(["Auto", "Normal", "Flip"], checked_index=0, btn_w=72, btn_h=24)
+                    self.flip_toggle_stage.set_on_changed(lambda idx: self._on_flip_changed('stage', int(idx)))
+                    self.flip_toggle_stage.setVisible(False)
+                except Exception:
+                    self.flip_toggle_stage = None
+                if self.flip_toggle_image is not None:
+                    fhl.addWidget(self.flip_toggle_image)
+            except Exception:
+                pass
+
+            # --- Stats group (Stage only)
+            try:
+                shl = QHBoxLayout(self._mid_stats_controls)
+                shl.setContentsMargins(0, 0, 0, 0)
+                shl.setSpacing(10)
+
+                def _mk_stat(label_text, min_width=0):
+                    box = QWidget()
+                    hb = QHBoxLayout(box)
+                    hb.setContentsMargins(0, 0, 0, 0)
+                    hb.setSpacing(4)
+                    lbl = QLabel(label_text)
+                    val = QLabel("-")
+                    try:
+                        # Keep values readable & tight (avoid large gap like "X:      158")
+                        if int(min_width) > 0:
+                            val.setMinimumWidth(int(min_width))
+                        val.setAlignment(Qt.AlignLeft | Qt.AlignVCenter)
+                    except Exception:
+                        pass
+                    hb.addWidget(lbl)
+                    hb.addWidget(val)
+                    return box, val
+
+                w_s, self.lbl_scale_val = _mk_stat("Magnification:", min_width=56)
+                w_rot, self.lbl_angle_val = _mk_stat("Rotation:", min_width=56)
+                w_tx, self.lbl_tx_val = _mk_stat("Shift X:", min_width=46)
+                w_ty, self.lbl_ty_val = _mk_stat("Shift Y:", min_width=46)
+                w_pitch, self.lbl_pitch_val = _mk_stat("Pitch:", min_width=46)
+                w_roll, self.lbl_roll_val = _mk_stat("Roll:", min_width=46)
+
+                shl.addWidget(w_s)
+                shl.addWidget(w_rot)
+                shl.addWidget(w_tx)
+                shl.addWidget(w_ty)
+                shl.addWidget(w_pitch)
+                shl.addWidget(w_roll)
+            except Exception:
+                pass
+
+            # Add groups to the bar (left aligned)
+            mb.addWidget(self._mid_rotate_controls)
+            mb.addWidget(self._mid_flip_controls)
+            mb.addWidget(self._mid_stats_controls)
+            mb.addStretch(1)
+
+            # Initial visibility: Image mode
+            try:
+                self._mid_rotate_controls.setVisible(True)
+                self._mid_flip_controls.setVisible(True)
+                self._mid_stats_controls.setVisible(False)
+            except Exception:
+                pass
+
+            img_layout.addWidget(midbar, 0)
+        except Exception:
+            pass
         img_layout.addWidget(self.proc_scroll, 1)
 
         # スライダー/コントロールレイアウト（各項目を横一行にまとめ、アプリ共通フォントを使う）
@@ -2488,27 +2631,88 @@ class CentroidFinderWindow(QMainWindow):
             pass
         self.schedule_update(force=True)
 
-    # View Orientation トグルハンドラ
-    def _on_toggle_view_orientation(self, idx):
+    # Coordinate トグルハンドラ
+    def _on_toggle_coordinate(self, idx):
         try:
             if int(idx) == 0:
-                self.view_orientation = 'Image'
+                self.coordinate = 'Image'
             else:
-                self.view_orientation = 'Stage'
+                self.coordinate = 'Stage'
+        except Exception:
+            self.coordinate = 'Image'
+
+        # Keep the canonical flag used by rendering logic in sync.
+        try:
+            self.view_orientation = str(self.coordinate)
         except Exception:
             self.view_orientation = 'Image'
         try:
             if getattr(self, 'btn_view_image', None) is not None and getattr(self, 'btn_view_stage', None) is not None:
                 try:
-                    self.btn_view_image.setChecked(self.view_orientation == 'Image')
-                    self.btn_view_stage.setChecked(self.view_orientation == 'Stage')
+                    self.btn_view_image.setChecked(self.coordinate == 'Image')
+                    self.btn_view_stage.setChecked(self.coordinate == 'Stage')
                 except Exception:
                     pass
+        except Exception:
+            pass
+        # Mid toolbar visibility by Coordinate:
+        # - Image: show Image Rotate + Normal/Flip
+        # - Stage: show Scale/X/Y/Z
+        try:
+            is_image = (self.coordinate == 'Image')
+            if getattr(self, '_mid_rotate_controls', None) is not None:
+                self._mid_rotate_controls.setVisible(is_image)
+            if getattr(self, '_mid_flip_controls', None) is not None:
+                self._mid_flip_controls.setVisible(is_image)
+            if getattr(self, '_mid_stats_controls', None) is not None:
+                self._mid_stats_controls.setVisible(not is_image)
+        except Exception:
+            pass
+        # Keep objects around for backward compatibility but do not show Stage flip per latest request.
+        try:
+            if getattr(self, 'flip_toggle_stage', None) is not None:
+                self.flip_toggle_stage.setVisible(False)
+        except Exception:
+            pass
+        # Rotate slider is only meaningful in Image view
+        try:
+            if getattr(self, 'slider_img_rotate', None) is not None:
+                self.slider_img_rotate.setEnabled(is_image)
         except Exception:
             pass
         # 更新をスケジュール（必要なら表示を更新するため）
         try:
             self.schedule_update(force=True)
+        except Exception:
+            pass
+
+    def _on_manual_image_rotation_changed(self, val):
+        try:
+            self.manual_image_rotation_deg = int(val)
+            if getattr(self, 'lbl_rot_val', None) is not None:
+                try:
+                    self.lbl_rot_val.setText(f"{int(val)}°")
+                except Exception:
+                    pass
+        except Exception:
+            self.manual_image_rotation_deg = 0
+        # 表示のみ更新
+        try:
+            self._apply_proc_zoom()
+        except Exception:
+            pass
+
+    def _on_flip_changed(self, mode, idx):
+        try:
+            if str(mode) == 'image':
+                self.flip_mode_image = 'normal' if int(idx) == 0 else 'flip'
+            else:
+                self.flip_mode_stage = {0: 'auto', 1: 'normal', 2: 'flip'}.get(int(idx), 'auto')
+        except Exception:
+            pass
+        # 表示のみ更新
+        try:
+            self._apply_proc_zoom()
         except Exception:
             pass
 
@@ -2896,6 +3100,10 @@ class CentroidFinderWindow(QMainWindow):
                     self._refresh_transposed_views()
                 except Exception:
                     pass
+                try:
+                    self._apply_proc_zoom()
+                except Exception:
+                    pass
 
             # Delay helps avoid racing the editor close + next-cell edit sequence.
             QTimer.singleShot(150, _run)
@@ -2917,6 +3125,10 @@ class CentroidFinderWindow(QMainWindow):
                     flip_mode=self.flip_mode,
                     visible_ref_cols=self.visible_ref_cols,
                 )
+            except Exception:
+                pass
+            try:
+                self._apply_proc_zoom()
             except Exception:
                 pass
             try:
@@ -3733,6 +3945,7 @@ class CentroidFinderWindow(QMainWindow):
             try:
                 pts_img = []
                 pts_stage = []
+                pts_stage_xyz = []
                 # Gather pairs where we have both image (proc->full) and numeric stage obs
                 for i, rp in enumerate(getattr(self, 'ref_points', []) or []):
                     if rp is None:
@@ -3759,6 +3972,15 @@ class CentroidFinderWindow(QMainWindow):
                         continue
                     pts_img.append((x_full, y_full))
                     pts_stage.append((sx_f, sy_f))
+
+                    # Optional: z observation for pitch/roll estimation
+                    try:
+                        sz = ro_i.get('z', '')
+                        if sz is not None and str(sz).strip() != '':
+                            sz_f = float(str(sz).replace(',', '').strip())
+                            pts_stage_xyz.append((sx_f, sy_f, sz_f))
+                    except Exception:
+                        pass
                 self._dbg(f"Stage alignment: found {len(pts_img)} valid point pairs")
                 if len(pts_img) < 2:
                     self._dbg(f"Insufficient ref points for stage transform (need ≥2, have {len(pts_img)})")
@@ -3766,6 +3988,35 @@ class CentroidFinderWindow(QMainWindow):
                 result = _compute_similarity_transform(pts_img, pts_stage)
                 if result:
                     self._dbg(f"Transform computed: angle={result.get('angle_deg', 0):.2f}deg, scale={result.get('s', 1):.3f}")
+
+                # Display magnification should be based on proc (u,v) -> stage (X,Y)
+                # while internal transform remains based on full coords for rendering consistency.
+                try:
+                    if result is not None:
+                        spf = float(getattr(self, 'scale_proc_to_full', 1.0) or 1.0)
+                        result['s_proc'] = float(result.get('s', 1.0)) * spf
+                except Exception:
+                    pass
+
+                # Estimate pitch/roll from z observations: fit plane z = a*x + b*y + c
+                try:
+                    import numpy as _np
+                    if len(pts_stage_xyz) >= 3:
+                        A = _np.asarray([[p[0], p[1], 1.0] for p in pts_stage_xyz], dtype=_np.float64)
+                        z = _np.asarray([p[2] for p in pts_stage_xyz], dtype=_np.float64)
+                        coeff, *_ = _np.linalg.lstsq(A, z, rcond=None)
+                        a = float(coeff[0])
+                        b = float(coeff[1])
+                        # Convention: slope along Y -> pitch, slope along X -> roll
+                        import math
+                        pitch_deg = float(_np.degrees(math.atan(b)))
+                        roll_deg = float(_np.degrees(math.atan(a)))
+                        if result is None:
+                            result = {}
+                        result['pitch_deg'] = pitch_deg
+                        result['roll_deg'] = roll_deg
+                except Exception:
+                    pass
                 return result
             except Exception as e:
                 self._dbg(f"Stage alignment error: {e}")
@@ -3797,6 +4048,44 @@ class CentroidFinderWindow(QMainWindow):
                 xr = x_rel * math.cos(theta) - y_rel * math.sin(theta)
                 yr = x_rel * math.sin(theta) + y_rel * math.cos(theta)
                 return (int(round(cx + xr)), int(round(cy + yr)))
+            except Exception:
+                return None
+
+        def _build_display_mapping(mode: str, draw_w: float, draw_h: float, pad: float, z: float, qt_transform=None):
+            """Qtで実際に使った QTransform をそのまま座標変換にも使う。
+
+            これにより、反転/回転後のバウンディングボックスの取り扱い（Qt内部の丸め含む）と
+            クリック判定/グリッド描画が完全に一致し、Flip後のズレを防ぐ。
+            """
+            try:
+                from qt_compat.QtCore import QRectF
+                from qt_compat.QtGui import QTransform
+
+                if qt_transform is None:
+                    qt_transform = QTransform()
+
+                # Qt's QPixmap.transformed() effectively shifts by -mappedRect.topLeft()
+                rect = QRectF(0.0, 0.0, float(draw_w), float(draw_h))
+                mapped = qt_transform.mapRect(rect)
+                shift_x = -float(mapped.left())
+                shift_y = -float(mapped.top())
+
+                inv, invertible = qt_transform.inverted()
+                if not invertible:
+                    inv = QTransform()
+
+                return {
+                    'type': 'qt',
+                    'mode': str(mode),
+                    'pad': float(pad),
+                    'z': float(z),
+                    'draw_w': float(draw_w),
+                    'draw_h': float(draw_h),
+                    'qt': qt_transform,
+                    'qt_inv': inv,
+                    'shift_x': float(shift_x),
+                    'shift_y': float(shift_y),
+                }
             except Exception:
                 return None
 
@@ -3862,10 +4151,69 @@ class CentroidFinderWindow(QMainWindow):
             except Exception:
                 pass
 
+            # reset display mapping each render; branches below will set it as needed
+            self._display_mapping = None
+
+            # Update status labels (Stage: Magnification/Rotation/Shift X/Shift Y/Pitch/Roll)
+            try:
+                if getattr(self, 'lbl_scale_val', None) is not None:
+                    if info is not None:
+                        try:
+                            self.lbl_scale_val.setText(f"{float(info.get('s_proc', info.get('s', 1.0))):.4g}")
+                        except Exception:
+                            self.lbl_scale_val.setText(f"{info.get('s', 1.0):.4g}")
+                    else:
+                        self.lbl_scale_val.setText("-")
+                if getattr(self, 'lbl_tx_val', None) is not None:
+                    if info is not None and info.get('t', None) is not None:
+                        try:
+                            tx = float(info['t'][0])
+                            self.lbl_tx_val.setText(f"{tx:.3g}")
+                        except Exception:
+                            self.lbl_tx_val.setText("-")
+                    else:
+                        self.lbl_tx_val.setText("-")
+                if getattr(self, 'lbl_ty_val', None) is not None:
+                    if info is not None and info.get('t', None) is not None:
+                        try:
+                            ty = float(info['t'][1])
+                            self.lbl_ty_val.setText(f"{ty:.3g}")
+                        except Exception:
+                            self.lbl_ty_val.setText("-")
+                    else:
+                        self.lbl_ty_val.setText("-")
+                if getattr(self, 'lbl_angle_val', None) is not None:
+                    if info is not None:
+                        try:
+                            self.lbl_angle_val.setText(f"{info.get('angle_deg', 0.0):.2f}")
+                        except Exception:
+                            self.lbl_angle_val.setText("-")
+                    else:
+                        self.lbl_angle_val.setText("-")
+                if getattr(self, 'lbl_pitch_val', None) is not None:
+                    if info is not None and info.get('pitch_deg', None) is not None:
+                        try:
+                            self.lbl_pitch_val.setText(f"{float(info.get('pitch_deg', 0.0)):.3g}")
+                        except Exception:
+                            self.lbl_pitch_val.setText("-")
+                    else:
+                        self.lbl_pitch_val.setText("-")
+                if getattr(self, 'lbl_roll_val', None) is not None:
+                    if info is not None and info.get('roll_deg', None) is not None:
+                        try:
+                            self.lbl_roll_val.setText(f"{float(info.get('roll_deg', 0.0)):.3g}")
+                        except Exception:
+                            self.lbl_roll_val.setText("-")
+                    else:
+                        self.lbl_roll_val.setText("-")
+            except Exception:
+                pass
+
             pm_to_show = pm
             try:
                 # Apply rotation when Stage is selected, grid for both modes
                 view_orient = getattr(self, 'view_orientation', 'Image')
+                reflect_flag = False
                 if view_orient == 'Stage':
                     if info is None:
                         self._dbg(f"Stage mode selected but transform info not available (need ≥2 ref points with obs)")
@@ -3889,8 +4237,18 @@ class CentroidFinderWindow(QMainWindow):
                     # rotate around center
                     cx = img_region.width() / 2.0
                     cy = img_region.height() / 2.0
-                    # If reflection was detected, apply horizontal flip
-                    if info.get('reflect', False):
+                    # Reflect mode: Auto/Normal/Flip
+                    reflect_flag = bool(info.get('reflect', False))
+                    try:
+                        mode = getattr(self, 'flip_mode_stage', 'auto')
+                        if mode == 'normal':
+                            reflect_flag = False
+                        elif mode == 'flip':
+                            reflect_flag = True
+                        # 'auto' keeps computed reflect
+                    except Exception:
+                        pass
+                    if reflect_flag:
                         transform.translate(cx, cy)
                         transform.scale(-1, 1)
                         transform.translate(-cx, -cy)
@@ -3899,6 +4257,18 @@ class CentroidFinderWindow(QMainWindow):
                     transform.rotate(-angle)
                     transform.translate(-cx, -cy)
                     rotated = img_region.transformed(transform, Qt.SmoothTransformation)
+                    try:
+                        z = float(getattr(self, '_display_scale', max(0.1, float(self.proc_zoom))))
+                        dm = _build_display_mapping('Stage', float(draw_w), float(draw_h), float(pad), z, qt_transform=transform)
+                        if dm is not None:
+                            self._display_mapping = dm
+                            try:
+                                self._display_img_size = (int(rotated.width()), int(rotated.height()))
+                                self._display_offset = (int(pad), int(pad))
+                            except Exception:
+                                pass
+                    except Exception:
+                        pass
                     # compose new canvas sized to fit the rotated pixmap (avoid clipping)
                     rot_w = rotated.width()
                     rot_h = rotated.height()
@@ -3906,6 +4276,8 @@ class CentroidFinderWindow(QMainWindow):
                     pm2.fill(QColor(30, 30, 30))
                     p = QPainter(pm2)
                     p.drawPixmap(pad, pad, rotated)
+
+                    # 参照点は build_zoomed_canvas 側で描画され、画像回転と一緒に回転されるため、ここでの再描画は不要
 
                     # Draw stage grid lines on rotated image (simple orthogonal grid)
                     try:
@@ -4010,13 +4382,57 @@ class CentroidFinderWindow(QMainWindow):
                 # Draw pixel grid overlay for Image mode (simple pixel coordinates)
                 elif view_orient == 'Image':
                     try:
-                        from qt_compat.QtGui import QPixmap, QPainter, QPen, QColor
+                        from qt_compat.QtGui import QPixmap, QPainter, QPen, QColor, QTransform
                         import math
                         
-                        # Create a copy to draw grid on
-                        pm2 = QPixmap(pm)
+                        # まずImageビュー用の回転／反転を適用
+                        pad = int(self.view_padding)
+                        draw_w, draw_h = (new_w, new_h)
+                        try:
+                            img_region = pm.copy(pad, pad, draw_w, draw_h)
+                        except Exception:
+                            img_region = pm
+                        transform = QTransform()
+                        cx = img_region.width() / 2.0
+                        cy = img_region.height() / 2.0
+                        # Image用Flip
+                        try:
+                            if getattr(self, 'flip_mode_image', 'normal') == 'flip':
+                                transform.translate(cx, cy)
+                                transform.scale(-1, 1)
+                                transform.translate(-cx, -cy)
+                        except Exception:
+                            pass
+                        # Image用回転（手動）
+                        try:
+                            angle_img = float(getattr(self, 'manual_image_rotation_deg', 0.0))
+                        except Exception:
+                            angle_img = 0.0
+                        transform.translate(cx, cy)
+                        transform.rotate(-angle_img)
+                        transform.translate(-cx, -cy)
+                        rotated_img = img_region.transformed(transform, Qt.SmoothTransformation)
+
+                        try:
+                            z = float(getattr(self, '_display_scale', max(0.1, float(self.proc_zoom))))
+                            flip_flag = bool(getattr(self, 'flip_mode_image', 'normal') == 'flip')
+                            dm = _build_display_mapping('Image', float(draw_w), float(draw_h), float(pad), z, qt_transform=transform)
+                            if dm is not None:
+                                self._display_mapping = dm
+                                try:
+                                    self._display_img_size = (int(rotated_img.width()), int(rotated_img.height()))
+                                    self._display_offset = (int(pad), int(pad))
+                                except Exception:
+                                    pass
+                        except Exception:
+                            pass
+
+                        # 回転後キャンバス作成
+                        pm2 = QPixmap(rotated_img.width() + 2 * pad, rotated_img.height() + 2 * pad)
+                        pm2.fill(QColor(30, 30, 30))
                         p = QPainter(pm2)
-                        
+                        p.drawPixmap(pad, pad, rotated_img)
+
                         pad = int(self.view_padding)
                         
                         # For Image mode, use pixel coordinates
@@ -4030,7 +4446,7 @@ class CentroidFinderWindow(QMainWindow):
 
                         # Choose spacing so that about ~8 lines appear across the visible area.
                         # Compute spacing in DISPLAY pixels, then convert to image pixels.
-                        visible_w = max(20.0, pm.width() - 2 * pad)
+                        visible_w = max(20.0, pm2.width() - 2 * pad)
                         target_lines = 8.0
                         spacing_display = max(30.0, min(180.0, visible_w / target_lines))
                         pixel_spacing = spacing_display / display_scale
@@ -4047,40 +4463,66 @@ class CentroidFinderWindow(QMainWindow):
                         font.setPointSize(9)
                         p.setFont(font)
                         
+                        # グリッド/点の描画は、クリック判定と同じ座標変換（_full_to_display）に統一する
+                        def transform_grid_coords(x_px, y_px):
+                            try:
+                                dxy = self._full_to_display(float(x_px), float(y_px))
+                                if dxy is None:
+                                    return None, None
+                                return int(round(dxy[0])), int(round(dxy[1]))
+                            except Exception:
+                                return None, None
+                        
                         # Vertical lines (constant X in image pixels)
                         x_px = 0.0
                         while x_px <= w_full + 1e-6:
-                            x_disp = pad + x_px * display_scale
-                            y_top = pad
-                            y_bottom = pad + h_full * display_scale
-                            p.drawLine(int(x_disp), int(y_top), int(x_disp), int(y_bottom))
-                            try:
-                                lbl = f"{int(round(x_px))}"
-                                p.drawText(int(x_disp) + 4, int(y_top) + 14, lbl)
-                            except Exception:
-                                pass
+                            # 線の始終点を計算（回転適用）
+                            y_top_px = 0.0
+                            y_bottom_px = h_full
+                            x_top, y_top = transform_grid_coords(x_px, y_top_px)
+                            x_bottom, y_bottom = transform_grid_coords(x_px, y_bottom_px)
+                            if x_top is not None and x_bottom is not None:
+                                p.drawLine(x_top, y_top, x_bottom, y_bottom)
+                            # ラベル位置（中央付近）
+                            x_mid, y_mid = transform_grid_coords(x_px, h_full / 2.0)
+                            if x_mid is not None and y_mid is not None:
+                                try:
+                                    lbl = f"{int(round(x_px))}"
+                                    p.drawText(x_mid + 4, y_mid - 4, lbl)
+                                except Exception:
+                                    pass
                             x_px += pixel_spacing
 
                         # Horizontal lines (constant Y in image pixels)
                         y_px = 0.0
                         while y_px <= h_full + 1e-6:
-                            x_left = pad
-                            x_right = pad + w_full * display_scale
-                            y_disp = pad + y_px * display_scale
-                            p.drawLine(int(x_left), int(y_disp), int(x_right), int(y_disp))
-                            try:
-                                lbl = f"{int(round(y_px))}"
-                                p.drawText(int(x_left) + 4, int(y_disp) - 4, lbl)
-                            except Exception:
-                                pass
+                            # 線の始終点を計算（回転適用）
+                            x_left_px = 0.0
+                            x_right_px = w_full
+                            x_left, y_left = transform_grid_coords(x_left_px, y_px)
+                            x_right, y_right = transform_grid_coords(x_right_px, y_px)
+                            if x_left is not None and x_right is not None:
+                                p.drawLine(x_left, y_left, x_right, y_right)
+                            # ラベル位置（中央付近）
+                            x_mid, y_mid = transform_grid_coords(w_full / 2.0, y_px)
+                            if x_mid is not None and y_mid is not None:
+                                try:
+                                    lbl = f"{int(round(y_px))}"
+                                    p.drawText(x_mid + 4, y_mid - 4, lbl)
+                                except Exception:
+                                    pass
                             y_px += pixel_spacing
                         
+                        # 参照点は build_zoomed_canvas 側で描画されており、画像回転と一緒に回転される。
+                        # ここでの再描画は不要（重複するとズレに見える原因になる）。
+
                         p.end()
                         pm_to_show = pm2
                         try:
                             self._last_pm_image_grid = pm2
                         except Exception:
                             pass
+                        # mappingは rotated_img 作成直後に設定済み
                     except Exception as e:
                         self._dbg(f"Image grid drawing failed: {e}")
                         # fallback: reuse last successful grid pixmap if available
@@ -4091,12 +4533,32 @@ class CentroidFinderWindow(QMainWindow):
                                 pm_to_show = pm
                         except Exception:
                             pm_to_show = pm
+                        try:
+                            self._display_mapping = None
+                        except Exception:
+                            pass
                         
             except Exception as e:
                 import traceback
                 self._dbg(f"Stage rotation failed with exception: {e}")
                 self._dbg(traceback.format_exc())
                 pm_to_show = pm
+                try:
+                    self._display_mapping = None
+                except Exception:
+                    pass
+
+            # Note: Scale/X/Y/Z overlay text inside the image is intentionally disabled.
+
+            # Fallback mapping (identity) if none was set above
+            try:
+                if self._display_mapping is None:
+                    z = float(getattr(self, '_display_scale', max(0.1, float(self.proc_zoom))))
+                    dm = _build_display_mapping(str(view_orient), float(new_w), float(new_h), float(int(self.view_padding)), z, qt_transform=None)
+                    if dm is not None:
+                        self._display_mapping = dm
+            except Exception:
+                pass
 
             # IMPORTANT: keep the latest rendered pixmap (including grid/rotation) as the base.
             # Some interaction handlers restore `img_label_proc` from `_display_pm_base` after a click
@@ -4197,6 +4659,7 @@ class CentroidFinderWindow(QMainWindow):
             return
         lx, ly = dxy
         vp = self.proc_scroll.viewport()
+        # QScrollArea is aligned top-left, so scroll values map directly.
         cx = lx - vp.width() / 2.0
         cy = ly - vp.height() / 2.0
         self._set_scroll(cx, cy)
@@ -4362,21 +4825,21 @@ class CentroidFinderWindow(QMainWindow):
                 self._draw_crosshair(local_pt)
 
     def _move_cursor_to_image_center(self):
-        """カーソルを右画像の中心にジャンプさせる"""
-        x_full = y_full = None
-        if self._img_base_size is not None:
-            x_full = self._img_base_size[0] / 2.0
-            y_full = self._img_base_size[1] / 2.0
-        if x_full is not None and y_full is not None:
-            # まず対象座標が見えるようスクロール
-            self._ensure_full_pos_visible(x_full, y_full)
-            dxy = self._full_to_display(x_full, y_full)
-            if dxy is not None:
-                local_pt = QPoint(int(round(dxy[0])), int(round(dxy[1])))
-                global_pt = self.img_label_proc.mapToGlobal(local_pt)
-                QCursor.setPos(global_pt)
-                # 十字線を即時表示
-                self._draw_crosshair(local_pt)
+        """カーソルを現在表示されているビューポート領域の中心にジャンプさせる（スクロール・ズーム変更なし）"""
+        try:
+            vp = self.proc_scroll.viewport()
+            # ビューポート中央のビューポート座標
+            vp_center_x = vp.width() / 2.0
+            vp_center_y = vp.height() / 2.0
+            vp_center = QPoint(int(round(vp_center_x)), int(round(vp_center_y)))
+            # グローバル座標に変換
+            global_pt = vp.mapToGlobal(vp_center)
+            QCursor.setPos(global_pt)
+            # 十字線を即時表示
+            pos_label = self._viewport_pos_to_label_pos(vp_center)
+            self._draw_crosshair(pos_label)
+        except Exception:
+            pass
 
     def _on_clear_ref(self):
         # 選択中のRef列をクリア
@@ -4614,6 +5077,89 @@ class CentroidFinderWindow(QMainWindow):
         # use actual display_scale (display pixels per full-image pixel)
         z = max(0.0001, float(getattr(self, '_display_scale', max(0.1, float(self.proc_zoom)))))
         off_x, off_y = self._display_offset
+
+        # Use unified mapping (rotation/flip + bbox shift) when available
+        mapping = getattr(self, '_display_mapping', None)
+        try:
+            view_orient = getattr(self, 'view_orientation', 'Image')
+        except Exception:
+            view_orient = 'Image'
+
+        if mapping is not None and mapping.get('mode') == view_orient:
+            # Preferred: use Qt transform mapping (exactly matches rendered pixmap)
+            try:
+                if str(mapping.get('type', '')) == 'qt' and mapping.get('qt') is not None and mapping.get('qt_inv') is not None:
+                    from qt_compat.QtCore import QPointF
+                    pad = float(mapping.get('pad', 0.0))
+                    z_map = float(mapping.get('z', z))
+                    draw_w = float(mapping.get('draw_w', 0.0))
+                    draw_h = float(mapping.get('draw_h', 0.0))
+                    shift_x = float(mapping.get('shift_x', 0.0))
+                    shift_y = float(mapping.get('shift_y', 0.0))
+                    inv = mapping.get('qt_inv')
+
+                    x_rot = float(pos.x()) - pad - shift_x
+                    y_rot = float(pos.y()) - pad - shift_y
+                    if x_rot < 0 or y_rot < 0:
+                        raise ValueError('outside')
+
+                    p0 = inv.map(QPointF(x_rot, y_rot))
+                    x_pix = float(p0.x())
+                    y_pix = float(p0.y())
+                    if not (0.0 <= x_pix <= draw_w and 0.0 <= y_pix <= draw_h):
+                        raise ValueError('outside')
+
+                    x_full = x_pix / max(1e-12, z_map)
+                    y_full = y_pix / max(1e-12, z_map)
+                    if 0 <= x_full <= img_w and 0 <= y_full <= img_h:
+                        return x_full, y_full
+            except Exception:
+                pass
+
+            try:
+                import math
+                pad = float(mapping.get('pad', 0.0))
+                min_x = float(mapping.get('min_x', 0.0))
+                min_y = float(mapping.get('min_y', 0.0))
+                cx = float(mapping.get('cx', 0.0))
+                cy = float(mapping.get('cy', 0.0))
+                theta = float(mapping.get('theta', 0.0))
+                flip = bool(mapping.get('flip', False))
+                draw_w = float(mapping.get('draw_w', 0.0))
+                draw_h = float(mapping.get('draw_h', 0.0))
+
+                # label -> rotated canvas coords (inside image area)
+                x_rot = float(pos.x()) - pad
+                y_rot = float(pos.y()) - pad
+                if x_rot < 0 or y_rot < 0:
+                    raise ValueError('outside')
+
+                # rotated bbox origin -> center-relative coords
+                xr = x_rot + min_x
+                yr = y_rot + min_y
+
+                c = math.cos(theta)
+                s = math.sin(theta)
+                # inverse rotate
+                x_rel = xr * c + yr * s
+                y_rel = -xr * s + yr * c
+                # inverse flip (horizontal)
+                if flip:
+                    x_rel = -x_rel
+
+                x_pix = x_rel + cx
+                y_pix = y_rel + cy
+                if not (0.0 <= x_pix <= draw_w and 0.0 <= y_pix <= draw_h):
+                    raise ValueError('outside')
+
+                x_full = x_pix / z
+                y_full = y_pix / z
+                if 0 <= x_full <= img_w and 0 <= y_full <= img_h:
+                    return x_full, y_full
+            except Exception:
+                pass
+
+        # fallback (no rotation mapping)
         x_full = (pos.x() - off_x) / z
         y_full = (pos.y() - off_y) / z
         if not (0 <= x_full <= img_w and 0 <= y_full <= img_h):
@@ -4621,11 +5167,67 @@ class CentroidFinderWindow(QMainWindow):
         return x_full, y_full
 
     def _full_to_display(self, x_full, y_full):
-        # フル画像座標からラベル座標へ（ズームのみ）
+        # フル画像座標からラベル座標へ（ズーム＋回転/反転を含む）
         if self._img_base_size is None:
             return None
         z = max(0.0001, float(getattr(self, '_display_scale', max(0.1, float(self.proc_zoom)))))
         off_x, off_y = self._display_offset
+
+        mapping = getattr(self, '_display_mapping', None)
+        try:
+            view_orient = getattr(self, 'view_orientation', 'Image')
+        except Exception:
+            view_orient = 'Image'
+
+        if mapping is not None and mapping.get('mode') == view_orient:
+            # Preferred: use Qt transform mapping (exactly matches rendered pixmap)
+            try:
+                if str(mapping.get('type', '')) == 'qt' and mapping.get('qt') is not None:
+                    from qt_compat.QtCore import QPointF
+                    pad = float(mapping.get('pad', 0.0))
+                    z_map = float(mapping.get('z', z))
+                    shift_x = float(mapping.get('shift_x', 0.0))
+                    shift_y = float(mapping.get('shift_y', 0.0))
+                    tr = mapping.get('qt')
+
+                    x_pix = float(x_full) * max(1e-12, z_map)
+                    y_pix = float(y_full) * max(1e-12, z_map)
+                    p1 = tr.map(QPointF(x_pix, y_pix))
+                    x_rot = float(p1.x()) + shift_x
+                    y_rot = float(p1.y()) + shift_y
+                    return x_rot + pad, y_rot + pad
+            except Exception:
+                pass
+
+            try:
+                import math
+                pad = float(mapping.get('pad', 0.0))
+                min_x = float(mapping.get('min_x', 0.0))
+                min_y = float(mapping.get('min_y', 0.0))
+                cx = float(mapping.get('cx', 0.0))
+                cy = float(mapping.get('cy', 0.0))
+                theta = float(mapping.get('theta', 0.0))
+                flip = bool(mapping.get('flip', False))
+
+                x_pix = float(x_full) * z
+                y_pix = float(y_full) * z
+                x_rel = x_pix - cx
+                y_rel = y_pix - cy
+                if flip:
+                    x_rel = -x_rel
+
+                c = math.cos(theta)
+                s = math.sin(theta)
+                xr = x_rel * c - y_rel * s
+                yr = x_rel * s + y_rel * c
+
+                x_rot = xr - min_x
+                y_rot = yr - min_y
+                return x_rot + pad, y_rot + pad
+            except Exception:
+                pass
+
+        # fallback
         return x_full * z + off_x, y_full * z + off_y
 
     def _draw_crosshair(self, pos_label):

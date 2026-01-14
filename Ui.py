@@ -2899,10 +2899,6 @@ class CentroidFinderWindow(QMainWindow):
         except Exception:
             self.manual_image_rotation_deg = 0
         # 表示のみ更新
-        try:
-            self._apply_proc_zoom()
-        except Exception:
-            pass
 
     def _on_flip_changed(self, mode, idx):
         try:
@@ -3584,10 +3580,22 @@ class CentroidFinderWindow(QMainWindow):
             pass
 
     # 更新をスケジュール (タイマーで遅延実行、forceで即時)
-    def schedule_update(self, force=False):
+    def schedule_update(self, force=False, recompute_centroids=True):
+        """Schedule UI update.
+
+        Args:
+            force (bool): if True, run update immediately; otherwise start timer.
+            recompute_centroids (bool): if True allow heavy centroid recomputation;
+                if False, reuse cached centroids when possible.
+        """
+        try:
+            # store preference for the immediate update
+            self._next_recompute_centroids = bool(recompute_centroids)
+        except Exception:
+            pass
         if force:
             self.update_timer.stop()
-            self._update_image_actual()
+            self._update_image_actual(recompute_centroids=recompute_centroids)
         else:
             self.update_timer.start()
 
@@ -3733,7 +3741,7 @@ class CentroidFinderWindow(QMainWindow):
             except Exception:
                 pass
 
-    def _update_image_actual(self):
+    def _update_image_actual(self, recompute_centroids=True):
         if self._painting:
             return
         self._painting = True
@@ -3778,13 +3786,47 @@ class CentroidFinderWindow(QMainWindow):
                     or cache_shape != params.get("shape_complexity")
                 )
 
+                # If caller requested skipping centroid recompute, try to reuse cache.
+                if not bool(recompute_centroids):
+                    # Prefer explicit cached centroids for same image
+                    if cache_centroids is not None and cache_img_id == id(self.proc_img):
+                        centroids = cache_centroids
+                        areas_now = cache_areas
+                        boundary_mask_now = self._cache.get("boundary_mask")
+                    else:
+                        # fallback: do nothing heavy, reuse current self.centroids if available
+                        centroids = getattr(self, 'centroids', []) or []
+                        areas_now = getattr(self, '_cache', {}).get('areas')
+                        boundary_mask_now = getattr(self, '_cache', {}).get('boundary_mask')
                 # 自動モードでは通常通り重い処理を行う
-                if self.auto_update_mode:
+                elif self.auto_update_mode:
                     if need_poster_recalc:
                         poster = kmeans_posterize(self.proc_img, params["levels"])
                         centroids = self.centroid_processor.get_centroids(params, poster=poster)
                         areas_now = getattr(self.centroid_processor, 'last_component_areas', [])
                         boundary_mask_now = getattr(self.centroid_processor, 'last_boundary_mask', None)
+                        # Also compute and cache full-image u,v coordinates for centroids
+                        try:
+                            # centroids are returned in proc coords (group, x_proc, y_proc)
+                            img_base = getattr(self, '_img_base_size', None)
+                            spf = float(getattr(self, 'scale_proc_to_full', 1.0) or 1.0)
+                            uvs = []
+                            if img_base is not None:
+                                h_full0 = int(img_base[1])
+                            else:
+                                h_full0 = int(self.img_full.shape[0]) if getattr(self, 'img_full', None) is not None else None
+                            for g, xp, yp in centroids:
+                                x_full = float(xp) * spf
+                                y_full = float(yp) * spf
+                                u = int(round(x_full))
+                                if h_full0 is not None:
+                                    v = int(round((h_full0 - 1) - y_full))
+                                else:
+                                    v = int(round(-y_full))
+                                uvs.append((g, u, v))
+                            self._cache['centroids_full_uv'] = uvs
+                        except Exception:
+                            pass
                         self._cache.update({
                             "img_id": id(self.proc_img),
                             "levels": params["levels"],

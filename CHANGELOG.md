@@ -14,6 +14,11 @@ All notable changes to this project will be documented in this file.
 ## [1.1.3] - 2026-01-13
 - Release: bump version to 1.1.3, packaging rebuild and minor fixes
 
+## [1.1.4] - 2026-01-14
+- Fix: Make Image `u,v` display use full-image coordinates (avoid proc/full confusion)
+- Fix: Ensure rotation/transformed calls use Qt.TransformationMode and remove stale log confusion
+- Dev: Improve INFO/ERROR logging so click/align events appear when DEBUG is off
+
 ## [1.1] - 2026-01-08
 - Neck separation refinement: avoid double-counting areas when splitting components
 - Improved area histogram accuracy: only split areas counted post-split

@@ -894,13 +894,63 @@ class CentroidFinderWindow(QMainWindow):
         def _dbg(msg):
             if DEBUG:
                 try:
-                    print(f"[DEBUG] {msg}", flush=True)
+                    import os as _os
+                    from datetime import datetime as _dt
+                    ts = _dt.now().strftime('%Y-%m-%d %H:%M:%S.%f')
+                    pid = _os.getpid()
+                    line = f"[DEBUG {ts} pid={pid}] {msg}"
+                    print(line, flush=True)
                     # Also write to file for persistent logging
                     with open("debug_px2xy.log", "a", encoding="utf-8") as f:
-                        f.write(f"[DEBUG] {msg}\n")
+                        f.write(line + "\n")
                 except Exception:
                     pass
         self._dbg = _dbg
+
+        # Always start a fresh log per run so tailing doesn't show stale traces.
+        # Also provide an error logger that works even when DEBUG is off.
+        def _log_error(msg):
+            try:
+                import os as _os
+                from datetime import datetime as _dt
+                ts = _dt.now().strftime('%Y-%m-%d %H:%M:%S.%f')
+                pid = _os.getpid()
+                line = f"[ERROR {ts} pid={pid}] {msg}"
+                print(line, flush=True)
+                with open("debug_px2xy.log", "a", encoding="utf-8") as f:
+                    f.write(line + "\n")
+            except Exception:
+                pass
+        self._log_error = _log_error
+
+        def _log_info(msg):
+            """Write lightweight run-time info to the log even when DEBUG is off."""
+            try:
+                import os as _os
+                from datetime import datetime as _dt
+                ts = _dt.now().strftime('%Y-%m-%d %H:%M:%S.%f')
+                pid = _os.getpid()
+                line = f"[INFO {ts} pid={pid}] {msg}"
+                # Do not spam stdout unless DEBUG is enabled
+                if DEBUG:
+                    print(line, flush=True)
+                with open("debug_px2xy.log", "a", encoding="utf-8") as f:
+                    f.write(line + "\n")
+            except Exception:
+                pass
+        self._log_info = _log_info
+
+        try:
+            import os as _os
+            from datetime import datetime as _dt
+            ui_path = _os.path.abspath(__file__)
+            with open("debug_px2xy.log", "w", encoding="utf-8") as f:
+                f.write(
+                    f"[RUN {_dt.now().strftime('%Y-%m-%d %H:%M:%S.%f')} pid={_os.getpid()}] "
+                    f"DEBUG={'1' if bool(DEBUG) else '0'} Ui={ui_path}\n"
+                )
+        except Exception:
+            pass
 
         # 画像関連変数
         self.img_full = None          # フル解像度画像 (numpy array)
@@ -934,6 +984,10 @@ class CentroidFinderWindow(QMainWindow):
         self.levels_value = 4          # PosterLevel の内部値
         self.show_boundaries = True    # 境界線表示フラグ
         self.view_orientation = 'Image'  # Coordinate (Image/Stage)
+
+        # Stage座標表示の符号（Stageモード時のみ表示に反映）
+        self.stage_axis_x_sign = 1  # +1: right is +X, -1: right is -X
+        self.stage_axis_y_sign = 1  # +1: up is +Y,   -1: up is -Y
 
         # 画像表示関連
         # 仮想キャンバス関連: 実際の表示はビューポート分のみだが、スクロール範囲は仮想的に拡張する
@@ -1429,7 +1483,6 @@ class CentroidFinderWindow(QMainWindow):
             img_header.addLayout(center_controls)
         except Exception:
             pass
-        img_header.addStretch(1)
         # 右上コントロール（左→右）: Coordinate, Boundary, Posterization Overlay
         overlay_ctrl = None
         try:
@@ -1486,16 +1539,16 @@ class CentroidFinderWindow(QMainWindow):
         except Exception:
             pass
 
-        # 右上: Boundary を配置（Coordinate は左側2段目へ移動）
+        # Boundary / Display Mode は左詰めで配置（Openの右側）
         try:
             if getattr(self, 'boundary_controls', None) is not None:
-                img_header.addWidget(self.boundary_controls, 0, Qt.AlignRight)
+                img_header.addWidget(self.boundary_controls, 0, Qt.AlignLeft)
             elif getattr(self, 'boundary_toggle', None) is not None:
-                img_header.addWidget(self.boundary_toggle, 0, Qt.AlignRight)
+                img_header.addWidget(self.boundary_toggle, 0, Qt.AlignLeft)
         except Exception:
             pass
 
-        # 右上: 最後に Posterization Overlay
+        # Display Mode（Original/Posterized）も左詰め
         try:
             if overlay_ctrl is not None:
                 try:
@@ -1505,11 +1558,14 @@ class CentroidFinderWindow(QMainWindow):
                 except Exception:
                     pass
                 try:
-                    img_header.addWidget(overlay_ctrl, 0, Qt.AlignRight)
+                    img_header.addWidget(overlay_ctrl, 0, Qt.AlignLeft)
                 except Exception:
                     img_header.addWidget(overlay_ctrl)
         except Exception:
             pass
+
+        # Push any remaining space to the right so the above controls stay left-aligned
+        img_header.addStretch(1)
 
         img_layout.addLayout(img_header, 0)
 
@@ -1525,6 +1581,45 @@ class CentroidFinderWindow(QMainWindow):
                 if getattr(self, 'view_orientation_controls', None) is not None:
                     mb.addWidget(self.view_orientation_controls, 0)
                     mb.addSpacing(10)
+            except Exception:
+                pass
+
+            # --- Axis sign controls (Stage only)
+            self._mid_axis_controls = QWidget()
+            try:
+                ahl = QHBoxLayout(self._mid_axis_controls)
+                ahl.setContentsMargins(0, 0, 0, 0)
+                ahl.setSpacing(8)
+
+                lbl_xa = QLabel("Right")
+                try:
+                    f = lbl_xa.font(); f.setBold(True); lbl_xa.setFont(f)
+                except Exception:
+                    pass
+                try:
+                    self.axis_toggle_x = SegmentControl(["+X", "-X"], checked_index=0, btn_w=44, btn_h=24)
+                    self.axis_toggle_x.set_on_changed(lambda idx: self._on_stage_axis_changed('x', int(idx)))
+                except Exception:
+                    self.axis_toggle_x = None
+
+                lbl_ya = QLabel("Top")
+                try:
+                    f = lbl_ya.font(); f.setBold(True); lbl_ya.setFont(f)
+                except Exception:
+                    pass
+                try:
+                    self.axis_toggle_y = SegmentControl(["+Y", "-Y"], checked_index=0, btn_w=44, btn_h=24)
+                    self.axis_toggle_y.set_on_changed(lambda idx: self._on_stage_axis_changed('y', int(idx)))
+                except Exception:
+                    self.axis_toggle_y = None
+
+                ahl.addWidget(lbl_xa)
+                if self.axis_toggle_x is not None:
+                    ahl.addWidget(self.axis_toggle_x)
+                ahl.addSpacing(10)
+                ahl.addWidget(lbl_ya)
+                if self.axis_toggle_y is not None:
+                    ahl.addWidget(self.axis_toggle_y)
             except Exception:
                 pass
 
@@ -1552,9 +1647,12 @@ class CentroidFinderWindow(QMainWindow):
                     self.slider_img_rotate.setMinimum(-180)
                     self.slider_img_rotate.setMaximum(180)
                     self.slider_img_rotate.setSingleStep(10)
+                    # Clicking on the groove uses pageStep in many styles; keep it 10 deg.
+                    self.slider_img_rotate.setPageStep(10)
                     self.slider_img_rotate.setTickInterval(10)
                     self.slider_img_rotate.setTickPosition(QSlider.TicksBelow)
-                    self.slider_img_rotate.setFixedWidth(280)
+                    # Shorten to about 2/3 of the previous length
+                    self.slider_img_rotate.setFixedWidth(190)
                     self.slider_img_rotate.setValue(int(self.manual_image_rotation_deg))
                 except Exception:
                     pass
@@ -1621,6 +1719,7 @@ class CentroidFinderWindow(QMainWindow):
 
                 w_s, self.lbl_scale_val = _mk_stat("Magnification:", min_width=56)
                 w_rot, self.lbl_angle_val = _mk_stat("Rotation:", min_width=56)
+                w_flip, self.lbl_flip_val = _mk_stat("Flip:", min_width=44)
                 w_tx, self.lbl_tx_val = _mk_stat("Shift X:", min_width=46)
                 w_ty, self.lbl_ty_val = _mk_stat("Shift Y:", min_width=46)
                 w_pitch, self.lbl_pitch_val = _mk_stat("Pitch:", min_width=46)
@@ -1628,6 +1727,7 @@ class CentroidFinderWindow(QMainWindow):
 
                 shl.addWidget(w_s)
                 shl.addWidget(w_rot)
+                shl.addWidget(w_flip)
                 shl.addWidget(w_tx)
                 shl.addWidget(w_ty)
                 shl.addWidget(w_pitch)
@@ -1636,6 +1736,7 @@ class CentroidFinderWindow(QMainWindow):
                 pass
 
             # Add groups to the bar (left aligned)
+            mb.addWidget(self._mid_axis_controls)
             mb.addWidget(self._mid_rotate_controls)
             mb.addWidget(self._mid_flip_controls)
             mb.addWidget(self._mid_stats_controls)
@@ -1643,6 +1744,8 @@ class CentroidFinderWindow(QMainWindow):
 
             # Initial visibility: Image mode
             try:
+                if getattr(self, '_mid_axis_controls', None) is not None:
+                    self._mid_axis_controls.setVisible(False)
                 self._mid_rotate_controls.setVisible(True)
                 self._mid_flip_controls.setVisible(True)
                 self._mid_stats_controls.setVisible(False)
@@ -1906,6 +2009,7 @@ class CentroidFinderWindow(QMainWindow):
             self.left_top_image.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Fixed)
             base_dir = os.path.dirname(__file__)
             candidates = [
+                os.path.join(base_dir, "PiXY_Pix.png"),  # Image mode default
                 os.path.join(base_dir, "PiXY.png"),
                 os.path.join(base_dir, "px2XY2.png"),
                 os.path.join(base_dir, "px2XY.png"),
@@ -2683,17 +2787,38 @@ class CentroidFinderWindow(QMainWindow):
                     pass
         except Exception:
             pass
+        # Update left_top_image based on coordinate selection
+        try:
+            if getattr(self, 'left_top_image', None) is not None:
+                base_dir = os.path.dirname(__file__)
+                if self.coordinate == 'Image':
+                    img_path = os.path.join(base_dir, 'PiXY_Pix.png')
+                else:  # Stage
+                    img_path = os.path.join(base_dir, 'PiXY_XY.png')
+                try:
+                    pm = QPixmap(img_path)
+                    if pm is not None and not pm.isNull():
+                        target_w, target_h = 450, 200
+                        self._left_top_pix = pm.scaled(target_w, target_h, Qt.KeepAspectRatio, Qt.SmoothTransformation)
+                        self.left_top_image.setPixmap(self._left_top_pix)
+                except Exception:
+                    pass
+        except Exception:
+            pass
         # Mid toolbar visibility by Coordinate:
         # - Image: show Image Rotate + Normal/Flip
         # - Stage: show Scale/X/Y/Z
         try:
             is_image = (self.coordinate == 'Image')
+            if getattr(self, '_mid_axis_controls', None) is not None:
+                self._mid_axis_controls.setVisible(not is_image)
             if getattr(self, '_mid_rotate_controls', None) is not None:
                 self._mid_rotate_controls.setVisible(is_image)
             if getattr(self, '_mid_flip_controls', None) is not None:
                 self._mid_flip_controls.setVisible(is_image)
             if getattr(self, '_mid_stats_controls', None) is not None:
-                self._mid_stats_controls.setVisible(not is_image)
+                # stats are now overlaid inside the image area; keep hidden here
+                self._mid_stats_controls.setVisible(False)
         except Exception:
             pass
         # Keep objects around for backward compatibility but do not show Stage flip per latest request.
@@ -2714,12 +2839,61 @@ class CentroidFinderWindow(QMainWindow):
         except Exception:
             pass
 
+    def _on_stage_axis_changed(self, axis, idx):
+        """Stage座標表示の符号（X/Y）を切り替える。0:+, 1:-"""
+        try:
+            sign = 1 if int(idx) == 0 else -1
+        except Exception:
+            sign = 1
+        try:
+            if str(axis).lower().startswith('x'):
+                self.stage_axis_x_sign = int(sign)
+            else:
+                self.stage_axis_y_sign = int(sign)
+        except Exception:
+            pass
+        try:
+            # display-only; repaint is enough
+            self._apply_proc_zoom()
+        except Exception:
+            try:
+                self.schedule_update(force=True)
+            except Exception:
+                pass
+
     def _on_manual_image_rotation_changed(self, val):
         try:
-            self.manual_image_rotation_deg = int(val)
+            # Snap to 10-degree increments even when clicking the slider groove.
+            try:
+                ival = int(val)
+            except Exception:
+                ival = 0
+            snapped = int(round(ival / 10.0)) * 10
+            snapped = max(-180, min(180, snapped))
+            if snapped != ival:
+                if not bool(getattr(self, '_in_img_rot_snap', False)):
+                    try:
+                        self._in_img_rot_snap = True
+                        if getattr(self, 'slider_img_rotate', None) is not None:
+                            self.slider_img_rotate.blockSignals(True)
+                            self.slider_img_rotate.setValue(int(snapped))
+                            self.slider_img_rotate.blockSignals(False)
+                    except Exception:
+                        try:
+                            if getattr(self, 'slider_img_rotate', None) is not None:
+                                self.slider_img_rotate.blockSignals(False)
+                        except Exception:
+                            pass
+                    finally:
+                        try:
+                            self._in_img_rot_snap = False
+                        except Exception:
+                            pass
+                ival = snapped
+            self.manual_image_rotation_deg = int(ival)
             if getattr(self, 'lbl_rot_val', None) is not None:
                 try:
-                    self.lbl_rot_val.setText(f"{int(val)}°")
+                    self.lbl_rot_val.setText(f"{int(ival)}°")
                 except Exception:
                     pass
         except Exception:
@@ -3843,8 +4017,21 @@ class CentroidFinderWindow(QMainWindow):
                     for i, c in enumerate(self.centroids or []):
                         try:
                             _, x, y = c
-                            sx = str(int(round(x)))
-                            sy = str(int(round(y)))
+                            try:
+                                spf = float(getattr(self, 'scale_proc_to_full', 1.0) or 1.0)
+                            except Exception:
+                                spf = 1.0
+                            try:
+                                h_full = int(self._img_base_size[1]) if self._img_base_size is not None else None
+                            except Exception:
+                                h_full = None
+                            x_full = float(x) * spf
+                            y_full = float(y) * spf
+                            sx = str(int(round(x_full)))
+                            if h_full is not None and h_full > 0:
+                                sy = str(int(round((h_full - 1) - y_full)))
+                            else:
+                                sy = str(int(round(-y_full)))
                             itx = rv.item(i, 0)
                             if itx is None:
                                 itx = QTableWidgetItem("")
@@ -3921,7 +4108,9 @@ class CentroidFinderWindow(QMainWindow):
                 self.selected_index,
                 self.ref_points,
                 self.scale_proc_to_full,
+                ref_selected_index=getattr(self, 'ref_selected_index', None),
                 colors=None,
+                debug_ref_coords=True,
                 interp_mode=self.interp_mode,
             )
         except Exception:
@@ -3934,37 +4123,113 @@ class CentroidFinderWindow(QMainWindow):
             return
 
         # Helper: compute similarity transform (scale, rotation, translation)
-        def _compute_similarity_transform(img_pts, stage_pts):
+        def _compute_similarity_transform(img_pts, stage_pts, prefer_reflect=None):
+            """Estimate 2D similarity (scale/rotation/translation) from ref points.
+
+            To handle possible left-right mirror between coordinate systems, we try both:
+              - normal:  (x, y)
+              - flipped: (-x, y)
+            and pick the one with the smaller RMS residual.
+            """
             try:
                 import numpy as _np
+
                 if len(img_pts) < 2 or len(stage_pts) < 2:
                     return None
-                src = _np.asarray(img_pts, dtype=_np.float64)
+
+                src0 = _np.asarray(img_pts, dtype=_np.float64)
                 dst = _np.asarray(stage_pts, dtype=_np.float64)
-                # use Umeyama-like similarity estimation
-                src_mean = src.mean(axis=0)
-                dst_mean = dst.mean(axis=0)
-                src_c = src - src_mean
-                dst_c = dst - dst_mean
-                # covariance
-                cov = (dst_c.T @ src_c) / src.shape[0]
-                U, S, Vt = _np.linalg.svd(cov)
-                R = U @ Vt
-                # ensure proper rotation (no accidental reflection)
-                det = _np.linalg.det(R)
-                reflect = False
-                if det < 0:
-                    # force proper rotation by flipping sign on last column of U
-                    U[:, -1] *= -1
+                if src0.ndim != 2 or dst.ndim != 2 or src0.shape[1] != 2 or dst.shape[1] != 2:
+                    return None
+                if src0.shape[0] != dst.shape[0] or src0.shape[0] < 2:
+                    return None
+
+                def _fit(src, reflect_flag: bool):
+                    # Umeyama-like similarity estimation
+                    src_mean = src.mean(axis=0)
+                    dst_mean = dst.mean(axis=0)
+                    src_c = src - src_mean
+                    dst_c = dst - dst_mean
+                    # covariance
+                    cov = (dst_c.T @ src_c) / src.shape[0]
+                    U, S, Vt = _np.linalg.svd(cov)
                     R = U @ Vt
-                    reflect = True
-                # scale
-                var_src = (src_c ** 2).sum() / src.shape[0]
-                s = _np.trace(_np.diag(S)) / var_src if var_src > 1e-12 else 1.0
-                t = dst_mean - s * (R @ src_mean)
-                # rotation angle (radians)
-                angle = _np.arctan2(R[1, 0], R[0, 0])
-                return {'s': float(s), 'R': R, 't': t, 'angle_rad': float(angle), 'angle_deg': float(_np.degrees(angle)), 'reflect': bool(reflect)}
+                    # ensure proper rotation (no accidental reflection)
+                    if _np.linalg.det(R) < 0:
+                        U[:, -1] *= -1
+                        R = U @ Vt
+                    # scale
+                    var_src = (src_c ** 2).sum() / src.shape[0]
+                    s = _np.sum(S) / var_src if var_src > 1e-12 else 1.0
+                    t = dst_mean - s * (R @ src_mean)
+                    # residual (RMS)
+                    pred = (s * (src @ R.T)) + t
+                    err = dst - pred
+                    rms = float(_np.sqrt(_np.mean(_np.sum(err * err, axis=1)))) if err.size else float('inf')
+                    # rotation angle (radians)
+                    angle = float(_np.arctan2(R[1, 0], R[0, 0]))
+                    return {
+                        's': float(s),
+                        'R': R,
+                        't': t,
+                        'angle_rad': float(angle),
+                        'angle_deg': float(_np.degrees(angle)),
+                        'reflect': bool(reflect_flag),
+                        'rms': rms,
+                    }
+
+                # Decide reflection handling based on Stage flip mode (auto/normal/flip)
+                # NOTE: This is the transform used for Stage alignment, so it must NOT use image flip mode.
+                try:
+                    mode = str(getattr(self, 'flip_mode_stage', 'auto') or 'auto').lower().strip()
+                except Exception:
+                    mode = 'auto'
+                if mode not in ('auto', 'normal', 'flip'):
+                    mode = 'auto'
+
+                # Precompute both candidates
+                normal = _fit(src0, reflect_flag=False)
+                src1 = src0.copy()
+                src1[:, 0] *= -1.0
+                flipped = _fit(src1, reflect_flag=True)
+
+                # Sticky selection in auto mode: if a previous reflect choice exists,
+                # do not flip reflect unless it is meaningfully better.
+                sticky_ratio = 0.02  # 2% RMS improvement required to switch away from preferred
+
+                if mode == 'normal':
+                    best = normal
+                elif mode == 'flip':
+                    best = flipped
+                else:
+                    # auto
+                    pref = None
+                    try:
+                        if prefer_reflect is not None:
+                            pref = bool(prefer_reflect)
+                    except Exception:
+                        pref = None
+
+                    rn = float(normal.get('rms', float('inf')))
+                    rf = float(flipped.get('rms', float('inf')))
+
+                    if pref is True:
+                        # keep flipped unless normal is clearly better
+                        if rn < rf * (1.0 - sticky_ratio):
+                            best = normal
+                        else:
+                            best = flipped
+                    elif pref is False:
+                        # keep normal unless flipped is clearly better
+                        if rf < rn * (1.0 - sticky_ratio):
+                            best = flipped
+                        else:
+                            best = normal
+                    else:
+                        # no preference
+                        best = flipped if (rf < rn) else normal
+
+                return best
             except Exception:
                 return None
 
@@ -3998,7 +4263,18 @@ class CentroidFinderWindow(QMainWindow):
                         sy_f = float(str(sy).replace(',', '').strip())
                     except Exception:
                         continue
-                    pts_img.append((x_full, y_full))
+                    # Fit in the same image coordinate convention as the tables/grid labels:
+                    # u = x_full, v = (h_full - 1) - y_full  (origin bottom-left, +v upward)
+                    try:
+                        h_full0 = int(self._img_base_size[1]) if getattr(self, '_img_base_size', None) else None
+                    except Exception:
+                        h_full0 = None
+                    u_full = float(x_full)
+                    if h_full0 is not None and h_full0 > 0:
+                        v_full = float((h_full0 - 1) - float(y_full))
+                    else:
+                        v_full = float(-float(y_full))
+                    pts_img.append((u_full, v_full))
                     pts_stage.append((sx_f, sy_f))
 
                     # Optional: z observation for pitch/roll estimation
@@ -4010,12 +4286,36 @@ class CentroidFinderWindow(QMainWindow):
                     except Exception:
                         pass
                 self._dbg(f"Stage alignment: found {len(pts_img)} valid point pairs")
+                try:
+                    if hasattr(self, '_log_info'):
+                        self._log_info(f"Stage alignment: pairs={len(pts_img)}")
+                except Exception:
+                    pass
                 if len(pts_img) < 2:
                     self._dbg(f"Insufficient ref points for stage transform (need ≥2, have {len(pts_img)})")
+                    try:
+                        if hasattr(self, '_log_info'):
+                            self._log_info(f"Stage alignment: insufficient (need>=2 have={len(pts_img)})")
+                    except Exception:
+                        pass
                     return None
-                result = _compute_similarity_transform(pts_img, pts_stage)
+                try:
+                    prev_info = getattr(self, '_last_stage_info', None)
+                    pref_reflect = None if prev_info is None else prev_info.get('reflect', None)
+                except Exception:
+                    pref_reflect = None
+                result = _compute_similarity_transform(pts_img, pts_stage, prefer_reflect=pref_reflect)
                 if result:
                     self._dbg(f"Transform computed: angle={result.get('angle_deg', 0):.2f}deg, scale={result.get('s', 1):.3f}")
+                    try:
+                        if hasattr(self, '_log_info'):
+                            self._log_info(
+                                f"Stage transform: angle_deg={float(result.get('angle_deg', 0.0)):.4f} "
+                                f"scale={float(result.get('s', 1.0)):.6g} reflect={bool(result.get('reflect', False))} "
+                                f"rms={float(result.get('rms', 0.0)):.6g}"
+                            )
+                    except Exception:
+                        pass
 
                 # Display magnification should be based on proc (u,v) -> stage (X,Y)
                 # while internal transform remains based on full coords for rendering consistency.
@@ -4126,6 +4426,7 @@ class CentroidFinderWindow(QMainWindow):
             self.selected_index,
             self.ref_points,
             self.scale_proc_to_full,
+            ref_selected_index=getattr(self, 'ref_selected_index', None),
             colors=None,
             interp_mode=self.interp_mode,
         )
@@ -4218,6 +4519,24 @@ class CentroidFinderWindow(QMainWindow):
                             self.lbl_angle_val.setText("-")
                     else:
                         self.lbl_angle_val.setText("-")
+                if getattr(self, 'lbl_flip_val', None) is not None:
+                    try:
+                        view_orient0 = getattr(self, 'view_orientation', 'Image')
+                    except Exception:
+                        view_orient0 = 'Image'
+                    if info is not None and view_orient0 == 'Stage':
+                        rf = bool(info.get('reflect', False))
+                        try:
+                            mode0 = str(getattr(self, 'flip_mode_stage', 'auto') or 'auto').lower().strip()
+                        except Exception:
+                            mode0 = 'auto'
+                        if mode0 == 'normal':
+                            rf = False
+                        elif mode0 == 'flip':
+                            rf = True
+                        self.lbl_flip_val.setText("On" if rf else "Off")
+                    else:
+                        self.lbl_flip_val.setText("-")
                 if getattr(self, 'lbl_pitch_val', None) is not None:
                     if info is not None and info.get('pitch_deg', None) is not None:
                         try:
@@ -4265,24 +4584,50 @@ class CentroidFinderWindow(QMainWindow):
                     # rotate around center
                     cx = img_region.width() / 2.0
                     cy = img_region.height() / 2.0
-                    # Reflect mode: Auto/Normal/Flip
-                    reflect_flag = bool(info.get('reflect', False))
+                    # Reflect mode: use the fitted value (表の計算パラメータ)
+                    reflect_fit = bool(info.get('reflect', False))
+                    # NOTE: Do NOT override with flip_mode_stage. flip_mode_stage is for override purposes,
+                    # but here we use the computed reflect value. Right/Top toggles will be applied later.
+
+                    # Compute scale/image properties
+                    s_val = float(info.get('s_proc', info.get('s', 1.0)))
+                    
+                    # === COORDINATE FLIP (from fitted model) ===
+                    # This is applied in the image coordinate system BEFORE rotation alignment
+                    sx_reflect = -1 if bool(reflect_fit) else 1
+                    
+                    # === DISPLAY FLIP (from user Right/Top settings) ===
+                    # These are purely display orientation (screen axes).
+                    # `stage_axis_x_sign`: +1 => screen-right is +X,  -1 => screen-right is -X
+                    # `stage_axis_y_sign`: +1 => screen-up    is +Y,  -1 => screen-up    is -Y
+                    # Note: our fit uses (u,v) where +v is upward; after converting back to pixmap (y-down),
+                    # stage +Y already points upward on screen when stage_axis_y_sign == +1.
                     try:
-                        mode = getattr(self, 'flip_mode_stage', 'auto')
-                        if mode == 'normal':
-                            reflect_flag = False
-                        elif mode == 'flip':
-                            reflect_flag = True
-                        # 'auto' keeps computed reflect
+                        sx_sign = int(getattr(self, 'stage_axis_x_sign', 1) or 1)
                     except Exception:
-                        pass
-                    if reflect_flag:
-                        transform.translate(cx, cy)
-                        transform.scale(-1, 1)
-                        transform.translate(-cx, -cy)
-                    # rotate so that stage X points to the right (negative because displayed Y axis is downward)
+                        sx_sign = 1
+                    try:
+                        sy_sign = int(getattr(self, 'stage_axis_y_sign', 1) or 1)
+                    except Exception:
+                        sy_sign = 1
+                    sx_axis = 1 if sx_sign > 0 else -1
+                    sy_axis = 1 if sy_sign > 0 else -1
+
+                    # Image rotation angle for QTransform:
+                    # Fit is performed in (u,v) where +v is upward, but QPixmap coords have +y downward.
+                    # Therefore we invert the sign when rotating the pixmap.
+                    angle_to_rotate = -float(angle)  # angle_deg from info (table convention)
+                    
+                    # === Build QTransform (single chain) ===
+                    # Desired application on points:
+                    #   p -> T(-c) -> S_reflect (coordinate flip) -> R(angle) -> S_axis (display flip) -> T(c)
+                    # With Qt's right-multiplication, append in reverse:
+                    #   T(c) -> S_axis -> R -> S_reflect -> T(-c)
                     transform.translate(cx, cy)
-                    transform.rotate(-angle)
+                    transform.scale(float(sx_axis), float(sy_axis))  # Display flip (Right/Top)
+                    transform.rotate(float(angle_to_rotate))         # Rotation (from fitted model)
+                    if sx_reflect != 1:
+                        transform.scale(float(sx_reflect), 1.0)      # Coordinate flip (from fitted model)
                     transform.translate(-cx, -cy)
                     rotated = img_region.transformed(transform, Qt.SmoothTransformation)
                     try:
@@ -4312,93 +4657,155 @@ class CentroidFinderWindow(QMainWindow):
                         import numpy as _np
                         import math
                         
-                        # After rotation, draw straight grid based on stage coordinates
+                        # Draw grid based on the *actual* fitted stage<->image transform.
+                        # This keeps axes consistent with StageInput: X is horizontal, Y is vertical.
                         display_scale = getattr(self, '_display_scale', None)
                         if display_scale is None:
                             display_scale = float(self.proc_zoom)
-                        
-                        # Determine stage pixel scale: display pixels per stage unit = display_scale / s
-                        s = float(info.get('s', 1.0))
-                        px_per_stage = display_scale / max(1e-12, s)
-                        
-                        # Choose nice spacing in stage units so spacing in px is in [50,200]
-                        target_px = 100.0
+
+                        s_val = float(info.get('s', 1.0))
+                        px_per_stage = float(display_scale) / max(1e-12, s_val)
+
+                        # Choose nice spacing in stage units so spacing in px is in [50,220]
                         candidates = []
-                        base = [1, 2, 5]
                         for e in range(-3, 6):
-                            for b in base:
+                            for b in (1, 2, 5):
                                 candidates.append(b * (10 ** e))
                         spacing = candidates[0]
                         for c in candidates:
                             if 50 <= (c * px_per_stage) <= 220:
                                 spacing = c
                                 break
-                        
-                        # Get stage bounds
+
+                        # Bounds: map image corners into stage coords using the fitted forward model.
                         w_full = int(self._img_base_size[0]) if getattr(self, '_img_base_size', None) else draw_w
                         h_full = int(self._img_base_size[1]) if getattr(self, '_img_base_size', None) else draw_h
-                        corners = [(0.0, 0.0), (w_full, 0.0), (w_full, h_full), (0.0, h_full)]
-                        R = _np.asarray(info.get('R'))
-                        t = _np.asarray(info.get('t'))
-                        s_val = float(info.get('s', 1.0))
-                        stage_pts = [_np.asarray([c[0], c[1]]) for c in corners]
-                        stage_corners = [s_val * (R @ p) + t for p in stage_pts]
-                        xs = [p[0] for p in stage_corners]
-                        ys = [p[1] for p in stage_corners]
+                        # Corners in full-image pixel coords are (x,y) with +y downward.
+                        # Convert them to the fitted (u,v) convention: v = (h_full-1) - y.
+                        corners = [(0.0, 0.0), (float(w_full - 1), 0.0), (float(w_full - 1), float(h_full - 1)), (0.0, float(h_full - 1))]
+                        R = _np.asarray(info.get('R'), dtype=_np.float64)
+                        t = _np.asarray(info.get('t'), dtype=_np.float64)
+                        reflect_fit = bool(info.get('reflect', False))
+                        stage_corners = []
+                        for cx0, cy0 in corners:
+                            x0 = float(cx0)
+                            y0 = float(cy0)
+                            u0 = x0
+                            v0 = float((h_full - 1) - y0) if (h_full is not None and h_full > 0) else -y0
+                            if reflect_fit:
+                                u0 = -u0
+                            p_uv = _np.asarray([u0, v0], dtype=_np.float64)
+                            stage_corners.append((s_val * (R @ p_uv)) + t)
+                        xs = [float(p0[0]) for p0 in stage_corners]
+                        ys = [float(p0[1]) for p0 in stage_corners]
                         xmin, xmax = min(xs), max(xs)
                         ymin, ymax = min(ys), max(ys)
-                        
+
                         start_x = math.floor(xmin / spacing) * spacing
                         end_x = math.ceil(xmax / spacing) * spacing
                         start_y = math.floor(ymin / spacing) * spacing
                         end_y = math.ceil(ymax / spacing) * spacing
-                        
+
                         pen = QPen(QColor(200, 200, 200, 140))
                         pen.setWidth(1)
                         p.setPen(pen)
-                        font = p.font()
-                        font.setPointSize(9)
-                        p.setFont(font)
-                        
-                        # Image is already rotated, so draw straight orthogonal grid
-                        # Map stage coords to rotated canvas coords
-                        # Center of rotated image
-                        cx = pad + rotated.width() / 2.0
-                        cy = pad + rotated.height() / 2.0
-                        
-                        # Draw vertical lines (constant stage X)
+                        font = p.font(); font.setPointSize(9); p.setFont(font)
+
+                        # stage -> image(full) -> display mapping, consistent with current QTransform
+                        def _stage_to_disp_xy(sx, sy):
+                            try:
+                                stage = _np.asarray([float(sx), float(sy)], dtype=_np.float64)
+                                # inverse of stage ~= s*R*[x',y] + t, where (x',y) is the fitted source coords.
+                                # Convert back to original image coords: (x,y) = F*(x',y) with F=diag(-1,1) when reflect.
+                                uv = (1.0 / max(1e-12, s_val)) * (R.T @ (stage - t))
+                                if reflect_fit:
+                                    uv[0] = -uv[0]
+                                # Convert back to full-image coords (x,y with +y downward)
+                                x_full = float(uv[0])
+                                try:
+                                    h_full0 = int(self._img_base_size[1]) if getattr(self, '_img_base_size', None) else None
+                                except Exception:
+                                    h_full0 = None
+                                if h_full0 is not None and h_full0 > 0:
+                                    y_full = float((h_full0 - 1) - float(uv[1]))
+                                else:
+                                    y_full = -float(uv[1])
+                                dxy = self._full_to_display(x_full, y_full)
+                                return None if dxy is None else (int(round(dxy[0])), int(round(dxy[1])))
+                            except Exception:
+                                return None
+
+                        # Vertical grid lines: X = const, Y varies
                         x = start_x
                         while x <= end_x + 1e-9:
-                            # In stage coords: vertical line at x, from ymin to ymax
-                            # Convert to display: stage units to pixels, centered on rotated canvas
-                            # Stage origin to display
-                            x_offset = (x - (xmin + xmax) / 2.0) * px_per_stage
-                            x_disp = cx + x_offset
-                            y_top = pad
-                            y_bottom = pad + rotated.height()
-                            p.drawLine(int(x_disp), int(y_top), int(x_disp), int(y_bottom))
-                            try:
-                                lbl = f"{x:.3g}"
-                                p.drawText(int(x_disp) + 4, int(y_top) + 14, lbl)
-                            except Exception:
-                                pass
+                            p1 = _stage_to_disp_xy(x, ymin)
+                            p2 = _stage_to_disp_xy(x, ymax)
+                            if p1 is not None and p2 is not None:
+                                p.drawLine(p1[0], p1[1], p2[0], p2[1])
+                                try:
+                                    lbl = f"{x:.3g}"
+                                    p.drawText(int(p1[0]) + 4, int(min(p1[1], p2[1])) + 14, lbl)
+                                except Exception:
+                                    pass
                             x += spacing
-                        
-                        # Draw horizontal lines (constant stage Y)
+
+                        # Horizontal grid lines: Y = const, X varies
                         y = start_y
                         while y <= end_y + 1e-9:
-                            # In stage coords: horizontal line at y, from xmin to xmax
-                            y_offset = (y - (ymin + ymax) / 2.0) * px_per_stage
-                            y_disp = cy + y_offset
-                            x_left = pad
-                            x_right = pad + rotated.width()
-                            p.drawLine(int(x_left), int(y_disp), int(x_right), int(y_disp))
-                            try:
-                                lbl = f"{y:.3g}"
-                                p.drawText(int(x_left) + 4, int(y_disp) - 4, lbl)
-                            except Exception:
-                                pass
+                            p1 = _stage_to_disp_xy(xmin, y)
+                            p2 = _stage_to_disp_xy(xmax, y)
+                            if p1 is not None and p2 is not None:
+                                p.drawLine(p1[0], p1[1], p2[0], p2[1])
+                                try:
+                                    lbl = f"{y:.3g}"
+                                    p.drawText(int(min(p1[0], p2[0])) + 4, int(p1[1]) - 4, lbl)
+                                except Exception:
+                                    pass
                             y += spacing
+                    except Exception:
+                        pass
+
+                    # Overlay alignment stats at the top of the image (inside pixmap)
+                    try:
+                        from qt_compat.QtGui import QPen, QColor
+                        txt_color = QColor(235, 235, 235, 235)
+                        p.setPen(QPen(txt_color, 1))
+                        f = p.font()
+                        try:
+                            f.setPointSize(10)
+                            f.setBold(True)
+                        except Exception:
+                            pass
+                        p.setFont(f)
+
+                        def _fmt(v, fmt):
+                            try:
+                                return format(float(v), fmt)
+                            except Exception:
+                                return "-"
+
+                        mag = _fmt(info.get('s_proc', info.get('s', None)), '.4g')
+                        ang = _fmt(info.get('angle_deg', None), '.2f')
+                        try:
+                            rf = bool(info.get('reflect', False))  # Use computed reflect, not flip_mode_stage
+                            flip_txt = "On" if rf else "Off"
+                        except Exception:
+                            flip_txt = "-"
+                        try:
+                            t_xy = info.get('t', None)
+                            tx = _fmt(t_xy[0] if t_xy is not None else None, '.3g')
+                            ty = _fmt(t_xy[1] if t_xy is not None else None, '.3g')
+                        except Exception:
+                            tx, ty = "-", "-"
+                        pitch = _fmt(info.get('pitch_deg', None), '.3g')
+                        roll = _fmt(info.get('roll_deg', None), '.3g')
+
+                        line1 = f"Magnification: {mag}   Rotation: {ang}   Flip: {flip_txt}"
+                        line2 = f"Shift X: {tx}   Shift Y: {ty}   Pitch: {pitch}   Roll: {roll}"
+                        x0 = int(pad + 8)
+                        y0 = int(pad + 18)
+                        p.drawText(x0, y0, line1)
+                        p.drawText(x0, y0 + 16, line2)
                     except Exception:
                         pass
                     try:
@@ -4502,41 +4909,46 @@ class CentroidFinderWindow(QMainWindow):
                                 return None, None
                         
                         # Vertical lines (constant X in image pixels)
+                        # IMPORTANT: Image pixel indices are [0..w_full-1], [0..h_full-1].
+                        # Using w_full/h_full as coordinates caused v=-1 at the bottom due to (h_full-1)-h_full.
                         x_px = 0.0
-                        while x_px <= w_full + 1e-6:
+                        x_max = max(0.0, float(w_full - 1))
+                        y_top_px = 0.0
+                        y_bottom_px = max(0.0, float(h_full - 1))
+                        while x_px <= x_max + 1e-6:
                             # 線の始終点を計算（回転適用）
-                            y_top_px = 0.0
-                            y_bottom_px = h_full
                             x_top, y_top = transform_grid_coords(x_px, y_top_px)
                             x_bottom, y_bottom = transform_grid_coords(x_px, y_bottom_px)
                             if x_top is not None and x_bottom is not None:
                                 p.drawLine(x_top, y_top, x_bottom, y_bottom)
-                            # ラベル位置（中央付近）
-                            x_mid, y_mid = transform_grid_coords(x_px, h_full / 2.0)
-                            if x_mid is not None and y_mid is not None:
+                            # ラベル位置（下端付近）: 左下原点を明確にする
+                            x_lbl, y_lbl = transform_grid_coords(x_px, y_bottom_px)
+                            if x_lbl is not None and y_lbl is not None:
                                 try:
                                     lbl = f"{int(round(x_px))}"
-                                    p.drawText(x_mid + 4, y_mid - 4, lbl)
+                                    p.drawText(x_lbl + 4, y_lbl - 6, lbl)
                                 except Exception:
                                     pass
                             x_px += pixel_spacing
 
                         # Horizontal lines (constant Y in image pixels)
                         y_px = 0.0
-                        while y_px <= h_full + 1e-6:
+                        y_max = max(0.0, float(h_full - 1))
+                        x_left_px = 0.0
+                        x_right_px = max(0.0, float(w_full - 1))
+                        while y_px <= y_max + 1e-6:
                             # 線の始終点を計算（回転適用）
-                            x_left_px = 0.0
-                            x_right_px = w_full
                             x_left, y_left = transform_grid_coords(x_left_px, y_px)
                             x_right, y_right = transform_grid_coords(x_right_px, y_px)
                             if x_left is not None and x_right is not None:
                                 p.drawLine(x_left, y_left, x_right, y_right)
-                            # ラベル位置（中央付近）
-                            x_mid, y_mid = transform_grid_coords(w_full / 2.0, y_px)
-                            if x_mid is not None and y_mid is not None:
+                            # ラベル位置（左端付近）: 左下原点を明確にする
+                            x_lbl, y_lbl = transform_grid_coords(x_left_px, y_px)
+                            if x_lbl is not None and y_lbl is not None:
                                 try:
-                                    lbl = f"{int(round(y_px))}"
-                                    p.drawText(x_mid + 4, y_mid - 4, lbl)
+                                    # Display convention: origin at bottom-left pixel; v is positive upward.
+                                    lbl = f"{int(round((h_full - 1) - y_px))}"
+                                    p.drawText(x_lbl + 4, y_lbl - 4, lbl)
                                 except Exception:
                                     pass
                             y_px += pixel_spacing
@@ -4570,6 +4982,11 @@ class CentroidFinderWindow(QMainWindow):
                 import traceback
                 self._dbg(f"Stage rotation failed with exception: {e}")
                 self._dbg(traceback.format_exc())
+                try:
+                    if hasattr(self, '_log_error'):
+                        self._log_error(f"Stage rotation failed: {e}\n{traceback.format_exc()}")
+                except Exception:
+                    pass
                 pm_to_show = pm
                 try:
                     self._display_mapping = None
@@ -4755,7 +5172,11 @@ class CentroidFinderWindow(QMainWindow):
         if curCol is None or curCol < 0:
             return
         self.ref_selected_index = curCol
-        # 参照選択の変更では描画更新は不要
+        # Ref選択変更はRefマーカーの大小に影響するので、表/描画を同期する
+        try:
+            self._sync_ref_selection()
+        except Exception:
+            pass
 
     def _on_ref_view_current_changed(self, curRow, curCol, prevRow, prevCol):
         """Selection change in transposed ref view.
@@ -4769,6 +5190,95 @@ class CentroidFinderWindow(QMainWindow):
             if int(curRow) < header_rows:
                 return
             self.ref_selected_index = int(curRow) - header_rows
+        except Exception:
+            pass
+        # Ref選択変更はRefマーカーの大小に影響するので、表/描画を同期する
+        try:
+            self._sync_ref_selection()
+        except Exception:
+            pass
+
+    def _sync_ref_selection(self):
+        """Sync ref_selected_index to both ref tables and redraw.
+
+        - canonical: table_ref selects the column
+        - transposed: table_ref_view selects the row
+        """
+        try:
+            idx = getattr(self, 'ref_selected_index', None)
+            if idx is None:
+                return
+            idx = int(idx)
+            if idx < 0:
+                return
+        except Exception:
+            return
+
+        # Ensure the selected ref column is visible
+        try:
+            vis = int(getattr(self, 'visible_ref_cols', 1) or 1)
+            if (idx + 1) > vis:
+                self.visible_ref_cols = min(len(getattr(self, 'ref_points', []) or []), idx + 1)
+                try:
+                    self._safe_populate_tables(
+                        self.table_ref,
+                        self.table,
+                        self.ref_points,
+                        self.ref_obs,
+                        self.centroids,
+                        self.selected_index,
+                        self.ref_selected_index,
+                        flip_mode=self.flip_mode,
+                        visible_ref_cols=self.visible_ref_cols,
+                    )
+                    try:
+                        self._refresh_transposed_views()
+                    except Exception:
+                        pass
+                except Exception:
+                    pass
+        except Exception:
+            pass
+
+        # Canonical ref table selection (column)
+        try:
+            t = getattr(self, 'table_ref', None)
+            if t is not None and 0 <= idx < t.columnCount():
+                try:
+                    t.blockSignals(True)
+                    # canonical table_ref has 2 pseudo-header rows; choose X row for current cell
+                    t.setCurrentCell(2, idx)
+                    t.selectColumn(idx)
+                finally:
+                    try:
+                        t.blockSignals(False)
+                    except Exception:
+                        pass
+        except Exception:
+            pass
+
+        # Transposed ref view selection (row)
+        try:
+            rv = getattr(self, 'table_ref_view', None)
+            if rv is not None:
+                header_rows = 2
+                view_r = int(idx) + header_rows
+                if 0 <= view_r < rv.rowCount():
+                    try:
+                        rv.blockSignals(True)
+                        rv.setCurrentCell(view_r, 0)
+                        rv.selectRow(view_r)
+                    finally:
+                        try:
+                            rv.blockSignals(False)
+                        except Exception:
+                            pass
+        except Exception:
+            pass
+
+        # Redraw so RefPoint marker sizes update immediately
+        try:
+            self._apply_proc_zoom()
         except Exception:
             pass
 
@@ -5398,8 +5908,48 @@ class CentroidFinderWindow(QMainWindow):
                         from qt_compat.QtWidgets import QTableWidgetItem
                         from qt_compat.QtCore import Qt as _Qt
 
-                        xi = str(int(round(x_proc)))
-                        yi = str(int(round(y_proc)))
+                        # Display convention (must match tables.populate_tables):
+                        # u = x_full, v = (h_full - 1) - y_full  (origin bottom-left, +v upward)
+                        try:
+                            h_full = None
+                            try:
+                                if getattr(self, '_img_base_size', None) is not None:
+                                    h_full = int(self._img_base_size[1])
+                            except Exception:
+                                h_full = None
+                            if h_full is None or h_full <= 0:
+                                try:
+                                    if getattr(self, 'img_full', None) is not None:
+                                        h_full = int(self.img_full.shape[0])
+                                except Exception:
+                                    h_full = None
+
+                            u_disp = int(round(float(x_full)))
+                            if h_full is not None and h_full > 0:
+                                v_disp = int(round(float(h_full - 1) - float(y_full)))
+                            else:
+                                v_disp = int(round(-float(y_full)))
+                        except Exception:
+                            u_disp, v_disp = None, None
+
+                        # Debug: log mapping chain for clicked point
+                        try:
+                            try:
+                                px = int(pos.x()) if hasattr(pos, 'x') else pos[0]
+                                py = int(pos.y()) if hasattr(pos, 'y') else pos[1]
+                            except Exception:
+                                px = py = None
+                            self._dbg(f"CLICK debug: label_pos={px},{py} -> full={x_full:.3f},{y_full:.3f} -> proc={x_proc:.3f},{y_proc:.3f} -> u,v={u_disp},{v_disp} img_base={getattr(self,'_img_base_size',None)} scale_proc_to_full={getattr(self,'scale_proc_to_full',None)}")
+                            try:
+                                if hasattr(self, '_log_info'):
+                                    self._log_info(f"CLICK ref[{idx}] label_pos={px},{py} full={x_full:.3f},{y_full:.3f} proc={x_proc:.3f},{y_proc:.3f} u,v={u_disp},{v_disp} img_base={getattr(self,'_img_base_size',None)} scale_proc_to_full={getattr(self,'scale_proc_to_full',None)}")
+                            except Exception:
+                                pass
+                        except Exception:
+                            pass
+
+                        xi = str(u_disp) if u_disp is not None else ""
+                        yi = str(v_disp) if v_disp is not None else ""
 
                         # canonical: table_ref (data starts at row 2 because rows 0-1 are pseudo-headers)
                         t = getattr(self, 'table_ref', None)
@@ -5919,6 +6469,15 @@ class CentroidFinderWindow(QMainWindow):
             except Exception:
                 pass
 
+            # Inject image coordinate context for u/v display (bottom-left origin) unless provided.
+            try:
+                if 'image_base_size' not in kwargs:
+                    kwargs['image_base_size'] = getattr(self, '_img_base_size', None)
+                if 'scale_proc_to_full' not in kwargs:
+                    kwargs['scale_proc_to_full'] = getattr(self, 'scale_proc_to_full', 1.0)
+            except Exception:
+                pass
+
             if editing:
                 # Only schedule one deferred update at a time
                 if getattr(self, '_safe_populate_scheduled', False):
@@ -5976,6 +6535,14 @@ class CentroidFinderWindow(QMainWindow):
         except Exception:
             pass
         try:
+            # Inject image coordinate context for u/v display (bottom-left origin) unless provided.
+            try:
+                if 'image_base_size' not in kwargs:
+                    kwargs['image_base_size'] = getattr(self, '_img_base_size', None)
+                if 'scale_proc_to_full' not in kwargs:
+                    kwargs['scale_proc_to_full'] = getattr(self, 'scale_proc_to_full', 1.0)
+            except Exception:
+                pass
             populate_tables(*args, **kwargs)
             # Reinstall pseudo-headers after populate (data might overwrite them)
             try:
@@ -5994,6 +6561,208 @@ class CentroidFinderWindow(QMainWindow):
                 QTimer.singleShot(200, lambda: self._setup_pseudo_headers_between(self.table))
             except Exception:
                 pass
+            # Auto-shrink fonts so long XYZ values (e.g., 5+ digits) don't clip.
+            try:
+                QTimer.singleShot(220, self._auto_fit_table_fonts)
+            except Exception:
+                pass
+        except Exception:
+            pass
+
+    def _auto_fit_table_fonts(self):
+        """Reduce table cell font size to avoid clipping long numeric strings.
+
+        Applies to canonical and transposed tables. Header fonts are set explicitly
+        elsewhere, so shrinking the table font mainly affects the items.
+        """
+        try:
+            if getattr(self, '_auto_fit_fonts_running', False):
+                return
+            self._auto_fit_fonts_running = True
+        except Exception:
+            pass
+        try:
+            tables = []
+            try:
+                tables.append((getattr(self, 'table_ref', None), 2))
+            except Exception:
+                pass
+            try:
+                tables.append((getattr(self, 'table', None), 2))
+            except Exception:
+                pass
+            try:
+                tables.append((getattr(self, 'table_ref_view', None), 2))
+            except Exception:
+                pass
+            try:
+                tables.append((getattr(self, 'table_between', None), 2))
+            except Exception:
+                pass
+
+            for tbl, row_start in tables:
+                try:
+                    self._auto_fit_table_font(tbl, row_start=row_start, min_pt=8, max_pt=12)
+                except Exception:
+                    pass
+        finally:
+            try:
+                self._auto_fit_fonts_running = False
+            except Exception:
+                pass
+
+    def _auto_fit_table_font(self, tbl, row_start=0, min_pt=8, max_pt=12):
+        """Choose a font size so that item texts fit within each column."""
+        try:
+            if tbl is None:
+                return
+            rows = int(getattr(tbl, 'rowCount')())
+            cols = int(getattr(tbl, 'columnCount')())
+            if rows <= 0 or cols <= 0:
+                return
+        except Exception:
+            return
+
+        try:
+            from qt_compat.QtGui import QFont, QFontMetrics
+        except Exception:
+            return
+
+        try:
+            base_font = QFont(tbl.font())
+        except Exception:
+            base_font = QFont()
+
+        try:
+            base_pt = int(base_font.pointSize()) if base_font is not None else int(max_pt)
+        except Exception:
+            base_pt = int(max_pt)
+        try:
+            base_pt = max(int(min_pt), min(int(max_pt), int(base_pt) if int(base_pt) > 0 else int(max_pt)))
+        except Exception:
+            base_pt = int(max_pt)
+
+        # If content is empty or no potentially-wide strings, keep current.
+        try:
+            has_wide_text = False
+            for r in range(int(row_start), rows):
+                for c in range(cols):
+                    it = tbl.item(r, c)
+                    if it is None:
+                        continue
+                    t = str(it.text() or "").strip()
+                    if not t:
+                        continue
+                    # focus on values that are likely to clip
+                    if len(t) >= 5 or ('.' in t) or ('-' in t):
+                        has_wide_text = True
+                        break
+                if has_wide_text:
+                    break
+            if not has_wide_text:
+                return
+        except Exception:
+            pass
+
+        # Determine best size by trying from current/max down to min.
+        chosen = None
+        try:
+            # allow growing back up when values shrink
+            start_pt = int(max_pt)
+        except Exception:
+            start_pt = int(max_pt)
+
+        def _fits(pt):
+            try:
+                # conservative padding per cell
+                pad = 10
+                for c in range(cols):
+                    try:
+                        avail = int(tbl.columnWidth(c)) - pad
+                    except Exception:
+                        avail = None
+                    if avail is None or avail <= 6:
+                        continue
+                    for r in range(int(row_start), rows):
+                        it = tbl.item(r, c)
+                        if it is None:
+                            continue
+                        t = str(it.text() or "")
+                        if t.strip() == "":
+                            continue
+                        # Skip small texts to keep this light
+                        try:
+                            ts = t.strip()
+                            if len(ts) < 5 and ('.' not in ts) and ('-' not in ts):
+                                continue
+                        except Exception:
+                            pass
+                        # Measure using the *item's* font (bold etc), falling back to table font.
+                        try:
+                            f_item = QFont(it.font())
+                        except Exception:
+                            f_item = QFont(base_font)
+                        try:
+                            f_item.setPointSize(int(pt))
+                        except Exception:
+                            pass
+                        fm = QFontMetrics(f_item)
+                        try:
+                            w = int(fm.horizontalAdvance(t))
+                        except Exception:
+                            try:
+                                w = int(fm.width(t))
+                            except Exception:
+                                w = 0
+                        if w > avail:
+                            return False
+                return True
+            except Exception:
+                return False
+
+        for pt in range(int(start_pt), int(min_pt) - 1, -1):
+            if _fits(pt):
+                chosen = int(pt)
+                break
+        if chosen is None:
+            chosen = int(min_pt)
+
+        try:
+            prev = tbl.property('_auto_fit_font_pt')
+        except Exception:
+            prev = None
+        try:
+            if prev is not None and int(prev) == int(chosen):
+                return
+        except Exception:
+            pass
+
+        # Apply chosen size to items (preserve bold/italic per item).
+        try:
+            for r in range(int(row_start), rows):
+                for c in range(cols):
+                    it = tbl.item(r, c)
+                    if it is None:
+                        continue
+                    try:
+                        t = str(it.text() or "").strip()
+                        if not t:
+                            continue
+                    except Exception:
+                        pass
+                    try:
+                        f_item = QFont(it.font())
+                    except Exception:
+                        f_item = QFont(base_font)
+                    try:
+                        f_item.setPointSize(int(chosen))
+                        it.setFont(f_item)
+                    except Exception:
+                        pass
+            try:
+                tbl.setProperty('_auto_fit_font_pt', int(chosen))
+            except Exception:
+                pass
         except Exception:
             pass
 
@@ -6003,6 +6772,39 @@ class CentroidFinderWindow(QMainWindow):
             header_rows = 2
             ref_src_row_offset = 2  # canonical table_ref has 2 pseudo-header rows
             mid_src_row_offset = 2  # canonical table has 2 pseudo-header rows
+
+            # Display convention for Image columns:
+            # u = x_full
+            # v = (h_full - 1) - y_full   (origin bottom-left, +v upward)
+            try:
+                _spf = float(getattr(self, 'scale_proc_to_full', 1.0) or 1.0)
+            except Exception:
+                _spf = 1.0
+            try:
+                _h_full = int(self._img_base_size[1]) if getattr(self, '_img_base_size', None) else None
+            except Exception:
+                _h_full = None
+            if not (_h_full is not None and _h_full > 0):
+                try:
+                    if getattr(self, 'img_full', None) is not None:
+                        _h_full = int(self.img_full.shape[0])
+                except Exception:
+                    _h_full = None
+
+            def _fmt_uv_from_proc_pt(pt):
+                try:
+                    if pt is None:
+                        return "", ""
+                    x_full = float(pt[0]) * _spf
+                    y_full = float(pt[1]) * _spf
+                    u = int(round(x_full))
+                    if _h_full is not None and _h_full > 0:
+                        v = int(round((_h_full - 1) - y_full))
+                    else:
+                        v = int(round(-y_full))
+                    return str(u), str(v)
+                except Exception:
+                    return "", ""
 
             # If the user is actively editing the transposed left table, do not rebuild
             # *that* view's items. But still refresh the middle table (Calc results)
@@ -6074,10 +6876,10 @@ class CentroidFinderWindow(QMainWindow):
                                         txt = ""
                                         if src_r == (ref_src_row_offset + 0):
                                             pt = self.ref_points[src_c] if 0 <= src_c < len(self.ref_points) else None
-                                            txt = "" if pt is None else str(int(round(float(pt[0]))))
+                                            txt, _ = _fmt_uv_from_proc_pt(pt)
                                         elif src_r == (ref_src_row_offset + 1):
                                             pt = self.ref_points[src_c] if 0 <= src_c < len(self.ref_points) else None
-                                            txt = "" if pt is None else str(int(round(float(pt[1]))))
+                                            _, txt = _fmt_uv_from_proc_pt(pt)
                                         else:
                                             src_item = src.item(src_r, src_c)
                                             txt = src_item.text() if src_item is not None else ""
@@ -6268,10 +7070,10 @@ class CentroidFinderWindow(QMainWindow):
                                     # Columns: 0..8 == X,Y,ObsX,ObsY,ObsZ,ResX,ResY,ResZ,|R|
                                     if c == 0:
                                         pt = self.ref_points[r] if 0 <= r < len(self.ref_points) else None
-                                        txt = "" if pt is None else str(int(round(float(pt[0]))))
+                                        txt, _ = _fmt_uv_from_proc_pt(pt)
                                     elif c == 1:
                                         pt = self.ref_points[r] if 0 <= r < len(self.ref_points) else None
-                                        txt = "" if pt is None else str(int(round(float(pt[1]))))
+                                        _, txt = _fmt_uv_from_proc_pt(pt)
                                     elif c in (2, 3, 4):
                                         obs = self.ref_obs[r] if 0 <= r < len(self.ref_obs) else None
                                         if isinstance(obs, dict):

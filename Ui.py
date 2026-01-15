@@ -29,7 +29,7 @@ from qt_compat.QtGui import QPixmap, QFont, QCursor, QPainter, QPen, QColor, QPa
 
 from Util import cvimg_to_qpixmap, kmeans_posterize
 from CalcCentroid import CentroidProcessor
-from Config import PROC_TARGET_WIDTH, save_last_image_path, load_last_image_path, DEBUG
+from Config import PROC_TARGET_WIDTH, save_last_image_path, load_last_image_path, DEBUG, DEFAULT_MAX_GRAIN_AREA, DEFAULT_MIN_GRAIN_AREA
 
 import numpy as np
 import cv2
@@ -88,10 +88,10 @@ class SegmentControl(QWidget):
                 b.setFixedSize(btn_w, btn_h)
             except Exception:
                 pass
-            # Set normal (non-bold) font
+            # Set bold font for toggle labels
             try:
                 f = b.font()
-                f.setBold(False)
+                f.setBold(True)
                 b.setFont(f)
             except Exception:
                 pass
@@ -100,17 +100,17 @@ class SegmentControl(QWidget):
                 # Left-most: round only the outer-left corners; keep inner-right corners square.
                 b.setStyleSheet(
                     qss_base
-                    + "QPushButton { border-top-left-radius: 10px; border-bottom-left-radius: 10px; border-top-right-radius: 0px; border-bottom-right-radius: 0px; border-right: none; font-weight: normal; }"
+                    + "QPushButton { border-top-left-radius: 10px; border-bottom-left-radius: 10px; border-top-right-radius: 0px; border-bottom-right-radius: 0px; border-right: none; }"
                 )
             elif i == len(labels) - 1:
                 # Right-most: round only the outer-right corners; keep inner-left corners square.
                 b.setStyleSheet(
                     qss_base
-                    + "QPushButton { border-top-right-radius: 10px; border-bottom-right-radius: 10px; border-top-left-radius: 0px; border-bottom-left-radius: 0px; border-left: none; font-weight: normal; }"
+                    + "QPushButton { border-top-right-radius: 10px; border-bottom-right-radius: 10px; border-top-left-radius: 0px; border-bottom-left-radius: 0px; border-left: none; }"
                 )
             else:
                 # Middle segments: all corners square.
-                b.setStyleSheet(qss_base + "QPushButton { border-radius: 0px; border-left: none; border-right: none; font-weight: normal; }")
+                b.setStyleSheet(qss_base + "QPushButton { border-radius: 0px; border-left: none; border-right: none; }")
             layout.addWidget(b)
             self._group.addButton(b, i)
             self._buttons.append(b)
@@ -622,7 +622,7 @@ class AreaHistogramWidget(QWidget):
                 painter.translate(x0 + rect_w + 14, margin_t + rect_h / 2.0)
                 # Flip reading direction (180° from previous): use +90 instead of -90
                 painter.rotate(90)
-                painter.drawText(QRect(-rect_h // 2, -10, rect_h, 20), Qt.AlignHCenter | Qt.AlignVCenter, "Area")
+                painter.drawText(QRect(-rect_h // 2, -10, rect_h, 20), Qt.AlignHCenter | Qt.AlignVCenter, "Total Area")
                 painter.restore()
             except Exception:
                 pass
@@ -799,8 +799,25 @@ class Footer(QWidget):
         layout.setContentsMargins(4, 0, 4, 0)
         self.label = QLabel("")
         self.label.setStyleSheet("color: white; font-size: 11px;")
+        try:
+            lf = self.label.font()
+            lf.setBold(True)
+            self.label.setFont(lf)
+        except Exception:
+            pass
         layout.addWidget(self.label)
         layout.addStretch(1)
+        # Right-aligned author/credit label (small, white)
+        self.credit_label = QLabel("PiXY — © Y. KON")
+        self.credit_label.setStyleSheet("color: white; font-size: 11px;")
+        self.credit_label.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
+        try:
+            cf = self.credit_label.font()
+            cf.setBold(True)
+            self.credit_label.setFont(cf)
+        except Exception:
+            pass
+        layout.addWidget(self.credit_label)
 
     def paintEvent(self, event):
         """Force paint background to ensure color is applied."""
@@ -880,11 +897,18 @@ class CentroidFinderWindow(QMainWindow):
                         version = m.group(1)
                 except Exception:
                     version = None
-            if version:
-                self.setWindowTitle(f"{STR.APP_TITLE} (Ver. {version})")
-            else:
+            # Store parsed version for later use (footer). Do NOT show it in the window title.
+            self._app_version = version
+            try:
                 self.setWindowTitle(STR.APP_TITLE)
+            except Exception:
+                pass
         except Exception:
+            # If parsing failed, ensure attribute exists and set simple title
+            try:
+                self._app_version = None
+            except Exception:
+                pass
             try:
                 self.setWindowTitle(STR.APP_TITLE)
             except Exception:
@@ -1280,7 +1304,8 @@ class CentroidFinderWindow(QMainWindow):
         # 残すのは PosterLevel と Min Area に加え、Trim(pix)
         # Use code-safe internal keys for widgets; display text comes from self.display_labels
         self.edit_levels, self.slider_levels = self._make_spin_slider('poster_level', 4, 2, 20, 1)
-        self.edit_min_area, self.slider_min_area = self._make_spin_slider('min_area', 50, 10, 5000, 1)
+        # Set default Min Area from Config (range 10..5000)
+        self.edit_min_area, self.slider_min_area = self._make_spin_slider('min_area', DEFAULT_MIN_GRAIN_AREA, 10, 5000, 1)
         self.edit_trim, self.slider_trim = self._make_spin_slider('trim', 0, 0, 10, 1)
         self.edit_neck_sep, self.slider_neck_sep = self._make_spin_slider('neck_separation', 0, 0, 10, 1)
         self.edit_shape_complex, self.slider_shape_complex = self._make_spin_slider('shape_complexity', 10, 0, 10, 1)
@@ -1677,13 +1702,13 @@ class CentroidFinderWindow(QMainWindow):
                 fhl.setContentsMargins(0, 0, 0, 0)
                 fhl.setSpacing(6)
                 try:
-                    self.flip_toggle_image = SegmentControl(["Normal", "Flip"], checked_index=0, btn_w=72, btn_h=24)
+                    self.flip_toggle_image = SegmentControl(["Normal", "Flip"], checked_index=0, btn_w=80, btn_h=24)
                     self.flip_toggle_image.set_on_changed(lambda idx: self._on_flip_changed('image', int(idx)))
                 except Exception:
                     self.flip_toggle_image = None
                 # Keep stage flip toggle object for backward compatibility, but do not show it here.
                 try:
-                    self.flip_toggle_stage = SegmentControl(["Auto", "Normal", "Flip"], checked_index=0, btn_w=72, btn_h=24)
+                    self.flip_toggle_stage = SegmentControl(["Auto", "Normal", "Flip"], checked_index=0, btn_w=80, btn_h=24)
                     self.flip_toggle_stage.set_on_changed(lambda idx: self._on_flip_changed('stage', int(idx)))
                     self.flip_toggle_stage.setVisible(False)
                 except Exception:
@@ -1875,7 +1900,7 @@ class CentroidFinderWindow(QMainWindow):
         # Helper to build Number of Groups row for Basic mode
         def _build_num_groups_row_widget():
             try:
-                self.edit_num_groups, self.slider_num_groups = self._make_spin_slider('num_groups', 2, 2, 20, 1)
+                self.edit_num_groups, self.slider_num_groups = self._make_spin_slider('num_groups', 4, 2, 20, 1)
                 r = _build_control_row('num_groups', 'Number of Groups', self.edit_num_groups, self.slider_num_groups, self._nudge_num_groups, self._nudge_num_groups)
                 if r is not None:
                     roww = QWidget()
@@ -2134,6 +2159,10 @@ class CentroidFinderWindow(QMainWindow):
         except Exception:
             pass
         try:
+            self.calc_mode = 'auto'
+        except Exception:
+            pass
+        try:
             self.grain_ident_controls = QWidget()
             gil = QHBoxLayout(self.grain_ident_controls)
             try:
@@ -2175,6 +2204,41 @@ class CentroidFinderWindow(QMainWindow):
         except Exception:
             self.grain_ident_controls = None
 
+        # Calculation Mode controls (Auto/Manual toggle with Manual -> ReCalculate label)
+        try:
+            self.calc_mode_controls = QWidget()
+            cml = QHBoxLayout(self.calc_mode_controls)
+            try:
+                cml.setContentsMargins(0, 0, 0, 0)
+                cml.setSpacing(6)
+            except Exception:
+                pass
+            self.lbl_calc_mode = QLabel("Calculation Mode")
+            try:
+                fcm = self.lbl_calc_mode.font()
+                fcm.setBold(True)
+                self.lbl_calc_mode.setFont(fcm)
+            except Exception:
+                pass
+            cml.addWidget(self.lbl_calc_mode)
+            try:
+                # Match Basic/Advanced toggle size (btn_w=108, btn_h=24)
+                self.toggle_calc_mode = SegmentControl(["Auto", "Manual"], checked_index=0, btn_w=108, btn_h=24)
+                try:
+                    self.toggle_calc_mode.set_on_changed(lambda idx: self._on_toggle_calc_mode(int(idx)))
+                except Exception:
+                    pass
+                try:
+                    # Manual button click triggers recalculation when already in manual mode
+                    self.toggle_calc_mode._buttons[1].clicked.connect(self._on_manual_recalculate_clicked)
+                except Exception:
+                    pass
+                cml.addWidget(self.toggle_calc_mode)
+            except Exception:
+                self.toggle_calc_mode = None
+        except Exception:
+            self.calc_mode_controls = None
+
         try:
             self.grain_section = QWidget()
             gl = QVBoxLayout(self.grain_section)
@@ -2182,6 +2246,8 @@ class CentroidFinderWindow(QMainWindow):
             gl.setSpacing(6)
             if getattr(self, 'grain_ident_controls', None) is not None:
                 gl.addWidget(self.grain_ident_controls, 0)
+            if getattr(self, 'calc_mode_controls', None) is not None:
+                gl.addWidget(self.calc_mode_controls, 0)
             gl.addLayout(sliders_layout)
         except Exception:
             self.grain_section = None
@@ -2573,6 +2639,16 @@ class CentroidFinderWindow(QMainWindow):
         # Footer (solid black)
         self.ui_footer = Footer(main_container)
         main_layout.addWidget(self.ui_footer)
+        # If a version was parsed earlier, show it in the footer next to the credit label.
+        try:
+            ver = getattr(self, '_app_version', None)
+            if ver:
+                try:
+                    self.ui_footer.credit_label.setText(f"PiXY (Ver. {ver}) — © Y. KON")
+                except Exception:
+                    pass
+        except Exception:
+            pass
 
         # Remove native status bar to prevent white strip at bottom
         self.setStatusBar(None)
@@ -2934,6 +3010,118 @@ class CentroidFinderWindow(QMainWindow):
         try:
             self._apply_grain_ident_visibility()
             self.schedule_update(force=True)
+        except Exception:
+            pass
+
+    # Calculation Mode toggle handler (Auto/Manual)
+    def _on_toggle_calc_mode(self, idx):
+        try:
+            if int(idx) == 0:
+                self.calc_mode = 'auto'
+            else:
+                self.calc_mode = 'manual'
+        except Exception:
+            self.calc_mode = 'auto'
+        try:
+            if getattr(self, 'toggle_calc_mode', None) is not None:
+                # Swap label on the Manual segment
+                try:
+                    if str(self.calc_mode) == 'manual':
+                        self.toggle_calc_mode._buttons[1].setText("ReCalculate")
+                    else:
+                        self.toggle_calc_mode._buttons[1].setText("Manual")
+                except Exception:
+                    pass
+        except Exception:
+            pass
+
+    def _on_manual_recalculate_clicked(self):
+        # Only act if Manual is active; otherwise ignore
+        try:
+            if str(getattr(self, 'calc_mode', 'auto')) != 'manual':
+                return
+        except Exception:
+            pass
+        # Immediate visual feedback: show spinner on the Manual button
+        try:
+            self._start_recalc_spinner()
+        except Exception:
+            pass
+
+        def _run_recompute():
+            try:
+                self._manual_recompute_request = True
+            except Exception:
+                pass
+            try:
+                self.schedule_update(force=True, recompute_centroids=True)
+            finally:
+                try:
+                    self._stop_recalc_spinner()
+                except Exception:
+                    pass
+
+        # Defer heavy work to allow the UI to repaint first (give spinner priority)
+        try:
+            QTimer.singleShot(0, _run_recompute)
+        except Exception:
+            _run_recompute()
+
+    def _start_recalc_spinner(self):
+        btn = None
+        try:
+            btn = getattr(self.toggle_calc_mode, '_buttons', [None, None])[1]
+        except Exception:
+            btn = None
+        if btn is None:
+            return
+        try:
+            self._recalc_prev_text = btn.text()
+            btn.setText("Calculating")
+            try:
+                btn.repaint()
+            except Exception:
+                pass
+            try:
+                QApplication.processEvents()
+            except Exception:
+                pass
+        except Exception:
+            pass
+        try:
+            t = getattr(self, '_recalc_spinner_timer', None)
+            if t is not None:
+                t.stop()
+        except Exception:
+            pass
+
+    def _tick_recalc_spinner(self):
+        try:
+            btn = getattr(self.toggle_calc_mode, '_buttons', [None, None])[1]
+            frames = getattr(self, '_recalc_spinner_frames', None)
+            if btn is None or not frames:
+                return
+            idx = int(getattr(self, '_recalc_spinner_index', 0))
+            idx = (idx + 1) % len(frames)
+            self._recalc_spinner_index = idx
+            btn.setText(frames[idx])
+        except Exception:
+            pass
+
+    def _stop_recalc_spinner(self):
+        try:
+            t = getattr(self, '_recalc_spinner_timer', None)
+            if t is not None:
+                t.stop()
+        except Exception:
+            pass
+        try:
+            btn = getattr(self.toggle_calc_mode, '_buttons', [None, None])[1]
+            if btn is not None:
+                if str(getattr(self, 'calc_mode', 'auto')) == 'manual':
+                    btn.setText("ReCalculate")
+                else:
+                    btn.setText("Manual")
         except Exception:
             pass
 
@@ -3596,6 +3784,14 @@ class CentroidFinderWindow(QMainWindow):
                 if False, reuse cached centroids when possible.
         """
         try:
+            # In manual mode, skip heavy recompute unless forced explicitly
+            if str(getattr(self, 'calc_mode', 'auto')) == 'manual' and recompute_centroids:
+                if not bool(getattr(self, '_manual_recompute_request', False)):
+                    recompute_centroids = False
+            try:
+                self._manual_recompute_request = False
+            except Exception:
+                pass
             # store preference for the immediate update
             self._next_recompute_centroids = bool(recompute_centroids)
         except Exception:
@@ -3734,6 +3930,18 @@ class CentroidFinderWindow(QMainWindow):
                     # Clamp to valid range
                     sel_min = max(float(mn), min(float(mx), sel_min))
                     sel_max = max(float(mn), min(float(mx), sel_max))
+                    # Apply configured default maximum cap to initial selection
+                    try:
+                        if sel_max is not None:
+                            sel_max = min(sel_max, float(DEFAULT_MAX_GRAIN_AREA))
+                    except Exception:
+                        pass
+                    # Enforce a minimum cap so autoset doesn't choose too-small grains
+                    try:
+                        if sel_min is not None:
+                            sel_min = max(sel_min, float(DEFAULT_MIN_GRAIN_AREA))
+                    except Exception:
+                        pass
                     if sel_min > sel_max:
                         sel_min, sel_max = sel_max, sel_min
                     
@@ -3748,7 +3956,12 @@ class CentroidFinderWindow(QMainWindow):
             except Exception:
                 pass
 
-    def _update_image_actual(self, recompute_centroids=True):
+    def _update_image_actual(self, recompute_centroids=None):
+        if recompute_centroids is None:
+            try:
+                recompute_centroids = bool(getattr(self, '_next_recompute_centroids', True))
+            except Exception:
+                recompute_centroids = True
         if self._painting:
             return
         self._painting = True

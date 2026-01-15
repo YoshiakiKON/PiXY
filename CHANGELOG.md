@@ -2,6 +2,12 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.1.6] - 2026-01-15
+- UI: Remove version from window title; show in footer instead (auto-update on startup)
+- UI: Footer labels set to bold for better visibility
+- UI: Footer text format changed to "PiXY — © Yoshiaki KON" (initial) and "PiXY (Ver. x.x.x) — © Yoshiaki KON" (after version parse)
+- Feature: Improved footer layout with right-aligned credit label
+
 ## [1.1.5] - 2026-01-15
 - Packaging: build `PiXY_ver115.exe` (single-file) and add multi-size `PiXY_icon.ico` for Windows.
 - Packaging: remove PPM fallback assets from the repository and build inputs (use ICO/PNG instead) to reduce bundle size.

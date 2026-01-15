@@ -2899,6 +2899,13 @@ class CentroidFinderWindow(QMainWindow):
         except Exception:
             self.manual_image_rotation_deg = 0
         # 表示のみ更新
+        try:
+            self.schedule_update(force=True, recompute_centroids=False)
+        except Exception:
+            try:
+                self._apply_proc_zoom()
+            except Exception:
+                pass
 
     def _on_flip_changed(self, mode, idx):
         try:

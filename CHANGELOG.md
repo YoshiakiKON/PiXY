@@ -2,6 +2,14 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.1.5] - 2026-01-15
+- Packaging: build `PiXY_ver115.exe` (single-file) and add multi-size `PiXY_icon.ico` for Windows.
+- Packaging: remove PPM fallback assets from the repository and build inputs (use ICO/PNG instead) to reduce bundle size.
+- Tooling: added `tools/convert_png_to_ppm.py` to regenerate PPM fallbacks from PNGs if needed.
+- Asset: resized `app_icon` to 256×256 to avoid very large uncompressed PPM files.
+- Version: bumped project version to 1.1.5 and pushed a git tag `v1.1.5`.
+- Note: the built EXE was added to the repository; consider using Git LFS or GitHub Releases for large binaries going forward.
+
 ## [1.1.1] - 2026-01-08
 - Performance optimization: replaced Python loop with cv2.dilate for fast marker propagation in neck separation
 - 10-100x speedup in neck separation calculation

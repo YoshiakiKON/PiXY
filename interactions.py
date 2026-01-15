@@ -54,7 +54,9 @@ class ImageViewController(QObject):
         self._drag_recent = deque(maxlen=8)  # (t, QPoint)
         # hover/select state
         self._hover_point_idx = None
+        self._hover_ref_idx = None
         self._press_on_point_idx = None
+        self._press_on_ref_idx = None
         self._lock_to_point_select = False
         # kinetic
         self._kinetic_timer = QTimer(self)
@@ -83,10 +85,13 @@ class ImageViewController(QObject):
             if et == QEvent.MouseButtonPress and event.button() == Qt.LeftButton:
                 pos_vp = _evt_point(event) if obj is self.ui.proc_scroll.viewport() else self.ui._label_pos_to_viewport_pos(_evt_point(event))
                 pos_label = _evt_point(event) if obj is self.ui.img_label_proc else self.ui._viewport_pos_to_label_pos(_evt_point(event))
-                # 近傍の点を判定（通常モード時）
-                self._hover_point_idx = self._nearest_point_idx(pos_label)
+                # 近傍の点を判定（通常モード時）: centroid / ref のうち近い方を選択
+                hit_kind, hit_idx = self._nearest_hit(pos_label)
+                self._hover_point_idx = hit_idx if hit_kind == 'centroid' else None
+                self._hover_ref_idx = hit_idx if hit_kind == 'ref' else None
                 self._press_on_point_idx = self._hover_point_idx
-                self._lock_to_point_select = self._press_on_point_idx is not None and self.ui.pick_mode is None
+                self._press_on_ref_idx = self._hover_ref_idx
+                self._lock_to_point_select = (hit_idx is not None) and self.ui.pick_mode is None
                 self._mouse_pressed = True
                 self._dragging = False
                 self._drag_start_vp = QPoint(pos_vp)
@@ -106,9 +111,11 @@ class ImageViewController(QObject):
                     # ピックモードはカーソル固定（Ui側で設定）
                     pass
                 else:
-                    self._hover_point_idx = self._nearest_point_idx(pos_label)
+                    hit_kind, hit_idx = self._nearest_hit(pos_label)
+                    self._hover_point_idx = hit_idx if hit_kind == 'centroid' else None
+                    self._hover_ref_idx = hit_idx if hit_kind == 'ref' else None
                     try:
-                        if self._hover_point_idx is not None:
+                        if self._hover_point_idx is not None or self._hover_ref_idx is not None:
                             self.ui.img_label_proc.setCursor(QCursor(Qt.ArrowCursor))
                         else:
                             # ドラッグ中以外は手のひら
@@ -152,25 +159,48 @@ class ImageViewController(QObject):
                 self._drag_recent.clear()
                 if not was_drag:
                     # 点選択が意図されていた場合はその点を選択、それ以外は既存のクリック処理
-                    if self._press_on_point_idx is not None and self.ui.pick_mode is None:
-                        idx = self._press_on_point_idx
-                        self._press_on_point_idx = None
-                        self._lock_to_point_select = False
-                        # 範囲チェック
-                        if 0 <= idx < len(getattr(self.ui, 'centroids', [])):
+                    if self.ui.pick_mode is None:
+                        # Prefer ref selection if a ref was hit
+                        if self._press_on_ref_idx is not None:
+                            ridx = self._press_on_ref_idx
+                            self._press_on_ref_idx = None
+                            self._press_on_point_idx = None
+                            self._lock_to_point_select = False
                             try:
-                                if self.ui.selected_index != idx:
-                                    self.ui.selected_index = idx
-                                    # テーブル/表示を更新
-                                    self.ui.schedule_update(force=True)
-                                    # immediately sync visible table selection to reflect change
+                                if 0 <= int(ridx) < len(getattr(self.ui, 'ref_points', []) or []):
+                                    self.ui.ref_selected_index = int(ridx)
                                     try:
-                                        self.ui._sync_table_selection()
+                                        self.ui._sync_ref_selection()
                                     except Exception:
-                                        pass
+                                        # fallback: redraw at least
+                                        try:
+                                            self.ui._apply_proc_zoom()
+                                        except Exception:
+                                            pass
                             except Exception:
                                 pass
-                        return True
+                            return True
+
+                        # Otherwise, centroid selection
+                        if self._press_on_point_idx is not None:
+                            idx = self._press_on_point_idx
+                            self._press_on_point_idx = None
+                            self._lock_to_point_select = False
+                            # 範囲チェック
+                            if 0 <= idx < len(getattr(self.ui, 'centroids', [])):
+                                try:
+                                    if self.ui.selected_index != idx:
+                                        self.ui.selected_index = idx
+                                        # テーブル/表示を更新
+                                        self.ui.schedule_update(force=True)
+                                        # immediately sync visible table selection to reflect change
+                                        try:
+                                            self.ui._sync_table_selection()
+                                        except Exception:
+                                            pass
+                                except Exception:
+                                    pass
+                            return True
                     else:
                         self.ui._handle_image_click(pos_label)
                         if getattr(self.ui, '_display_pm_base', None) is not None:
@@ -255,12 +285,11 @@ class ImageViewController(QObject):
                 pass
             return False
 
-    def _nearest_point_idx(self, pos_label):
-        """Return index of nearest centroid within display-pixel radius; else None."""
+    def _nearest_centroid_hit(self, pos_label):
+        """Return (idx, d2) of nearest centroid within radius; else (None, None)."""
         try:
             if not getattr(self.ui, 'centroids', None):
-                return None
-            # 近傍判定半径（表示ピクセル）
+                return None, None
             radius = float(getattr(self.ui, 'select_radius_display', 10.0) or 10.0)
             r2 = radius * radius
             best_i = None
@@ -277,9 +306,62 @@ class ImageViewController(QObject):
                 if d2 <= r2 and (best_d2 is None or d2 < best_d2):
                     best_d2 = d2
                     best_i = i
-            return best_i
+            return best_i, best_d2
         except Exception:
-            return None
+            return None, None
+
+    def _nearest_ref_hit(self, pos_label):
+        """Return (idx, d2) of nearest ref point within radius; else (None, None)."""
+        try:
+            pts = getattr(self.ui, 'ref_points', None) or []
+            if not pts:
+                return None, None
+            radius = float(getattr(self.ui, 'select_radius_display', 10.0) or 10.0)
+            r2 = radius * radius
+            spf = float(getattr(self.ui, 'scale_proc_to_full', 1.0) or 1.0)
+            best_i = None
+            best_d2 = None
+            for i, pt in enumerate(pts):
+                if not pt:
+                    continue
+                try:
+                    x_full = float(pt[0]) * spf
+                    y_full = float(pt[1]) * spf
+                except Exception:
+                    continue
+                dxy = self.ui._full_to_display(x_full, y_full)
+                if dxy is None:
+                    continue
+                dx = float(pos_label.x()) - float(dxy[0])
+                dy = float(pos_label.y()) - float(dxy[1])
+                d2 = dx*dx + dy*dy
+                if d2 <= r2 and (best_d2 is None or d2 < best_d2):
+                    best_d2 = d2
+                    best_i = i
+            return best_i, best_d2
+        except Exception:
+            return None, None
+
+    def _nearest_hit(self, pos_label):
+        """Return ('ref'|'centroid'|None, idx|None) for nearest selectable marker."""
+        try:
+            ci, cd2 = self._nearest_centroid_hit(pos_label)
+            ri, rd2 = self._nearest_ref_hit(pos_label)
+            if ci is None and ri is None:
+                return None, None
+            if ci is None:
+                return 'ref', ri
+            if ri is None:
+                return 'centroid', ci
+            # both hit: choose closer
+            try:
+                if rd2 is not None and cd2 is not None and float(rd2) <= float(cd2):
+                    return 'ref', ri
+            except Exception:
+                pass
+            return 'centroid', ci
+        except Exception:
+            return None, None
 
     def _start_kinetic(self, vx, vy):
         self._kinetic_vx = float(vx)

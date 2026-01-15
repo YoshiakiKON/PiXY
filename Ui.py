@@ -1181,7 +1181,7 @@ class CentroidFinderWindow(QMainWindow):
         # 編集トリガー設定
         # 右テーブル: 編集不可
         self.table.setEditTriggers(QTableWidget.NoEditTriggers)
-        # 左テーブル: ユーザー操作時のみ編集 (Obs.* 行のみ有効)
+        # 左テーブル: ユーザー操作時のみ編集 (Stage.* 行のみ有効)
         try:
             triggers = (
                 QAbstractItemView.EditKeyPressed
@@ -1207,7 +1207,7 @@ class CentroidFinderWindow(QMainWindow):
         # テーブル変更イベント接続
         self.table.currentCellChanged.connect(self._on_table_current_changed)
         self.table_ref.currentCellChanged.connect(self._on_ref_table_current_changed)
-        # 左テーブルクリックイベント (Obs行即編集)
+        # 左テーブルクリックイベント (Stage行即編集)
         try:
             self.table_ref.cellClicked.connect(self._on_ref_cell_clicked)
         except Exception:
@@ -2634,7 +2634,7 @@ class CentroidFinderWindow(QMainWindow):
         self._wire(self.edit_trim, self.slider_trim)
         self._wire(self.edit_neck_sep, self.slider_neck_sep)
         self._wire(self.edit_shape_complex, self.slider_shape_complex)
-        # Ref の Obs.* 入力保持用（内部容量は10）
+        # Ref の Stage.* 入力保持用（内部容量は10）
         self.ref_obs = [{"x": "", "y": "", "z": ""} for _ in range(10)]
         # 入力変更を監視（半角正規化）
         self.table_ref.itemChanged.connect(self._on_ref_item_changed)
@@ -5643,7 +5643,7 @@ class CentroidFinderWindow(QMainWindow):
         return super().eventFilter(obj, event)
 
     def _on_ref_cell_clicked(self, row, col):
-        # 左テーブルクリック時に、Obs.X/Y/Z(行2,3,4)なら即編集を開始する
+        # 左テーブルクリック時に、Stage.X/Y/Z(行2,3,4)なら即編集を開始する
         try:
             # canonical table_ref has 2 pseudo-header rows
             if row in (4, 5, 6):
@@ -6082,7 +6082,7 @@ class CentroidFinderWindow(QMainWindow):
                         self._end_pick_mode()
 
     def _on_ref_item_changed(self, item):
-        # 左テーブル（Ref）の Obs.* 行（2,3,4行目）入力を半角へ正規化し、内部配列に反映
+        # 左テーブル（Ref）の Stage.* 行（2,3,4行目）入力を半角へ正規化し、内部配列に反映
         row = item.row()
         col = item.column()
         # canonical table_ref has 2 pseudo-header rows
@@ -6157,9 +6157,9 @@ class CentroidFinderWindow(QMainWindow):
                         except Exception:
                             pass
 
-                    # Update internal ref_obs immediately when editing Obs rows (2,3,4)
+                    # Update internal ref_obs immediately when editing Stage rows (2,3,4)
                     try:
-                        # canonical rows: X,Y,ObsX,ObsY,ObsZ,... start at src_row_offset
+                        # canonical rows: X,Y,StageX,StageY,StageZ,... start at src_row_offset
                         obs_rows = (src_row_offset + 2, src_row_offset + 3, src_row_offset + 4)
                         if src_r in obs_rows and 0 <= src_c < len(self.ref_obs):
                             key = 'x' if src_r == obs_rows[0] else ('y' if src_r == obs_rows[1] else 'z')
@@ -6188,8 +6188,8 @@ class CentroidFinderWindow(QMainWindow):
             pass
 
         # Fallback: if editor movement didn't occur (delegate didn't handle Return),
-        # move to next editable cell: Obs X (col 2) -> Obs Y (col3), Obs Y -> Obs Z (col4),
-        # Obs Z -> next row Obs X.
+        # move to next editable cell: Stage X (col 2) -> Stage Y (col3), Stage Y -> Stage Z (col4),
+        # Stage Z -> next row Stage X.
         try:
             header_rows = 2
             if item is not None:
@@ -6204,7 +6204,7 @@ class CentroidFinderWindow(QMainWindow):
                                 vc = int(c)
                             except Exception:
                                 return
-                            # editable Obs columns in transposed view are 2,3,4
+                            # editable Stage columns in transposed view are 2,3,4
                             if vc == 2:
                                 tgt_r, tgt_c = vr, 3
                             elif vc == 3:
@@ -6308,8 +6308,8 @@ class CentroidFinderWindow(QMainWindow):
                 return
             header_rows = 2
             src_row_offset = 2  # canonical table_ref has 2 pseudo-header rows
-            # Only Stage (Obs) columns are editable in the view
-            editable_cols = (2, 3, 4)  # ObsX, ObsY, ObsZ in transposed view
+            # Only Stage columns are editable in the view
+            editable_cols = (2, 3, 4)  # StageX, StageY, StageZ in transposed view
             header_tokens = {"image", "stage", "residual", "x", "y", "z", "u", "v", "|r|", "|r|\n", "|r|\r\n"}
             rows = int(rv.rowCount())
             cols = int(rv.columnCount())
@@ -7116,7 +7116,7 @@ class CentroidFinderWindow(QMainWindow):
                                 # Use canonical table_ref only for computed residual columns.
                                 try:
                                     txt = ""
-                                    # Columns: 0..8 == X,Y,ObsX,ObsY,ObsZ,ResX,ResY,ResZ,|R|
+                                    # Columns: 0..8 == X,Y,StageX,StageY,StageZ,ResX,ResY,ResZ,|R|
                                     if c == 0:
                                         pt = self.ref_points[r] if 0 <= r < len(self.ref_points) else None
                                         txt, _ = _fmt_uv_from_proc_pt(pt)
@@ -7152,7 +7152,7 @@ class CentroidFinderWindow(QMainWindow):
                                         f = it.font(); f.setBold(True); it.setFont(f)
                                 except Exception:
                                     pass
-                                # Editability: only Obs columns (X/Y/Z) are editable
+                                # Editability: only Stage columns (X/Y/Z) are editable
                                 try:
                                     if c in (2, 3, 4):
                                         pass

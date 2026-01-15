@@ -142,7 +142,10 @@ if __name__ == "__main__":
         win.run_auto_and_exit()
     else:
         # Load default image in background while splash is showing
-        default_image = os.path.join(project_dir, "DemoBMP.bmp")
+        # Prefer DemoBSE.png in project root (requested default), fall back to DemoBMP.bmp
+        default_image = os.path.join(project_dir, "DemoBSE.png")
+        if not os.path.exists(default_image):
+            default_image = os.path.join(project_dir, "DemoBMP.bmp")
         if os.path.exists(default_image):
             try:
                 # Start loading image immediately (in background during splash)

@@ -37,9 +37,9 @@ NAME_TRIM = "Trim (px)"
 TABLE_LEFT_ROW_LABELS = [
     "u",
     "v",
-    "Obs.\nX",
-    "Obs.\nY",
-    "Obs.\nZ",
+    "Stage.\nX",
+    "Stage.\nY",
+    "Stage.\nZ",
     "Res.\nX",
     "Res.\nY",
     "Res.\nZ",

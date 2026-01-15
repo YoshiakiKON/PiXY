@@ -129,11 +129,14 @@ class CentroidProcessor:
             重心リスト [[group_no, cx, cy], ...]
         """
         # posterが渡されなければここで生成（後方互換）
-        start_t = time.time()
+        t0 = time.monotonic()
+        poster_time = 0.0
         if DEBUG:
             print(f"[DEBUG][CentroidProcessor] get_centroids start levels={params.get('levels')} min_area={params.get('min_area')} trim={params.get('trim_px')}")
         if poster is None:
+            t_p_start = time.monotonic()
             poster = kmeans_posterize(self.proc_img, params["levels"])
+            poster_time = time.monotonic() - t_p_start
         min_area = params["min_area"]
         max_area = params.get("max_area", None)
         neck_separation = int(params.get("neck_separation", 0) or 0)
@@ -222,6 +225,15 @@ class CentroidProcessor:
                             if DEBUG:
                                 print(f"[DEBUG] Failed to draw contours for split mask: {e}")
                             pass
+        total_time = time.monotonic() - t0
+        # Always emit a timing summary line so user can measure performance
+        try:
+            print(f"[TIMING][CentroidProcessor] levels={params.get('levels')} min_area={params.get('min_area')} centroids={len(results)} poster_time={poster_time:.3f}s total_time={total_time:.3f}s")
+        except Exception:
+            try:
+                print(f"[TIMING][CentroidProcessor] centroids={len(results)} total_time={total_time:.3f}s")
+            except Exception:
+                pass
         if DEBUG:
-            print(f"[DEBUG][CentroidProcessor] get_centroids done: found {len(results)} centroids in {time.time()-start_t:.2f}s")
+            print(f"[DEBUG][CentroidProcessor] get_centroids done: found {len(results)} centroids in {total_time:.2f}s")
         return results

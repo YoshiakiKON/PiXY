@@ -11,6 +11,18 @@ PiXY は画像中の粒子の重心を検出し、参照点（RefPoint）を使�
 - Python 3.10+（環境に合わせて調整してください）
 - 依存パッケージは `requirements.txt` を参照
 
+## Documentation
+
+ユーザ向けマニュアルとクイックスタート（日本語 / English）は `documentation/` にあります:
+
+- `documentation/QuickManual_JP.md` — クイックマニュアル（日本語、スクリーンショットは `documentation/images/` に配置してください）
+- `documentation/QuickManual_EN.md` — Quick Manual (English)
+- `documentation/Manual_JP.md` — 詳細マニュアル（日本語）
+- `documentation/Manual_EN.md` — Manual (English)
+- `documentation/SCREENSHOT_GUIDE.md` — スクリーンショット撮影手順
+
+クイックマニュアル用のスクリーンショットは `documentation/images/` に保存してください。自動キャプチャ用スクリプトも `documentation/capture_screenshots.py` として用意していますが、手動で撮影して頂いても問題ありません。
+
 ## インストール（開発用）
 ```powershell
 # PiXY — Centroid to Real-World Coordinate Converter
@@ -59,7 +71,7 @@ python Main.py path\to\image.jpg
 
 - Open an image with `Open Image`.
 - Use `Add Ref` to enter reference-point mode, then click image points to add reference observations.
-- Edit `Obs.X` / `Obs.Y` (and `Obs.Z` if applicable) in the reference table to refine the transform.
+- Edit reference `u`/`v` (image coordinates) and `Stage X`/`Stage Y` (and `Stage Z` if applicable) in the reference table to refine the transform.
 - The left transposed table shows residuals and transformed coordinates for quick inspection.
 
 ## Development & Contribution

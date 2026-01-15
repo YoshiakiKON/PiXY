@@ -5,7 +5,7 @@ a = Analysis(
     ['Main.py'],
     pathex=[],
     binaries=[],
-    datas=[('DemoBMP.bmp', '.'), ('last_image_path.txt', '.'), ('PiXY_splash.png', '.'), ('PiXY_icon.ico', '.'), ('PiXY.png', '.'), ('px2XY2.png', '.'), ('px2XY.png', '.'), ('app_icon.png', '.'), ('splash.ppm', '.'), ('app_icon.ppm', '.')],
+    datas=[('DemoBMP.bmp', '.'), ('last_image_path.txt', '.'), ('PiXY_splash.png', '.'), ('PiXY_icon.ico', '.'), ('PiXY_Pix.png', '.'), ('PiXY_XY.png', '.'), ('PiXY.png', '.'), ('px2XY2.png', '.'), ('px2XY.png', '.'), ('app_icon.png', '.')],
     hiddenimports=[],
     hookspath=[],
     hooksconfig={},
@@ -35,4 +35,5 @@ exe = EXE(
     target_arch=None,
     codesign_identity=None,
     entitlements_file=None,
+    icon='PiXY_icon.ico',
 )

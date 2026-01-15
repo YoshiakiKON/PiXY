@@ -6,7 +6,8 @@ import cv2
 
 def build_zoomed_canvas(overlay_full_img, proc_zoom, view_padding,
                         centroids, selected_index, ref_points, scale_proc_to_full,
-                        colors=None, interp_mode='auto'):
+                        ref_selected_index=None,
+                        colors=None, interp_mode='auto', debug_ref_coords=False):
     """
     入力: 
       - overlay_full_img: numpy (H,W,3) BGR
@@ -115,7 +116,7 @@ def build_zoomed_canvas(overlay_full_img, proc_zoom, view_padding,
             painter.drawEllipse(QPoint(xd, yd), cfg['centroid_radius'], cfg['centroid_radius'])
 
     # 2) Ref
-    for pt in (ref_points or []):
+    for ridx, pt in enumerate(ref_points or []):
         if not pt:
             continue
         x_proc, y_proc = pt
@@ -125,7 +126,31 @@ def build_zoomed_canvas(overlay_full_img, proc_zoom, view_padding,
         yd = int(round(yf * display_scale)) + off_y
         painter.setPen(QPen(QColor(255, 255, 255), cfg['pen_width']))
         painter.setBrush(cfg['ref_fill'])
-        painter.drawEllipse(QPoint(xd, yd), cfg['ref_radius'], cfg['ref_radius'])
+        # Match sizes to centroid markers:
+        # - unselected ref: same as unselected centroid (gray)
+        # - selected ref: same as selected centroid (blue)
+        r = cfg['centroid_radius']
+        try:
+            if ref_selected_index is not None and int(ridx) == int(ref_selected_index):
+                r = cfg['selected_radius']
+        except Exception:
+            pass
+        painter.drawEllipse(QPoint(xd, yd), int(r), int(r))
+        # Debug: draw full-image coordinates (u,v) near ref points if requested
+        try:
+            if debug_ref_coords:
+                # Compute u,v with origin at bottom-left: u = x_full, v = (h_full-1)-y_full
+                h_full = overlay_full_img.shape[0]
+                u_val = int(round(xf))
+                v_val = int(round((h_full - 1) - yf)) if h_full > 0 else int(round(-yf))
+                # draw in red near the marker
+                painter.setPen(QPen(QColor(255, 64, 64), 1))
+                try:
+                    painter.drawText(xd + 6, yd - 6, f"{u_val},{v_val}")
+                except Exception:
+                    pass
+        except Exception:
+            pass
 
     # 3) 選択
     if centroids and selected_index is not None and 0 <= selected_index < len(centroids):

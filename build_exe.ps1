@@ -36,8 +36,9 @@ $addData = @(
     "px2XY2.png;.",
     "px2XY.png;.",
     "app_icon.png;.",
-    "splash.ppm;.",
-    "app_icon.ppm;."
+    # PPM fallbacks removed; prefer PNG/ICO assets
+    # "splash.ppm;.",
+    # "app_icon.ppm;."
 )
 
 # Build add-data arguments without Join-String (PowerShell 5 compatible)

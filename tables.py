@@ -149,7 +149,19 @@ def fix_tables_height(table_ref, table):
 
 
 # 両テーブルにデータを投入し、レイアウトを調整
-def populate_tables(table_ref, table, ref_points, ref_obs, centroids, selected_index, ref_selected_index, flip_mode='auto', visible_ref_cols=None):
+def populate_tables(
+    table_ref,
+    table,
+    ref_points,
+    ref_obs,
+    centroids,
+    selected_index,
+    ref_selected_index,
+    flip_mode='auto',
+    visible_ref_cols=None,
+    image_base_size=None,
+    scale_proc_to_full=1.0,
+):
     table.blockSignals(True)
     table_ref.blockSignals(True)
     try:
@@ -178,10 +190,40 @@ def populate_tables(table_ref, table, ref_points, ref_obs, centroids, selected_i
         # 左テーブルの水平ヘッダーはデフォルトの外観を維持（スタイルシートは適用しない）
         # Data starts from row 2 to preserve pseudo-header rows 0-1
         DATA_ROW_OFFSET = 2
+        try:
+            _spf = float(scale_proc_to_full) if scale_proc_to_full is not None else 1.0
+        except Exception:
+            _spf = 1.0
+        try:
+            _h_full = int(image_base_size[1]) if image_base_size is not None else None
+        except Exception:
+            _h_full = None
+
+        def _fmt_uv_from_proc(xp, yp):
+            # Display convention: origin at bottom-left pixel of FULL image.
+            # u = x_full
+            # v = (h_full - 1) - y_full
+            try:
+                x_full = float(xp) * _spf
+                y_full = float(yp) * _spf
+                u = int(round(x_full))
+                if _h_full is not None and _h_full > 0:
+                    v = int(round((_h_full - 1) - y_full))
+                else:
+                    # fallback: at least make +v point upward
+                    v = int(round(-y_full))
+                return str(u), str(v)
+            except Exception:
+                return "", ""
+
         for c in range(total_cols):
             pt = ref_points[c] if 0 <= c < len(ref_points) else None
-            x_item = QTableWidgetItem("" if pt is None else str(int(round(pt[0]))))
-            y_item = QTableWidgetItem("" if pt is None else str(int(round(pt[1]))))
+            if pt is None:
+                su, sv = "", ""
+            else:
+                su, sv = _fmt_uv_from_proc(pt[0], pt[1])
+            x_item = QTableWidgetItem(su)
+            y_item = QTableWidgetItem(sv)
             x_item.setTextAlignment(ALIGN_CENTER)
             y_item.setTextAlignment(ALIGN_CENTER)
             # X(0), Y(1) は入力不可
@@ -192,14 +234,14 @@ def populate_tables(table_ref, table, ref_points, ref_obs, centroids, selected_i
                 pass
             table_ref.setItem(DATA_ROW_OFFSET + 0, c, x_item)
             table_ref.setItem(DATA_ROW_OFFSET + 1, c, y_item)
-            # Obs. X/Y/Z は編集可（2,3,4行目）
+            # Stage X/Y/Z は編集可（2,3,4行目）
             obs = ref_obs[c] if 0 <= c < len(ref_obs) else {"x": "", "y": "", "z": ""}
             ox = QTableWidgetItem(obs.get("x", ""))
             oy = QTableWidgetItem(obs.get("y", ""))
             oz = QTableWidgetItem(obs.get("z", ""))
             for it in (ox, oy, oz):
                 it.setTextAlignment(ALIGN_CENTER)
-                # 3〜5行目（Obs.*）は薄い灰色背景 + 太字
+                # 3〜5行目（Stage.*）は薄い灰色背景 + 太字
                 try:
                     it.setBackground(QColor(245, 245, 245))
                     f = it.font(); f.setBold(True); it.setFont(f)
@@ -267,20 +309,29 @@ def populate_tables(table_ref, table, ref_points, ref_obs, centroids, selected_i
         # 生のXYとLvを先に埋める（Data starts from row 2）
         DATA_ROW_OFFSET = 2
         for c, (g, x, y) in enumerate(centroids):
-            item_x = QTableWidgetItem(str(int(round(x))))
-            item_y = QTableWidgetItem(str(int(round(y))))
+            su, sv = _fmt_uv_from_proc(x, y)
+            item_x = QTableWidgetItem(su)
+            item_y = QTableWidgetItem(sv)
             for it in (item_x, item_y):
                 it.setTextAlignment(ALIGN_CENTER)
             table.setItem(DATA_ROW_OFFSET + 0, c, item_x)
             table.setItem(DATA_ROW_OFFSET + 1, c, item_y)
-        # Calc.* を計算（回転角度+拡大縮小率ベース: 2D similarity for X/Y + plane for Z）
-        # 参照点の収集
-        ref_uv = []
+        # Calc.* を計算（回転角度+拡大縮小率ベース）
+        # - XY: 2D similarity (need ≥2 point pairs with X/Y)
+        # - Z : plane fit (need ≥3 point pairs with X/Y/Z)
+        ref_uv_xy = []
+        ref_xy = []
+        used_cols_xy = []
+        obs_x_vals_xy = []
+        obs_y_vals_xy = []
+
+        ref_uv_xyz = []
         ref_xyz = []
-        obs_x_vals = []
-        obs_y_vals = []
-        obs_z_vals = []
-        used_cols = []
+        used_cols_xyz = []
+        obs_x_vals_xyz = []
+        obs_y_vals_xyz = []
+        obs_z_vals_xyz = []
+
         for c in range(total_cols):
             pt = ref_points[c] if 0 <= c < len(ref_points) else None
             obs = ref_obs[c] if 0 <= c < len(ref_obs) else None
@@ -288,25 +339,84 @@ def populate_tables(table_ref, table, ref_points, ref_obs, centroids, selected_i
                 continue
             try:
                 u, v = float(pt[0]), float(pt[1])
-                X = float(obs.get("x", "")) if str(obs.get("x", "")).strip() != "" else None
-                Y = float(obs.get("y", "")) if str(obs.get("y", "")).strip() != "" else None
-                Z = float(obs.get("z", "")) if str(obs.get("z", "")).strip() != "" else None
-                if X is None or Y is None or Z is None:
-                    continue
-                ref_uv.append((u, v))
-                ref_xyz.append((X, Y, Z))
-                used_cols.append(c)
-                obs_x_vals.append(obs.get("x", ""))
-                obs_y_vals.append(obs.get("y", ""))
-                obs_z_vals.append(obs.get("z", ""))
             except Exception:
                 continue
-        model = None
-        flipped = False
-        if len(ref_uv) >= 3:
+
             try:
-                P0 = np.array(ref_uv, dtype=float)
-                T = np.array(ref_xyz, dtype=float)
+                Xs = obs.get("x", "")
+                Ys = obs.get("y", "")
+                Zs = obs.get("z", "")
+                X = float(Xs) if str(Xs).strip() != "" else None
+                Y = float(Ys) if str(Ys).strip() != "" else None
+                Z = float(Zs) if str(Zs).strip() != "" else None
+            except Exception:
+                X = Y = Z = None
+
+            if X is not None and Y is not None:
+                ref_uv_xy.append((u, v))
+                ref_xy.append((X, Y))
+                used_cols_xy.append(c)
+                obs_x_vals_xy.append(Xs)
+                obs_y_vals_xy.append(Ys)
+                if Z is not None:
+                    ref_uv_xyz.append((u, v))
+                    ref_xyz.append((X, Y, Z))
+                    used_cols_xyz.append(c)
+                    obs_x_vals_xyz.append(Xs)
+                    obs_y_vals_xyz.append(Ys)
+                    obs_z_vals_xyz.append(Zs)
+
+        model_xy = None
+        model_xyz = None
+        flipped_xy = False
+        flipped_xyz = False
+
+        def _fit_similarity_with_flip(P0, Q, mode_str: str):
+            """Fit similarity with optional u-axis flip selection.
+            Returns (s,R,t,flipped,rms).
+            """
+            mode_local = str(mode_str or 'auto').lower()
+
+            def _fit_one(P):
+                s, R, t = _fit_similarity_2d(P, Q)
+                pred = _apply_similarity_2d(s, R, t, P)
+                err = np.asarray(Q, dtype=float) - np.asarray(pred, dtype=float)
+                rms = float(np.sqrt(np.mean(np.sum(err * err, axis=1)))) if err.size else float('inf')
+                return (s, R, t), rms
+
+            if mode_local == 'flip':
+                P = np.asarray(P0, dtype=float).copy()
+                P[:, 0] *= -1.0
+                (s, R, t), rms = _fit_one(P)
+                return s, R, t, True, rms
+            if mode_local == 'normal':
+                (s, R, t), rms = _fit_one(P0)
+                return s, R, t, False, rms
+
+            # auto
+            (s0, R0, t0), rms0 = _fit_one(P0)
+            P1 = np.asarray(P0, dtype=float).copy()
+            P1[:, 0] *= -1.0
+            (s1, R1, t1), rms1 = _fit_one(P1)
+            if rms1 < rms0:
+                return s1, R1, t1, True, rms1
+            return s0, R0, t0, False, rms0
+
+        # XY-only model (≥2)
+        if len(ref_uv_xy) >= 2:
+            try:
+                P0 = np.asarray(ref_uv_xy, dtype=float)
+                Q = np.asarray(ref_xy, dtype=float)
+                s, R, t, flipped_xy, _rms = _fit_similarity_with_flip(P0, Q, flip_mode)
+                model_xy = {"s": s, "R": R, "t": t}
+            except Exception:
+                model_xy = None
+
+        # Full XYZ model (≥3)
+        if len(ref_uv_xyz) >= 3:
+            try:
+                P0 = np.asarray(ref_uv_xyz, dtype=float)
+                T = np.asarray(ref_xyz, dtype=float)
                 Txy = T[:, 0:2]
                 Tz = T[:, 2]
 
@@ -323,11 +433,11 @@ def populate_tables(table_ref, table, ref_points, ref_obs, centroids, selected_i
 
                 mode = str(flip_mode).lower()
                 if mode == 'flip':
-                    flipped = True
+                    flipped_xyz = True
                     P = P0.copy(); P[:, 0] *= -1.0
                     params, _rms = _fit_for(P)
                 elif mode == 'normal':
-                    flipped = False
+                    flipped_xyz = False
                     params, _rms = _fit_for(P0)
                 else:
                     # auto: compare rms for non-flip vs flip
@@ -335,26 +445,25 @@ def populate_tables(table_ref, table, ref_points, ref_obs, centroids, selected_i
                     P1 = P0.copy(); P1[:, 0] *= -1.0
                     params1, rms1 = _fit_for(P1)
                     if rms1 < rms0:
-                        flipped = True
+                        flipped_xyz = True
                         params = params1
                     else:
-                        flipped = False
+                        flipped_xyz = False
                         params = params0
 
                 s, R, t, coef_z = params
-                model = {
-                    "s": s,
-                    "R": R,
-                    "t": t,
-                    "coef_z": coef_z,
-                }
+                model_xyz = {"s": s, "R": R, "t": t, "coef_z": coef_z}
             except Exception:
-                model = None
+                model_xyz = None
+
         # 出力の丸め桁を推定（入力の小数桁から決定）
-        dp_x = max_decimal_places(obs_x_vals) if obs_x_vals else 0
-        dp_y = max_decimal_places(obs_y_vals) if obs_y_vals else 0
-        dp_z = max_decimal_places(obs_z_vals) if obs_z_vals else 0
-        # 変換適用
+        dp_x = max_decimal_places(obs_x_vals_xy) if obs_x_vals_xy else 0
+        dp_y = max_decimal_places(obs_y_vals_xy) if obs_y_vals_xy else 0
+        dp_z = max_decimal_places(obs_z_vals_xyz) if obs_z_vals_xyz else 0
+
+        # 変換適用（優先: XYZモデル、なければXYモデル）
+        model = model_xyz if model_xyz is not None else model_xy
+        flipped = flipped_xyz if model_xyz is not None else flipped_xy
         if model is not None:
             try:
                 pts = []
@@ -364,16 +473,27 @@ def populate_tables(table_ref, table, ref_points, ref_obs, centroids, selected_i
                     pts.append((u2, v))
                 pts = np.asarray(pts, dtype=float)
                 pred_xy = _apply_similarity_2d(model["s"], model["R"], model["t"], pts)
-                pred_z = _apply_plane_z(model["coef_z"], pts)
-                pred = np.c_[pred_xy, pred_z]  # (n,3)
+
+                # Z is only available for the full XYZ model
+                has_z = (model_xyz is not None and model_xyz.get("coef_z", None) is not None and dp_z is not None)
+                if has_z:
+                    pred_z = _apply_plane_z(model_xyz["coef_z"], pts)
+                    pred = np.c_[pred_xy, pred_z]  # (n,3)
+                else:
+                    pred = np.c_[pred_xy, np.full((pred_xy.shape[0],), np.nan, dtype=float)]  # (n,3)
+
                 # 丸め
                 pred_x = round_to_decimals(pred[:, 0], dp_x)
                 pred_y = round_to_decimals(pred[:, 1], dp_y)
-                pred_z = round_to_decimals(pred[:, 2], dp_z)
+                pred_z = round_to_decimals(pred[:, 2], dp_z) if has_z else None
+
                 for c in range(n):
                     cx = QTableWidgetItem(str(pred_x[c]).rstrip('0').rstrip('.') if dp_x > 0 else str(int(round(pred_x[c]))))
                     cy = QTableWidgetItem(str(pred_y[c]).rstrip('0').rstrip('.') if dp_y > 0 else str(int(round(pred_y[c]))))
-                    cz = QTableWidgetItem(str(pred_z[c]).rstrip('0').rstrip('.') if dp_z > 0 else str(int(round(pred_z[c]))))
+                    cz_text = ""
+                    if has_z and pred_z is not None and np.isfinite(pred_z[c]):
+                        cz_text = str(pred_z[c]).rstrip('0').rstrip('.') if dp_z > 0 else str(int(round(pred_z[c])))
+                    cz = QTableWidgetItem(cz_text)
                     for it in (cx, cy, cz):
                         it.setTextAlignment(ALIGN_CENTER)
                         # 右表の3〜5行目（Calc.*）は太字
@@ -387,15 +507,15 @@ def populate_tables(table_ref, table, ref_points, ref_obs, centroids, selected_i
                     table.setItem(DATA_ROW_OFFSET + 4, c, cz)
 
                 # 参照点の残差を計算して左テーブルへ表示
-                if used_cols:
-                    # 参照点の予測（予測時にのみフリップを反映）
+                if model_xyz is not None and used_cols_xyz:
+                    # XYZ residuals (3D)
                     pts_ref = []
-                    for (u, v) in ref_uv:
-                        u2 = -u if flipped else u
+                    for (u, v) in ref_uv_xyz:
+                        u2 = -u if flipped_xyz else u
                         pts_ref.append((u2, v))
                     pts_ref = np.asarray(pts_ref, dtype=float)
-                    pred_xy_ref = _apply_similarity_2d(model["s"], model["R"], model["t"], pts_ref)
-                    pred_z_ref = _apply_plane_z(model["coef_z"], pts_ref)
+                    pred_xy_ref = _apply_similarity_2d(model_xyz["s"], model_xyz["R"], model_xyz["t"], pts_ref)
+                    pred_z_ref = _apply_plane_z(model_xyz["coef_z"], pts_ref)
                     pred_ref = np.c_[pred_xy_ref, pred_z_ref]
                     ref_arr = np.asarray(ref_xyz, dtype=float)
                     res = ref_arr - pred_ref  # (m,3)
@@ -422,7 +542,7 @@ def populate_tables(table_ref, table, ref_points, ref_obs, centroids, selected_i
                     mag = np.sqrt(res[:, 0]**2 + res[:, 1]**2 + res[:, 2]**2)
                     dp_mag = _decimals_for_sig(mag)
                     mag_r = round_to_decimals(mag, dp_mag)
-                    for i, col in enumerate(used_cols):
+                    for i, col in enumerate(used_cols_xyz):
                         if not (0 <= col < total_cols):
                             continue
                         # 各セルへ書き込み
@@ -448,6 +568,67 @@ def populate_tables(table_ref, table, ref_points, ref_obs, centroids, selected_i
                             except Exception:
                                 pass
                             # Residual rows are offset by DATA_ROW_OFFSET (pseudo-header rows)
+                            try:
+                                table_ref.setItem(DATA_ROW_OFFSET + 5 + r_offset, col, it)
+                            except Exception:
+                                table_ref.setItem(5 + r_offset, col, it)
+
+                elif model_xy is not None and used_cols_xy:
+                    # XY-only residuals (2D). Leave Z residual blank.
+                    pts_ref = []
+                    for (u, v) in ref_uv_xy:
+                        u2 = -u if flipped_xy else u
+                        pts_ref.append((u2, v))
+                    pts_ref = np.asarray(pts_ref, dtype=float)
+                    pred_xy_ref = _apply_similarity_2d(model_xy["s"], model_xy["R"], model_xy["t"], pts_ref)
+                    ref_arr2 = np.asarray(ref_xy, dtype=float)
+                    res2 = ref_arr2 - pred_xy_ref  # (m,2)
+
+                    def _decimals_for_sig(arr, sig=2, cap=4):
+                        try:
+                            a = np.asarray(arr, dtype=float)
+                            maxabs = float(np.nanmax(np.abs(a))) if a.size else 0.0
+                            if not np.isfinite(maxabs) or maxabs == 0.0:
+                                return 3
+                            import math
+                            dec = sig - 1 - int(math.floor(math.log10(maxabs)))
+                            return int(max(0, min(cap, dec)))
+                        except Exception:
+                            return 3
+
+                    dp_rx = _decimals_for_sig(res2[:, 0])
+                    dp_ry = _decimals_for_sig(res2[:, 1])
+                    res_x = round_to_decimals(res2[:, 0], dp_rx)
+                    res_y = round_to_decimals(res2[:, 1], dp_ry)
+                    mag = np.sqrt(res2[:, 0]**2 + res2[:, 1]**2)
+                    dp_mag = _decimals_for_sig(mag)
+                    mag_r = round_to_decimals(mag, dp_mag)
+
+                    def _fmt(val, dp):
+                        try:
+                            if dp and dp > 0:
+                                s = ("%.*f" % (dp, float(val))).rstrip('0').rstrip('.')
+                                return s
+                            else:
+                                return str(int(round(float(val))))
+                        except Exception:
+                            return ""
+
+                    for i, col in enumerate(used_cols_xy):
+                        if not (0 <= col < total_cols):
+                            continue
+                        items = [
+                            QTableWidgetItem(_fmt(res_x[i], dp_rx)),
+                            QTableWidgetItem(_fmt(res_y[i], dp_ry)),
+                            QTableWidgetItem(""),
+                            QTableWidgetItem(_fmt(mag_r[i], dp_mag)),
+                        ]
+                        for r_offset, it in enumerate(items):
+                            it.setTextAlignment(ALIGN_CENTER)
+                            try:
+                                it.setFlags(it.flags() & ~ITEM_EDITABLE)
+                            except Exception:
+                                pass
                             try:
                                 table_ref.setItem(DATA_ROW_OFFSET + 5 + r_offset, col, it)
                             except Exception:

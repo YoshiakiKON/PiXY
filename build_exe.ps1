@@ -28,17 +28,14 @@ if ($Clean) {
 # Adjust the --add-data entries if you use other assets.
 
 $addData = @(
-    "DemoBMP.bmp;.",
+    "DemoBSE.png;.",
     "last_image_path.txt;.",
     "PiXY_splash.png;.",
     "PiXY_icon.ico;.",
+    "PiXY_icon.png;.",
     "PiXY.png;.",
-    "px2XY2.png;.",
-    "px2XY.png;.",
-    "app_icon.png;.",
-    # PPM fallbacks removed; prefer PNG/ICO assets
-    # "splash.ppm;.",
-    # "app_icon.ppm;."
+    "PiXY_Pix.png;.",
+    "PiXY_XY.png;."
 )
 
 # Build add-data arguments without Join-String (PowerShell 5 compatible)

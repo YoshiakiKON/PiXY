@@ -89,6 +89,14 @@ See the `LICENSE` file in the repository for license terms (e.g. MIT).
 
 ---
 
+## AI-Assisted Development / AI支援について
+
+This project was developed using AI-assisted pair programming (GitHub Copilot / GPT-5, Google Gemini, xAI Grok, Anthropic Claude (Sonnet)). All outputs were reviewed and validated by the human author(s); AI tools are not listed as authors. See NOTICE.md for details.
+
+本プロジェクトはAI支援ペアプログラミング（GitHub Copilot / GPT-5、Google Gemini、xAI Grok、Anthropic Claude（Sonnet））を活用して開発しました。生成物は最終的に人間の著者がレビュー・検証しており、AIは著者として記載していません。詳細は NOTICE.md を参照してください。
+
+---
+
 If you'd like, I can also:
 
 - Commit this change and push a branch/PR.

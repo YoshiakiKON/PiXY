@@ -3,6 +3,11 @@
 All notable changes to this project will be documented in this file.
 
 ## [1.1.6] - 2026-01-15
+## [1.1.7-pre] - 2026-01-19
+- Fix: Guard poster initialization in `_update_image_actual()` to prevent `UnboundLocalError` when nudging group counts or opening images; overlay now falls back to original image when poster is unavailable; boundary rendering guarded.
+- Docs: Align English/Japanese JOSS drafts to two-core-feature framing (Feature 1: u,v extraction; Feature 2: u,v→X,Y,Z transform).
+- Impl: Rename Implementation headings to "Feature 1" and "Feature 2"; keep algorithm details intact.
+- Release: Bump package version to `1.1.7rc0` (pre-release).
 - UI: Remove version from window title; show in footer instead (auto-update on startup)
 - UI: Footer labels set to bold for better visibility
 - UI: Footer text format changed to "PiXY — © Yoshiaki KON" (initial) and "PiXY (Ver. x.x.x) — © Yoshiaki KON" (after version parse)

@@ -74,8 +74,11 @@ class SegmentControl(QWidget):
         qss_base = (
             # Force square corners by default; we'll round only the outer corners explicitly.
             "QPushButton { border: 1px solid lightgray; padding: 2px 10px; border-radius: 0px; }"
-            "QPushButton:checked { background-color: " + blue + "; color: white; }"
-            "QPushButton:!checked { background-color: white; color: black; }"
+            "QPushButton:checked {"
+            "  color: white; font-weight: bold; border: 1px solid #505050;"
+            "  background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 rgba(255,255,255,0.35), stop:0.48 rgba(255,255,255,0.12), stop:0.52 rgba(0,0,0,0.18), stop:1 rgba(0,0,0,0.28)), " + blue + ";"
+            "}"
+            "QPushButton:!checked { background-color: white; color: gray; font-weight: normal; }"
         )
 
         for i, lbl in enumerate(labels):
@@ -86,13 +89,6 @@ class SegmentControl(QWidget):
                 pass
             try:
                 b.setFixedSize(btn_w, btn_h)
-            except Exception:
-                pass
-            # Set bold font for toggle labels
-            try:
-                f = b.font()
-                f.setBold(True)
-                b.setFont(f)
             except Exception:
                 pass
             # apply corner styling depending on position
@@ -3983,6 +3979,8 @@ class CentroidFinderWindow(QMainWindow):
                 self._build_processing_image()
             overlay_full = self.img_full.copy()
             centroids = []
+            # Ensure poster is always defined before use in downstream rendering.
+            poster = None
             if self.centroid_processor:
                 # 判定: 自動更新モードか手動モードかで重い処理の実行を切り替える
                 cache_img_id = self._cache.get("img_id")
@@ -4137,22 +4135,25 @@ class CentroidFinderWindow(QMainWindow):
                             "boundary_mask": boundary_mask_now,
                         })
                 # 表示用にポスター画像をフル解像度へ拡大
-                scale = 1.0 / self.scale_proc_to_full
-                if scale != 1.0:
-                    new_w = self.img_full.shape[1]
-                    new_h = self.img_full.shape[0]
-                    poster_full = cv2.resize(poster, (new_w, new_h), interpolation=cv2.INTER_LINEAR)
-                    # Boundary のエッジ検出は最近傍で拡大したポスターを使う（線が太くなる原因を避ける）
-                    poster_edges_full = cv2.resize(poster, (new_w, new_h), interpolation=cv2.INTER_NEAREST)
-                else:
-                    poster_full = poster.copy()
-                    poster_edges_full = poster_full
+                poster_full = None
+                poster_edges_full = None
+                if poster is not None:
+                    scale = 1.0 / self.scale_proc_to_full
+                    if scale != 1.0:
+                        new_w = self.img_full.shape[1]
+                        new_h = self.img_full.shape[0]
+                        poster_full = cv2.resize(poster, (new_w, new_h), interpolation=cv2.INTER_LINEAR)
+                        # Boundary のエッジ検出は最近傍で拡大したポスターを使う（線が太くなる原因を避ける）
+                        poster_edges_full = cv2.resize(poster, (new_w, new_h), interpolation=cv2.INTER_NEAREST)
+                    else:
+                        poster_full = poster.copy()
+                        poster_edges_full = poster_full
                 # Overlay selection by mode: Original / Posterized (Mixed removed)
                 try:
                     overlay_mode = str(getattr(self, 'overlay_mode', 'Mixed')).lower()
                 except Exception:
                     overlay_mode = 'original'
-                if overlay_mode == 'original':
+                if overlay_mode == 'original' or poster_full is None:
                     overlay_full = self.img_full.copy()
                 else:
                     overlay_full = poster_full.copy()
@@ -4163,7 +4164,7 @@ class CentroidFinderWindow(QMainWindow):
                     pass
                 # ポスタリゼーション境界に白線を描画（オプション）
                 try:
-                    if self.show_boundaries:
+                    if self.show_boundaries and (poster_edges_full is not None):
                         # エッジ検出は最近傍補間（ギザ）版を使って細い境界を得る
                         # Build poster_for_edges at full resolution and apply trim in full-pixel units
                         try:
@@ -6834,8 +6835,8 @@ class CentroidFinderWindow(QMainWindow):
     def _auto_fit_table_fonts(self):
         """Reduce table cell font size to avoid clipping long numeric strings.
 
-        Applies to canonical and transposed tables. Header fonts are set explicitly
-        elsewhere, so shrinking the table font mainly affects the items.
+        Uses row-group-based sizing: u,v rows share one size; Stage X,Y,Z share another;
+        Residual X,Y,Z,R share a third. Each group's size is determined across all tables.
         """
         try:
             if getattr(self, '_auto_fit_fonts_running', False):
@@ -6844,27 +6845,50 @@ class CentroidFinderWindow(QMainWindow):
         except Exception:
             pass
         try:
-            tables = []
-            try:
-                tables.append((getattr(self, 'table_ref', None), 2))
-            except Exception:
-                pass
-            try:
-                tables.append((getattr(self, 'table', None), 2))
-            except Exception:
-                pass
-            try:
-                tables.append((getattr(self, 'table_ref_view', None), 2))
-            except Exception:
-                pass
-            try:
-                tables.append((getattr(self, 'table_between', None), 2))
-            except Exception:
-                pass
-
-            for tbl, row_start in tables:
+            # Define row groups (rows are 0-indexed, but tables have 2 pseudo-header rows)
+            # Group 1: u, v (rows 2, 3 in table_ref and table_between)
+            # Group 2: Stage X, Y, Z (rows 4, 5, 6 in table_ref; rows 2, 3, 4 in table_between for Calc)
+            # Group 3: Residual X, Y, Z, R (rows 7, 8, 9, 10 in table_ref)
+            
+            table_ref = getattr(self, 'table_ref', None)
+            table_between = getattr(self, 'table_between', None)
+            table_ref_view = getattr(self, 'table_ref_view', None)
+            
+            min_pt, max_pt = 8, 12
+            
+            # Group 1: u, v rows (Image coordinates)
+            # table_ref rows 2-3, table_between rows 2-3, table_ref_view rows 2-3
+            group1_size = self._find_best_font_for_group([
+                (table_ref, [2, 3]),
+                (table_between, [2, 3]),
+                (table_ref_view, [2, 3]),
+            ], min_pt, max_pt)
+            
+            # Group 2: Stage/Calc X, Y, Z
+            # table_ref rows 4-6 (Stage input), table_between rows 4-6 (Calc output)
+            group2_size = self._find_best_font_for_group([
+                (table_ref, [4, 5, 6]),
+                (table_between, [4, 5, 6]),
+                (table_ref_view, [4, 5, 6]),
+            ], min_pt, max_pt)
+            
+            # Group 3: Residual X, Y, Z, R
+            # table_ref rows 7-10
+            group3_size = self._find_best_font_for_group([
+                (table_ref, [7, 8, 9, 10]),
+                (table_ref_view, [7, 8, 9, 10]),
+            ], min_pt, max_pt)
+            
+            # Apply sizes to each group
+            self._apply_font_to_group([(table_ref, [2, 3]), (table_between, [2, 3]), (table_ref_view, [2, 3])], group1_size)
+            self._apply_font_to_group([(table_ref, [4, 5, 6]), (table_between, [4, 5, 6]), (table_ref_view, [4, 5, 6])], group2_size)
+            self._apply_font_to_group([(table_ref, [7, 8, 9, 10]), (table_ref_view, [7, 8, 9, 10])], group3_size)
+            
+            # Right table (table) - apply simple sizing (no grouping needed)
+            table = getattr(self, 'table', None)
+            if table is not None:
                 try:
-                    self._auto_fit_table_font(tbl, row_start=row_start, min_pt=8, max_pt=12)
+                    self._auto_fit_table_font(table, row_start=2, min_pt=min_pt, max_pt=max_pt)
                 except Exception:
                     pass
         finally:
@@ -7027,6 +7051,139 @@ class CentroidFinderWindow(QMainWindow):
                 pass
         except Exception:
             pass
+
+    def _find_best_font_for_group(self, table_row_pairs, min_pt, max_pt):
+        """Find the best font size that fits all cells in the specified row group across multiple tables.
+        
+        Args:
+            table_row_pairs: List of (table, row_list) tuples
+            min_pt: Minimum font size
+            max_pt: Maximum font size
+        
+        Returns:
+            Best font size (int) that fits all cells
+        """
+        try:
+            from qt_compat.QtGui import QFont, QFontMetrics
+        except Exception:
+            return max_pt
+        
+        # Test each font size from max down to min
+        for pt in range(int(max_pt), int(min_pt) - 1, -1):
+            if self._test_font_fits_group(table_row_pairs, pt):
+                return int(pt)
+        return int(min_pt)
+    
+    def _test_font_fits_group(self, table_row_pairs, pt):
+        """Test if a given font size fits all cells in the group."""
+        try:
+            from qt_compat.QtGui import QFont, QFontMetrics
+        except Exception:
+            return True
+        
+        pad = 10  # Conservative padding per cell
+        
+        for tbl, row_list in table_row_pairs:
+            if tbl is None:
+                continue
+            try:
+                rows = int(tbl.rowCount())
+                cols = int(tbl.columnCount())
+            except Exception:
+                continue
+            
+            for r in row_list:
+                if r >= rows:
+                    continue
+                for c in range(cols):
+                    try:
+                        it = tbl.item(r, c)
+                        if it is None:
+                            continue
+                        t = str(it.text() or "").strip()
+                        if not t:
+                            continue
+                        # Skip very short texts
+                        if len(t) < 5 and ('.' not in t) and ('-' not in t):
+                            continue
+                        
+                        # Get column width
+                        try:
+                            avail = int(tbl.columnWidth(c)) - pad
+                        except Exception:
+                            avail = None
+                        if avail is None or avail <= 6:
+                            continue
+                        
+                        # Measure text width with this font size
+                        try:
+                            f_item = QFont(it.font())
+                        except Exception:
+                            try:
+                                f_item = QFont(tbl.font())
+                            except Exception:
+                                f_item = QFont()
+                        try:
+                            f_item.setPointSize(int(pt))
+                        except Exception:
+                            pass
+                        fm = QFontMetrics(f_item)
+                        try:
+                            w = int(fm.horizontalAdvance(t))
+                        except Exception:
+                            try:
+                                w = int(fm.width(t))
+                            except Exception:
+                                w = 0
+                        if w > avail:
+                            return False
+                    except Exception:
+                        pass
+        return True
+    
+    def _apply_font_to_group(self, table_row_pairs, pt):
+        """Apply a font size to all cells in the specified row group."""
+        try:
+            from qt_compat.QtGui import QFont
+        except Exception:
+            return
+        
+        for tbl, row_list in table_row_pairs:
+            if tbl is None:
+                continue
+            try:
+                rows = int(tbl.rowCount())
+                cols = int(tbl.columnCount())
+            except Exception:
+                continue
+            
+            for r in row_list:
+                if r >= rows:
+                    continue
+                for c in range(cols):
+                    try:
+                        it = tbl.item(r, c)
+                        if it is None:
+                            continue
+                        t = str(it.text() or "").strip()
+                        if not t:
+                            continue
+                        
+                        # Apply font size
+                        try:
+                            f_item = QFont(it.font())
+                        except Exception:
+                            try:
+                                f_item = QFont(tbl.font())
+                            except Exception:
+                                f_item = QFont()
+                        try:
+                            f_item.setPointSize(int(pt))
+                            it.setFont(f_item)
+                        except Exception:
+                            pass
+                    except Exception:
+                        pass
 
     def _refresh_transposed_views(self):
         # Create/update transposed copies of `self.table_ref` and `self.table`.

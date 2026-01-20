@@ -2200,7 +2200,7 @@ class CentroidFinderWindow(QMainWindow):
         except Exception:
             self.grain_ident_controls = None
 
-        # Calculation Mode controls (Auto/Manual toggle with Manual -> ReCalculate label)
+        # Recalculation Trigger controls (Auto/Manual toggle with Manual -> ReCalculate label)
         try:
             self.calc_mode_controls = QWidget()
             cml = QHBoxLayout(self.calc_mode_controls)
@@ -2209,7 +2209,7 @@ class CentroidFinderWindow(QMainWindow):
                 cml.setSpacing(6)
             except Exception:
                 pass
-            self.lbl_calc_mode = QLabel("Calculation Mode")
+            self.lbl_calc_mode = QLabel("Recalculation Trigger")
             try:
                 fcm = self.lbl_calc_mode.font()
                 fcm.setBold(True)
@@ -3009,7 +3009,7 @@ class CentroidFinderWindow(QMainWindow):
         except Exception:
             pass
 
-    # Calculation Mode toggle handler (Auto/Manual)
+    # Recalculation Trigger toggle handler (Auto/Manual)
     def _on_toggle_calc_mode(self, idx):
         try:
             if int(idx) == 0:
@@ -4004,136 +4004,95 @@ class CentroidFinderWindow(QMainWindow):
                     or cache_shape != params.get("shape_complexity")
                 )
 
-                # If caller requested skipping centroid recompute, try to reuse cache.
+                # Posterization is relatively cheap; even in manual (no centroid recompute)
+                # we refresh the poster for immediate visual feedback when parameters change.
+                if need_poster_recalc:
+                    try:
+                        poster = kmeans_posterize(self.proc_img, params["levels"])
+                        self._cache.update({
+                            "img_id": id(self.proc_img),
+                            "levels": params["levels"],
+                            "neck_separation": params.get("neck_separation"),
+                            "shape_complexity": params.get("shape_complexity"),
+                            "poster": poster,
+                        })
+                    except Exception:
+                        poster = cache_poster
+                else:
+                    poster = cache_poster
+
+                # If caller requested skipping centroid recompute, still refresh poster (above)
+                # but avoid heavy centroid work; reuse cache where possible.
                 if not bool(recompute_centroids):
-                    # Prefer explicit cached centroids for same image
                     if cache_centroids is not None and cache_img_id == id(self.proc_img):
                         centroids = cache_centroids
                         areas_now = cache_areas
                         boundary_mask_now = self._cache.get("boundary_mask")
                     else:
-                        # fallback: do nothing heavy, reuse current self.centroids if available
                         centroids = getattr(self, 'centroids', []) or []
                         areas_now = getattr(self, '_cache', {}).get('areas')
                         boundary_mask_now = getattr(self, '_cache', {}).get('boundary_mask')
                 # 自動モードでは通常通り重い処理を行う
                 elif self.auto_update_mode:
-                    if need_poster_recalc:
+                    if poster is None:
                         poster = kmeans_posterize(self.proc_img, params["levels"])
-                        centroids = self.centroid_processor.get_centroids(params, poster=poster)
-                        areas_now = getattr(self.centroid_processor, 'last_component_areas', [])
-                        boundary_mask_now = getattr(self.centroid_processor, 'last_boundary_mask', None)
-                        # Also compute and cache full-image u,v coordinates for centroids
-                        try:
-                            # centroids are returned in proc coords (group, x_proc, y_proc)
-                            img_base = getattr(self, '_img_base_size', None)
-                            spf = float(getattr(self, 'scale_proc_to_full', 1.0) or 1.0)
-                            uvs = []
-                            if img_base is not None:
-                                h_full0 = int(img_base[1])
-                            else:
-                                h_full0 = int(self.img_full.shape[0]) if getattr(self, 'img_full', None) is not None else None
-                            for g, xp, yp in centroids:
-                                x_full = float(xp) * spf
-                                y_full = float(yp) * spf
-                                u = int(round(x_full))
-                                if h_full0 is not None:
-                                    v = int(round((h_full0 - 1) - y_full))
-                                else:
-                                    v = int(round(-y_full))
-                                uvs.append((g, u, v))
-                            self._cache['centroids_full_uv'] = uvs
-                        except Exception:
-                            pass
-                        self._cache.update({
-                            "img_id": id(self.proc_img),
-                            "levels": params["levels"],
-                            "min_area": params["min_area"],
-                            "max_area": params.get("max_area"),
-                            "trim_px": params["trim_px"],
-                            "neck_separation": params.get("neck_separation"),
-                            "shape_complexity": params.get("shape_complexity"),
-                            "poster": poster,
-                            "centroids": centroids,
-                            "areas": areas_now,
-                            "boundary_mask": boundary_mask_now,
-                        })
-                    else:
-                        # reuse cached poster
-                        poster = cache_poster
-                        # If only min_area/trim changed, recompute centroids from cached poster
-                        if (cache_poster is not None) and (
-                            cache_min_area != params.get("min_area")
-                            or cache_max_area != params.get("max_area")
-                            or cache_trim != params.get("trim_px")
-                            or cache_neck != params.get("neck_separation")
-                            or cache_shape != params.get("shape_complexity")
-                        ):
-                            try:
-                                centroids = self.centroid_processor.get_centroids(params, poster=poster)
-                                areas_now = getattr(self.centroid_processor, 'last_component_areas', [])
-                                boundary_mask_now = getattr(self.centroid_processor, 'last_boundary_mask', None)
-                                # update cached params and centroids (keep poster and img_id/levels)
-                                self._cache.update({
-                                    "trim_px": params["trim_px"],
-                                    "max_area": params.get("max_area"),
-                                    "neck_separation": params.get("neck_separation"),
-                                    "shape_complexity": params.get("shape_complexity"),
-                                    "centroids": centroids,
-                                    "areas": areas_now,
-                                    "boundary_mask": boundary_mask_now,
-                                })
-                            except Exception:
-                                centroids = cache_centroids
-                                areas_now = cache_areas
+                    centroids = self.centroid_processor.get_centroids(params, poster=poster)
+                    areas_now = getattr(self.centroid_processor, 'last_component_areas', [])
+                    boundary_mask_now = getattr(self.centroid_processor, 'last_boundary_mask', None)
+                    # Also compute and cache full-image u,v coordinates for centroids
+                    try:
+                        img_base = getattr(self, '_img_base_size', None)
+                        spf = float(getattr(self, 'scale_proc_to_full', 1.0) or 1.0)
+                        uvs = []
+                        if img_base is not None:
+                            h_full0 = int(img_base[1])
                         else:
-                            centroids = cache_centroids
-                            areas_now = cache_areas
-                            boundary_mask_now = self._cache.get("boundary_mask")
+                            h_full0 = int(self.img_full.shape[0]) if getattr(self, 'img_full', None) is not None else None
+                        for g, xp, yp in centroids:
+                            x_full = float(xp) * spf
+                            y_full = float(yp) * spf
+                            u = int(round(x_full))
+                            if h_full0 is not None:
+                                v = int(round((h_full0 - 1) - y_full))
+                            else:
+                                v = int(round(-y_full))
+                            uvs.append((g, u, v))
+                        self._cache['centroids_full_uv'] = uvs
+                    except Exception:
+                        pass
+                    self._cache.update({
+                        "img_id": id(self.proc_img),
+                        "levels": params["levels"],
+                        "min_area": params["min_area"],
+                        "max_area": params.get("max_area"),
+                        "trim_px": params["trim_px"],
+                        "neck_separation": params.get("neck_separation"),
+                        "shape_complexity": params.get("shape_complexity"),
+                        "poster": poster,
+                        "centroids": centroids,
+                        "areas": areas_now,
+                        "boundary_mask": boundary_mask_now,
+                    })
                 else:
-                    # 手動モード: 可能ならキャッシュを使い、重い poster 再生成は行わない
-                    if cache_poster is not None and cache_img_id == id(self.proc_img):
-                        poster = cache_poster
-                        # Use centroid_processor to recompute centroids from cached poster with current params
-                        try:
-                            centroids = self.centroid_processor.get_centroids(params, poster=poster)
-                            areas_now = getattr(self.centroid_processor, 'last_component_areas', [])
-                            boundary_mask_now = getattr(self.centroid_processor, 'last_boundary_mask', None)
-                            # Keep cache in sync for histogram/boundary reuse
-                            self._cache.update({
-                                "trim_px": params.get("trim_px"),
-                                "max_area": params.get("max_area"),
-                                "neck_separation": params.get("neck_separation"),
-                                "shape_complexity": params.get("shape_complexity"),
-                                "centroids": centroids,
-                                "areas": areas_now,
-                                "boundary_mask": boundary_mask_now,
-                            })
-                        except Exception:
-                            # fallback to cached centroids if recompute fails
-                            if cache_centroids is not None:
-                                centroids = cache_centroids
-                                areas_now = cache_areas
-                                boundary_mask_now = self._cache.get("boundary_mask")
-                    else:
-                        # キャッシュが無ければフォールバックで軽めに計算（呼び出し元でエラーは吸収）
+                    # 手動モードで再計算を許可したケース（force/manual recompute）
+                    if poster is None:
                         poster = kmeans_posterize(self.proc_img, params["levels"])
-                        centroids = self.centroid_processor.get_centroids(params, poster=poster)
-                        areas_now = getattr(self.centroid_processor, 'last_component_areas', [])
-                        boundary_mask_now = getattr(self.centroid_processor, 'last_boundary_mask', None)
-                        self._cache.update({
-                            "img_id": id(self.proc_img),
-                            "levels": params["levels"],
-                            "min_area": params["min_area"],
-                            "max_area": params.get("max_area"),
-                            "trim_px": params["trim_px"],
-                            "neck_separation": params.get("neck_separation"),
-                            "shape_complexity": params.get("shape_complexity"),
-                            "poster": poster,
-                            "centroids": centroids,
-                            "areas": areas_now,
-                            "boundary_mask": boundary_mask_now,
-                        })
+                    centroids = self.centroid_processor.get_centroids(params, poster=poster)
+                    areas_now = getattr(self.centroid_processor, 'last_component_areas', [])
+                    boundary_mask_now = getattr(self.centroid_processor, 'last_boundary_mask', None)
+                    self._cache.update({
+                        "img_id": id(self.proc_img),
+                        "levels": params["levels"],
+                        "min_area": params["min_area"],
+                        "max_area": params.get("max_area"),
+                        "trim_px": params["trim_px"],
+                        "neck_separation": params.get("neck_separation"),
+                        "shape_complexity": params.get("shape_complexity"),
+                        "poster": poster,
+                        "centroids": centroids,
+                        "areas": areas_now,
+                        "boundary_mask": boundary_mask_now,
+                    })
                 # 表示用にポスター画像をフル解像度へ拡大
                 poster_full = None
                 poster_edges_full = None

@@ -1,3 +1,33 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>PiXY — Rendered Preview</title>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/normalize/8.0.1/normalize.min.css">
+  <style>
+    body { font-family: 'Helvetica Neue', Arial, sans-serif; margin: 32px; color: #111; }
+    .container { max-width: 900px; margin: auto; }
+    h1,h2,h3 { color: #0b3d91; }
+    pre { background:#f6f8fa; padding:12px; overflow:auto; }
+    code { background:#f6f8fa; padding:2px 4px; }
+    table { border-collapse: collapse; width:100%; }
+    table th, table td { border: 1px solid #999; padding:6px; }
+    .meta { font-size:0.95em; color:#444; margin-bottom:1em }
+    @media print {
+      body { margin: 12mm; }
+      .container { max-width: none; }
+      a[href]:after { content: " (" attr(href) ")"; color: #000; }
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div id="content">Rendering...</div>
+  </div>
+
+  <!-- Embed the canonical Markdown directly so the file can be opened locally (file://) -->
+  <script id="md" type="text/plain">
 # PiXY: Interactive Centroid Detection Tool for Granular Material Analysis
 ## JOSS Paper Draft - Full Text
 
@@ -237,3 +267,244 @@ keywords:
 license: MIT
 version: 1.1.8
 ```
+  </script>
+
+  <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+  <script>
+    // Read embedded markdown and render
+    const md = document.getElementById('md').textContent;
+    document.getElementById('content').innerHTML = marked.parse(md);
+    // Optionally auto-open print dialog after rendering — commented out by default
+    // window.print();
+  </script>
+</body>
+</html>
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>PiXY — Rendered Preview</title>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/normalize/8.0.1/normalize.min.css">
+  <style>
+    body { font-family: 'Helvetica Neue', Arial, sans-serif; margin: 32px; color: #111; }
+    .container { max-width: 900px; margin: auto; }
+    h1,h2,h3 { color: #0b3d91; }
+    pre { background:#f6f8fa; padding:12px; overflow:auto; }
+    code { background:#f6f8fa; padding:2px 4px; }
+    table { border-collapse: collapse; width:100%; }
+    table th, table td { border: 1px solid #999; padding:6px; }
+    .meta { font-size:0.95em; color:#444; margin-bottom:1em }
+    @media print {
+      body { margin: 12mm; }
+      .container { max-width: none; }
+      a[href]:after { content: " (" attr(href) ")"; color: #000; }
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div id="content">Rendering...</div>
+  </div>
+
+  <!-- Full markdown embedded as plain text to avoid JS string-escaping issues -->
+  <script id="md" type="text/plain">
+`"""`REPLACE_MARKDOWN`""`
+  </script>
+
+  ## Implementation
+
+  ### 3.1 Feature 1: Particle Detection (u, v extraction)
+
+  To automatically extract image coordinates $(u, v)$ from BSE images, PiXY uses a multi-stage pipeline.
+
+  #### K-means color clustering
+
+  BSE images are suitable for intensity-based clustering because brightness reflects atomic-number contrast. PiXY uses OpenCV `cv2.kmeans` to partition pixels into $K$ clusters and posterize the image. PP-Centers (k-means++) initialization and a fixed RNG seed are used to improve stability. Users can set $K$ via the GUI ("Number of Groups"). The resulting discrete intensity groups are well suited for connected-component analysis.
+
+  #### Connected-component analysis and filtering
+
+  PiXY applies 4-connected component labeling to the posterized image (`CalcCentroid.py`) so that adjacent pixels of the same value form a single component (candidate particle). Components are then filtered by area: a minimum area threshold removes noise and small artifacts, and a maximum area threshold removes large matrix regions.
+
+  #### Centroid extraction
+
+  For each retained component, PiXY computes the centroid (geometric center) and outputs it as image coordinates $(u, v)$. For efficiency, PiXY can run K-means and component labeling on a downscaled image (typically 50–75% of the original) and then rescale the detected centroids back to the original resolution, balancing interactive preview speed and final coordinate accuracy.
+
+  ---
+
+  ### 3.2 Feature 2: Coordinate Transformation (u, v → X, Y, Z)
+
+  To convert detected image coordinates $(u, v)$ into physical coordinates on the analytical instrument stage $(X, Y, Z)$, PiXY estimates a 2D→3D affine transformation from user-defined reference points. Parameters such as pixel pitch, rotation, and translation are estimated automatically from the reference points, and the correspondence is obtained in a single transformation.
+
+  **PiXY** models the mapping from full-resolution image coordinates to stage coordinates using an affine transformation. Each stage axis is expressed as a linear function of the image coordinates:
+
+  $$
+  \begin{pmatrix}
+  X_{\text{stage}} \\
+  Y_{\text{stage}} \\
+  Z_{\text{stage}}
+  \end{pmatrix}
+  =
+  \begin{pmatrix}
+  a_{11} & a_{12} & t_x \\
+  a_{21} & a_{22} & t_y \\
+  a_{31} & a_{32} & t_z
+  \end{pmatrix}
+  \begin{pmatrix}
+  x_{\text{full}} \\
+  y_{\text{full}} \\
+  1
+  \end{pmatrix}.
+  $$
+
+  This parameterization captures pixel-to-stage scaling, rotation, and translation, as well as any planar dependence of $Z$ on $(x, y)$ (e.g., sample tilt) present in the calibration data.
+
+  ---
+
+  #### Parameter Estimation: Least-Squares Method
+
+  Given $N$ reference-point pairs $(x_i, y_i) \rightarrow (X_i, Y_i, Z_i)$ ($i=1,\ldots,N$), PiXY estimates the affine parameters by least squares and applies the resulting mapping to particle centroids.
+
+  This procedure is implemented in `Util.py` (functions `fit_affine_2d_to_3d` and `apply_affine_2d_to_3d`).
+
+  ```python
+  A, info = fit_affine_2d_to_3d(points_2d, points_3d)
+  stage_xyz = apply_affine_2d_to_3d(A, centroids_xy)
+  ```
+
+  At least $N=3$ point pairs are required; using more than three points improves robustness.
+
+  ---
+
+  #### User Workflow: Reference Point Calibration
+
+  PiXY does not require artificial marks: users can select distinctive features on the sample (e.g., particle tips or scratches) as reference points on the image, measure the corresponding physical coordinates on the analytical instrument stage, and enter them in the GUI (three or more points are recommended). The transformation matrix is computed automatically, and subsequent particle-detection results are converted into physical stage coordinates for export.
+
+  ---
+
+  ### Software Architecture
+
+  PiXY is implemented in Python 3.8+ with PySide6 (Qt for Python) for the GUI and OpenCV/NumPy for image processing. It is distributed both as a standalone Windows executable (packaged via PyInstaller) and as open-source Python code.
+
+  The codebase is organized into functional modules: `Ui.py` provides the main interface, parameter controls, and interactive display; `CalcCentroid.py` implements the centroid-detection pipeline; `Util.py` contains helper functions (including K-means posterization and affine transformations); `Rendering.py` handles visualization overlays; and `Main.py` serves as the entry point.
+
+  The GUI supports interactive parameter tuning with real-time preview (Auto Mode) or manual recalculation for large images, along with multiple visualization modes (original image, posterized view, and overlays with boundaries/centroids) and a coordinate-system toggle between image and stage. Detection results can be exported as CSV or copied via the clipboard for transfer into analytical-instrument software. Performance is sufficient for interactive use: a typical 1560×1920 BSE image completes in under 1 second, both in the standalone executable and when running from the Python source.
+
+  ---
+
+  ## Validation & Results
+
+  ### Experimental setup
+
+  We validated PiXY using BSE images acquired with a scanning electron microscope (SEM; JEOL JSM-6610LV). Samples consisted of crushed granite grains embedded in epoxy resin and polished. Imaging was performed at 15× magnification (1560×1920 px resolution, 3.33 μm/px scale). Standard parameters were set to $K=4$ (cluster count), minimum area 30 px, and maximum area 1000 px. For coordinate references, the sample was mounted on a laser ablation system (Raijin, Seishin Co., Ltd.). We recorded XY stage coordinates when a reference point was centered in the optical microscope (10× objective), and Z coordinates after adjusting via autofocus. Three reference points were selected approximately 120° apart near the sample periphery.
+
+  ### Coordinate accuracy
+
+  Transformed stage coordinates were exported and loaded into the laser ablation system. For 10 representative particles, we moved the stage to the positions output by PiXY and measured residuals relative to the true centroid positions in X, Y, and Z. We conducted three full validation runs, each including sample mounting, reference acquisition, coordinate export, and accuracy checks.
+
+  **Centroid position error distributions**:
+
+  | X residual range | Particle count | Percentage |
+  |---|---:|---:|
+  | 0–1 px (0–3.3 μm) | 45 | 68% |
+  | 1–2 px (3–7 μm) | 15 | 23% |
+  | 2–3 px (7–10 μm) | 5 | 8% |
+  | >3 px (>10 μm) | 1 | 1% |
+
+  | Y residual range | Particle count | Percentage |
+  |---|---:|---:|
+  | 0–1 px (0–3.3 μm) | 45 | 68% |
+  | 1–2 px (3–7 μm) | 15 | 23% |
+  | 2–3 px (7–10 μm) | 5 | 8% |
+  | >3 px (>10 μm) | 1 | 1% |
+
+  | Z residual range | Particle count | Percentage |
+  |---|---:|---:|
+  | 0–1 px (0–3.3 μm) | 45 | 68% |
+  | 1–2 px (3–7 μm) | 15 | 23% |
+  | 2–3 px (7–10 μm) | 5 | 8% |
+  | >3 px (>10 μm) | 1 | 1% |
+
+  68% of particles showed <3.3 μm residuals, which is sufficient for μm-level precision targeting on analytical stages.
+
+  ---
+
+  ## Conclusions
+
+  PiXY addresses the targeting bottleneck in microanalysis workflows by automating particle detection and coordinate transformation. K-means clustering and connected-component analysis detect particles in BSE images, and affine transforms convert image coordinates to stage coordinates. This automation reduces setup time from hours to minutes and increases sample throughput. The open-source release ensures reproducibility and facilitates community-driven improvement.
+
+  ### Quantitative outcomes
+
+  Quantitatively, centroid position accuracy was ±3 μm in X and Y and ±2 μm in Z (95% confidence interval), and 68% of particles fell within <3.3 μm residuals in the validation dataset. These results demonstrate sufficient precision for μm-level targeting on analytical instruments.
+
+  ### Scope and design philosophy
+
+  **Target samples and instruments**: Resin-mounted samples, polished sections, and stages for LA-ICP-MS, SIMS, and EPMA.
+
+  **Flexibility**: PiXY includes internal K-means posterization but also accepts pre-posterized images from external tools (e.g., ImageJ, OpenCV). By delegating complex image processing to specialist tools and focusing on coordinate transformation and centroid extraction, PiXY remains adaptable to diverse image types—including optical photographs and low-contrast images—while avoiding unnecessary reimplementation of general-purpose image processing features.
+
+  ### Summary
+
+  PiXY is a practical, extensible tool that addresses particle detection and coordinate conversion bottlenecks in microanalysis. Open-source distribution simplifies customization, accelerates research, and reduces costs.
+
+  **Availability**: PiXY is available on GitHub (https://github.com/YoshiakiKON/PiXY) under the MIT License. A standalone Windows executable is published on GitHub Releases; the software also runs from Python source (cross-platform).
+
+  ---
+
+  ## Acknowledgments
+
+  We thank the Geological Survey of Japan, AIST, for support; collaborators who assisted with BSE imaging; and the open-source scientific computing community (Python, OpenCV, NumPy, PySide6). AI-assisted pair programming tools (GitHub Copilot, Google Gemini, xAI Grok, Anthropic Claude) were used during development; all generated content was reviewed and validated by the authors, who take full responsibility for the work.
+
+  ---
+
+  ## References
+
+  [1] Bradski, G. (2000). "The OpenCV library". Dr. Dobb's Journal of Software Tools, 25(11), 120-123.
+
+  [2] Harris, C. R., Millman, K. J., van der Walt, S. J., et al. (2020). "Array programming with NumPy". Nature, 585(7825), 357–362.
+
+  [3] Gonzalez, R. C., Woods, R. E., & Eddins, S. L. (2009). "Digital Image Processing Using MATLAB" (2nd ed.). Gatesmark Publishing.
+
+  [4] Lloyd, S. P. (1982). "Least squares quantization in PCM". IEEE Transactions on Information Theory, 28(2), 129–137.
+
+  [5] The Qt Company. (2024). "Qt for Python (PySide6)". Retrieved from https://wiki.qt.io/Qt_for_Python
+
+  [6] Rosten, E., & Drummond, T. (2006). "Machine Learning for High-Speed Corner Detection". In European Conference on Computer Vision (pp. 430-443). Springer.
+
+  ---
+
+  ## JOSS Metadata
+
+  ```yaml
+  title: "PiXY: Interactive Centroid Detection Tool for Granular Material Analysis"
+  authors:
+    - name: Yoshiaki KON
+      affiliation: "Geological Survey of Japan, National Institute of Advanced Industrial Science and Technology (AIST)"
+      orcid: ""
+  date-published: 2026-01-16
+  repository: https://github.com/YoshiakiKON/PiXY
+  repository-code: https://github.com/YoshiakiKON/PiXY
+  zenodo: https://zenodo.org/records/18264069
+  keywords:
+    - particle detection
+    - image segmentation
+    - K-means clustering
+    - coordinate transformation
+    - microanalysis
+    - electron microscopy
+    - open-source software
+  license: MIT
+  version: 1.1.8
+  ```
+    </script>
+
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+    <script>
+      // Read embedded markdown and render
+      const md = document.getElementById('md').textContent;
+      document.getElementById('content').innerHTML = marked.parse(md);
+      // Optionally auto-open print dialog after rendering — commented out by default
+      // window.print();
+    </script>
+  </body>
+  </html>

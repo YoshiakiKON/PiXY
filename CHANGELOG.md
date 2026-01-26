@@ -2,6 +2,9 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.1.8] - 2026-01-27
+- Release: Stable release 1.1.8. Bumped project version and updated JOSS/metadata files.
+
 ## [1.1.6] - 2026-01-15
 ## [1.1.7] - 2026-01-20
 - Fix: Guard poster initialization in `_update_image_actual()` to prevent `UnboundLocalError` when nudging group counts or opening images; overlay now falls back to original image when poster is unavailable; boundary rendering guarded.

@@ -5,7 +5,7 @@ a = Analysis(
     ['Main.py'],
     pathex=[],
     binaries=[],
-    datas=[('DemoBMP.bmp', '.'), ('last_image_path.txt', '.'), ('PiXY_splash.png', '.'), ('PiXY_icon.ico', '.'), ('PiXY_Pix.png', '.'), ('PiXY_XY.png', '.'), ('PiXY.png', '.'), ('px2XY2.png', '.'), ('px2XY.png', '.'), ('app_icon.png', '.')],
+    datas=[('last_image_path.txt', '.'), ('PiXY_splash.png', '.'), ('PiXY_icon.ico', '.'), ('PiXY.png', '.')],
     hiddenimports=[],
     hookspath=[],
     hooksconfig={},

@@ -81,7 +81,7 @@ python Main.py path\to\image.jpg
 
 ## Citation
 
-If you publish results generated with this software, please cite this repository. When a DOI is available (via Zenodo), add it here and update `CITATION.cff`.
+If you publish results generated with this software, please cite this repository. If you use a Zenodo artifact/link for an archived release, record that link in `CITATION.cff`.
 
 ## License
 
@@ -101,5 +101,5 @@ If you'd like, I can also:
 
 - Commit this change and push a branch/PR.
 - Produce a shorter `README-short.md` for display on PyPI/GitHub release pages.
-- Draft a `paper.md` for JOSS submission using the repository metadata and release DOI (once available).
+- Draft a `paper.md` for JOSS submission using the repository metadata and release link (once available).
 

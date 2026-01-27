@@ -7677,25 +7677,17 @@ class CentroidFinderWindow(QMainWindow):
             except Exception:
                 pass
 
-            # Rebuild fixed header widgets now that column counts exist
+            # Apply width/layout adjustments synchronously to avoid oscillating relayouts
+            try:
+                self._shrink_visible_columns()
+            except Exception:
+                pass
+            try:
+                self._adjust_center_column_widths(fixed_px=350)
+            except Exception:
+                pass
             try:
                 self._rebuild_fixed_headers()
-            except Exception:
-                pass
-            # After updating transposed views, ensure fixed pixel widths are applied
-            try:
-                # schedule immediately so layout has applied sizes
-                QTimer.singleShot(0, self._shrink_visible_columns)
-            except Exception:
-                pass
-            # After widths are applied, sync fixed headers to final widths
-            try:
-                QTimer.singleShot(0, self._rebuild_fixed_headers)
-            except Exception:
-                pass
-            # Keep center column width stable to avoid subtle layout shifts
-            try:
-                QTimer.singleShot(0, lambda: self._adjust_center_column_widths(fixed_px=350))
             except Exception:
                 pass
         except Exception:
@@ -8586,14 +8578,14 @@ class CentroidFinderWindow(QMainWindow):
             if ncols >= 6:
                 group_configs = [
                     (0, 1, ""),  # col 0
-                    (1, 2, "Image"),          # cols 1-2
-                    (3, 3, "Stage"),          # cols 3-5
+                    (1, 3, "Image"),          # cols 1-3 (expanded)
+                    (4, 2, "Stage"),          # cols 4-5 (adjusted)
                 ]
                 sub_labels = ["Grp", "u", "v", "X", "Y", "Z"]
             else:
                 group_configs = [
-                    (0, 2, "Image"),      # cols 0-1
-                    (2, 3, "Stage"),      # cols 2-4
+                    (0, 3, "Image"),      # cols 0-2 (expanded)
+                    (3, 2, "Stage"),      # cols 3-4 (adjusted)
                 ]
                 sub_labels = ["u", "v", "X", "Y", "Z"]
             for col_start, col_span, label in group_configs:

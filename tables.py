@@ -87,7 +87,9 @@ def fix_ref_table_width(table_ref):
             return
         # 各列の幅を一定値に揃えて、初期から狙いの列数が確実に見えるようにする
         const_w = 16  # px per column (fixed-width operation)
-        min_visible_cols = 5  # Ensure left table is wide enough to show at least 5 columns
+        # Keep the left table width stable regardless of current visible columns
+        # so ref-point additions don't shift the overall layout.
+        min_visible_cols = 10
         total = 0
         # Apply widths to actual existing columns
         for c in range(cols):

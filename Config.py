@@ -41,3 +41,8 @@ def load_last_image_path():
 
 # デバッグモード: True にするとターミナルへ動作ログを出力する
 DEBUG = False
+
+# Default upper limit for grain area (pixels) used for initial histogram selection
+DEFAULT_MAX_GRAIN_AREA = 2000
+# Default minimum grain area (pixels) used to avoid too-small auto-selection
+DEFAULT_MIN_GRAIN_AREA = 30

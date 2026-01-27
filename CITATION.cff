@@ -3,13 +3,14 @@ message: "If you use this software, please cite it using the following metadata.
 title: "PiXY: Pixel to stage-XY Coordinate Converter"
 version: "1.1.8"
 url: "https://github.com/YoshiakiKON/PiXY"
+repository-code: "https://github.com/YoshiakiKON/PiXY"
+repository-artifact: "https://zenodo.org/uploads/18385866"
 authors:
   - family-names: "Kon"
     given-names: "Yoshiaki"
     affiliation: "Geological Survey of Japan, AIST"
 date-released: 2026-01-27
 license: "MIT"
-doi: "10.5281/zenodo.18264069"
 abstract: >
   This software was developed with AI-assisted pair programming using GitHub Copilot (GPT-5)
   and additional LLM tooling (Google Gemini, xAI Grok, Anthropic Claude (Sonnet)). All generated code and text were

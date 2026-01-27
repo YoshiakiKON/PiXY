@@ -1,4 +1,4 @@
-# PiXY: Interactive Centroid Detection Tool for Granular Material Analysis
+# PiXY: Pixel to Stage-XY Coordinate Converter for  Microscale Analysis
 ## JOSS Paper Draft - Full Text
 
 ---
@@ -192,9 +192,7 @@ PiXY is a practical, extensible tool that addresses particle detection and coord
 
 ## Acknowledgments
 
-We thank the Geological Survey of Japan, AIST, for support; collaborators who assisted with BSE imaging; and the developer communities behind the open-source scientific computing ecosystem (Python, OpenCV, NumPy, and PySide6).
-
-During development, we used AI-assisted pair-programming tools (GitHub Copilot, Google Gemini, xAI Grok, and Anthropic Claude). All generated code and text were reviewed and validated by the authors, who take full responsibility for the content.
+This work was supported by JSPS KAKENHI Grant Number JP25H00682. The developer communities behind the open-source scientific computing ecosystem (Python, OpenCV, NumPy, and PySide6).
 
 ---
 
@@ -225,7 +223,7 @@ authors:
 date-published: 2026-01-16
 repository: https://github.com/YoshiakiKON/PiXY
 repository-code: https://github.com/YoshiakiKON/PiXY
-zenodo: https://zenodo.org/records/18264069
+zenodo: https://zenodo.org/uploads/18385866
 keywords:
   - particle detection
   - image segmentation

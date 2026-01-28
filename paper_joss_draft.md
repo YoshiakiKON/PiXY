@@ -1,5 +1,5 @@
 ---
-title: 'PiXY: Interactive Centroid Detection Tool for Granular Material Analysis'
+title: 'PiXY: Pixel to stage-XY Coordinate Converter'
 tags:
   - particle detection
   - image segmentation
@@ -16,7 +16,7 @@ affiliations:
   - index: 1
     name: Geological Survey of Japan (GSJ), National Institute of Advanced Industrial Science and Technology (AIST)
     ror: ""
-date: 16 January 2026
+date: 29 January 2026
 bibliography: paper.bib
 repository: https://github.com/YoshiakiKON/PiXY
 repository-code: https://github.com/YoshiakiKON/PiXY
@@ -25,7 +25,7 @@ license: MIT
 version: 1.1.9
 ---
 
-# PiXY: Interactive Centroid Detection Tool for Granular Material Analysis
+# PiXY: Pixel to stage-XY Coordinate Converter
 ## JOSS Paper Draft - English Version
 
 ---
@@ -34,7 +34,7 @@ version: 1.1.9
 
 **PiXY** is open-source software that links target selection on microscopy images with physical positioning on an analytical instrument stage, reducing time and human error in microanalysis workflows in geoscience and materials science. Conventionally, targets selected on microscope images must still be searched for on the analytical instrument itself, and this manual targeting step often becomes a major bottleneck.
 
-PiXY addresses this bottleneck through two functions. First, it automatically extracts particle image coordinates $(u, v)$ by combining K-means color clustering with connected-component analysis. Second, it estimates an affine mapping from user-defined reference points using a least-squares method and converts the extracted image coordinates into physical stage coordinates $(X, Y, Z)$. Validation using real specimens showed residuals (mean ± standard deviation) relative to full scale of __ ± __ %FS, __ ± __ %FS, and __ ± __ %FS in the X, Y, and Z directions, respectively (N = 100).
+PiXY addresses this bottleneck through two functions. First, it automatically extracts particle image coordinates $(u, v)$ by combining K-means color clustering with connected-component analysis. Second, it estimates an affine mapping from user-defined reference points using a least-squares method and converts the extracted image coordinates into physical stage coordinates $(X, Y, Z)$. Validation using real specimens showed residuals (mean ± standard deviation) relative to full scale of 0.2 ± 0.3 %FS in X and Y, and 3 ± 3 %FS in Z (N = 100).
 
 PiXY does not assume specialized platforms or surface markings and can use arbitrary, distinctive features on the specimen as reference points. PiXY is released under the MIT License and is available both as a standalone Windows executable and as Python source code.
 
@@ -44,7 +44,7 @@ PiXY does not assume specialized platforms or surface markings and can use arbit
 
 ### Workflow challenges
 
-Microanalysis instruments such as LA-ICP-MS, SEM-EDS, EPMA, and SIMS require reliable micrometer-scale targeting on solid sample surfaces. A common workflow is to image a specimen in advance (e.g., by optical microscopy or electron microscopy) and then mount the same specimen on an analytical instrument, where an operator adjusts an XYZ stage while viewing the instrument’s observation image.
+Microanalysis instruments such as LA-ICP-MS, SEM-EDS, EPMA, and SIMS require reliable micrometer-scale targeting on solid specimen surfaces. A common workflow is to image a specimen in advance (e.g., by optical microscopy or electron microscopy) and then mount the same specimen on an analytical instrument, where an operator adjusts an XYZ stage while viewing the instrument’s observation image.
 
 For example, zircon U–Pb dating by LA-ICP-MS or SIMS requires selecting analysis points based on microscopy observations before subsequent elemental and isotopic measurements. A typical workflow proceeds as follows:
 
@@ -102,6 +102,8 @@ To convert detected **image coordinates ($u, v$)** into **physical stage coordin
 
 PiXY models the mapping from image coordinates to physical stage coordinates using an affine approximation. Each stage axis is expressed as a linear combination of the image coordinates $(x, y, 1)$, allowing planar dependence of $Z$ on image position to be handled within the same framework.
 
+Here, $(x_{\text{full}}, y_{\text{full}})$ denotes full-resolution image coordinates (corresponding to $(u, v)$ used elsewhere in this manuscript).
+
 $$
 \begin{pmatrix}
 X_{\text{stage}} \\
@@ -145,7 +147,7 @@ The GUI enables interactive tuning of parameters (e.g., cluster count and area t
 
 ### Experimental setup
 
-Validation used BSE images acquired by a scanning electron microscope (JEOL JSM-6610LV). Samples consisted of crushed granite grains embedded in 6-mm-diameter epoxy resin and polished to a mirror finish. Imaging conditions were 15× magnification, 1560×1920 px resolution, and a scale factor of 3.33 μm/pixel. After imaging, the specimen was mounted on a laser ablation system (Raijin, Seishin Co., Ltd.). The system uses an optical microscope (10× objective) and a micro-step motorized stage to position the specimen. XY coordinates were recorded when each reference point was centered in the field of view, and Z coordinates were recorded after adjustment using the system’s autofocus function.
+Validation used BSE images acquired by a scanning electron microscope (JEOL JSM-6610LV). The specimen consisted of crushed granite grains embedded in 6-mm-diameter epoxy resin and polished to a mirror finish. Imaging conditions were 15× magnification, 1560×1920 px resolution, and a scale factor of 3.33 μm/pixel. After imaging, the specimen was mounted on a laser ablation system (Raijin, Seishin Co., Ltd.). The system uses an optical microscope (10× objective) and a micro-step motorized stage to position the specimen. XY coordinates were recorded when each reference point was centered in the field of view, and Z coordinates were recorded after adjustment using the system’s autofocus function.
 
 ### Evaluation of coordinate accuracy and trueness
 
@@ -153,14 +155,16 @@ The BSE image was loaded into PiXY, and particle centroids were detected using s
 
 After coordinate transformation, stage coordinates were exported and loaded into the laser ablation system to verify targeting. Residuals (differences between target and reached positions) were computed for X, Y, and Z by comparing the centroid position shown in PiXY with the actual reached position after moving the stage to the coordinates output by PiXY. Validation was conducted for three sets including remounting. Measurement points were distributed over approximately 5000 μm in X and Y and approximately 400 μm in Z.
 
+Residual statistics were computed over N = 100 measurement points. For reporting, residuals were also normalized by the measurement span (full scale; FS; approximately 5000 μm for X/Y and 400 μm for Z) and expressed as %FS.
+
 Results by reference-point count (values to be replaced) are shown below.
 
-| Number of reference points | X residual (mean ± SD) [μm] | Y residual (mean ± SD) [μm] | Z residual (mean ± SD) [μm] | N |
-|---:|---:|---:|---:|---:|
-| 3 | __ ± __ | __ ± __ | __ ± __ | __ |
-| 5 | __ ± __ | __ ± __ | __ ± __ | __ |
+| Number of reference points | X residual (mean ± SD) [μm] | Y residual (mean ± SD) [μm] | Z residual (mean ± SD) [μm] |
+|---:|---:|---:|---:|
+| 3 | 12 ± 16 | 13 ± 19 | 8 ± 8 |
+| 5 | 7 ± 7 | 6 ± 4 | 13 ± 4 |
 
-In general, increasing the number of reference points strengthens constraints in least-squares estimation, often reducing both the mean residual (bias; related to trueness) and the standard deviation (scatter; related to precision). In this dataset, the five-point condition showed better trueness and precision than the three-point condition (see the table above).
+In general, increasing the number of reference points strengthens constraints in least-squares estimation, often reducing both the mean residual (bias; related to trueness) and the standard deviation (scatter; related to precision). In this dataset, the five-point condition improved X and Y residuals, whereas Z residuals were comparable (see the table above).
 
 ---
 

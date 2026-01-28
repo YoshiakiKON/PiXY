@@ -38,9 +38,7 @@ PiXY addresses this bottleneck through two functions. First, it automatically ex
 
 PiXY does not assume specialized platforms or surface markings and can use arbitrary, distinctive features on the specimen as reference points. PiXY is released under the MIT License and is available both as a standalone Windows executable and as Python source code.
 
-![Figure 1: Overview workflow of PiXY: microscopy image input, centroid detection, reference-point calibration, 2D→3D affine transformation, and export of stage coordinates for instrument targeting.](documentation/images/workflow.svg)
-
-![Figure 2: PiXY GUI screenshot showing centroid overlays, reference points/residuals, and exportable coordinate tables.](documentation/images/fig_ui.png)
+![Figure 1: PiXY GUI screenshot showing centroid overlays, reference points/residuals, and exportable coordinate tables.](documentation/images/fig_ui.png)
 
 ---
 

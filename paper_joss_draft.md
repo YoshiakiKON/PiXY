@@ -1,76 +1,106 @@
-# PiXY: Pixel to Stage-XY Coordinate Converter for  Microscale Analysis
-## JOSS Paper Draft - Full Text
+---
+title: 'PiXY: Interactive Centroid Detection Tool for Granular Material Analysis'
+tags:
+  - particle detection
+  - image segmentation
+  - K-means clustering
+  - coordinate transformation
+  - microanalysis
+  - electron microscopy
+  - open-source software
+authors:
+  - name: Yoshiaki KON
+    orcid: 0000-0002-2826-6666
+    affiliation: "1"
+affiliations:
+  - index: 1
+    name: Geological Survey of Japan (GSJ), National Institute of Advanced Industrial Science and Technology (AIST)
+    ror: ""
+date: 16 January 2026
+bibliography: paper.bib
+repository: https://github.com/YoshiakiKON/PiXY
+repository-code: https://github.com/YoshiakiKON/PiXY
+zenodo: https://zenodo.org/uploads/18385866
+license: MIT
+version: 1.1.9
+---
+
+# PiXY: Interactive Centroid Detection Tool for Granular Material Analysis
+## JOSS Paper Draft - English Version
 
 ---
 
 ## Summary
 
-**PiXY** is an open-source software tool that links target selection on microscopy images with physical positioning on an analytical instrument stage, reducing time and human error in microanalysis workflows in geoscience and materials science. In conventional workflows, targets identified on microscope images must still be located and positioned on the analytical instrument itself, and this manual targeting step often becomes a major bottleneck.
+**PiXY** is open-source software that links target selection on microscopy images with physical positioning on an analytical instrument stage, reducing time and human error in microanalysis workflows in geoscience and materials science. Conventionally, targets selected on microscope images must still be searched for on the analytical instrument itself, and this manual targeting step often becomes a major bottleneck.
 
-PiXY mitigates this bottleneck by combining two functions. First, it automatically extracts particle image coordinates $(u, v)$ from backscattered electron (BSE) images by integrating K-means clustering with connected-component analysis. Second, it estimates an affine mapping from user-provided reference-point pairs using least squares and converts the extracted image coordinates into the stage's physical coordinates $(X, Y, Z)$. This reduces analysis-point setup from hours to minutes. Validation with real samples demonstrated centroid-position accuracy of ±3 μm in X and Y and ±2 μm in Z (95% confidence interval).
+PiXY addresses this bottleneck through two functions. First, it automatically extracts particle image coordinates $(u, v)$ by combining K-means color clustering with connected-component analysis. Second, it estimates an affine mapping from user-defined reference points using a least-squares method and converts the extracted image coordinates into physical stage coordinates $(X, Y, Z)$. Validation using real specimens showed residuals (mean ± standard deviation) relative to full scale of __ ± __ %FS, __ ± __ %FS, and __ ± __ %FS in the X, Y, and Z directions, respectively (N = 100).
 
-PiXY does not assume specialized platforms or surface markings (fiducials); instead, users can select arbitrary, distinctive features on the sample as reference points. PiXY is released under the MIT License and is available both as a standalone Windows executable and as Python source code.
+PiXY does not assume specialized platforms or surface markings and can use arbitrary, distinctive features on the specimen as reference points. PiXY is released under the MIT License and is available both as a standalone Windows executable and as Python source code.
 
 ---
 
 ## Statement of Need
 
-### Workflow Challenges
+### Workflow challenges
 
-Microanalysis instruments such as LA-ICP-MS, SEM-EDS, EPMA, and SIMS require reliable micrometer-scale targeting on solid sample surfaces. A common workflow is to image a specimen in advance (e.g., by optical microscopy or electron microscopy) and then mount the same specimen on an analytical instrument, where the operator adjusts an XYZ stage while viewing the instrument’s observation image.
+Microanalysis instruments such as LA-ICP-MS, SEM-EDS, EPMA, and SIMS require reliable micrometer-scale targeting on solid sample surfaces. A common workflow is to image a specimen in advance (e.g., by optical microscopy or electron microscopy) and then mount the same specimen on an analytical instrument, where an operator adjusts an XYZ stage while viewing the instrument’s observation image.
 
-For example, zircon U–Pb dating by LA-ICP-MS or SIMS requires selecting analysis points based on microscopy observations before subsequent elemental/isotopic measurements. A typical workflow proceeds as follows:
+For example, zircon U–Pb dating by LA-ICP-MS or SIMS requires selecting analysis points based on microscopy observations before subsequent elemental and isotopic measurements. A typical workflow proceeds as follows:
 
-1. **Sample preparation**: Selecting target mineral grains (e.g., by hand-picking), embedding them in resin, and polishing the mount
-2. **Imaging with optical microscopy or SEM-BSE-CL**: Acquiring images of the resin mount
-3. **Targeting on the analytical instrument**: Mounting the same sample on an LA-ICP-MS stage and precisely determining analysis positions
-4. **Local microanalysis**: Measuring elemental/isotopic compositions (e.g., by laser ablation)
+1. **Sample preparation**: Selecting target mineral grains (e.g., by hand-picking), embedding them in resin, and polishing the mount.
+2. **Imaging with optical microscopy or SEM-BSE-CL**: Acquiring images of the resin mount.
+3. **Targeting on the analytical instrument**: Mounting the same specimen on an analytical instrument stage and precisely determining analysis positions.
+4. **Local microanalysis**: Measuring elemental or isotopic compositions.
 
-In this workflow, **Step 3 (targeting on the analytical instrument)** is the bottleneck. While measurement time per analysis point in Step 4 may be 30–60 seconds, targeting in Step 3 often takes longer. Because the time required depends strongly on operator experience, partial automation of Step 3 is valuable for stable and efficient operation.
+In this workflow, Step 3 (targeting on the analytical instrument) is often the bottleneck for efficient use of instrument time. For instance, while Step 4 may require 30–60 seconds per analysis point, targeting frequently takes longer. Because targeting time depends strongly on operator experience, semi-automation of Step 3 is valuable for stable and efficient operation.
 
-### PiXY's Solution
-
-PiXY semi-automates targeting on analytical instruments by (i) extracting positional information from images and (ii) converting image coordinates into physical coordinates on the analytical instrument stage. Because users can use arbitrary, easily identifiable features on the sample as reference points, PiXY does not require specialized platforms or surface markings (fiducials).
-
-For automatic extraction of positional information, PiXY detects target particles from microscope images and extracts each particle’s centroid as image coordinates $(u, v)$. This removes the need for manual particle identification and manual coordinate recording. Users can tune GUI parameters to accommodate differences in sample conditions.
-
-For coordinate conversion, PiXY maps detected image coordinates $(u, v)$ to physical stage coordinates $(X, Y, Z)$. It estimates the transformation from user-provided reference points and performs the correspondence while accounting for rotation, scaling, and Z-axis tilt. The converted results can be transferred to instrument software via CSV export or the clipboard.
-
-#### Software characteristics
-
-PiXY can be used immediately as a standalone Windows executable without programming knowledge. In addition, PiXY publishes all algorithms as MIT-licensed Python source code to satisfy reproducibility requirements expected for peer-reviewed software papers.
-
-### Expected Benefits
-
-The primary benefit of PiXY is reducing the time and human cost of targeting in microanalysis. On analytical instruments with limited fields of view, locating and positioning micrometer-scale measurement sites often limits effective instrument time and is strongly influenced by operator experience. PiXY enables users to rapidly obtain physical stage coordinates for measurement sites selected on pre-acquired images, substantially improving targeting efficiency. Because PiXY does not assume dedicated fixtures or surface markings, it reduces operational constraints. Overall, PiXY increases throughput per sample, supports a more reproducible workflow, and avoids costs associated with commercial software licenses.
+Although individual tools exist for parts of this process (image analysis, coordinate conversion, and spreadsheet-based instrument input), there remains a gap in integrated GUIs that consistently support the full operational chain: identifying measurement targets, performing reference-point-based coordinate transformation, and exporting results in instrument-ready formats. PiXY targets this gap by integrating established image-processing and coordinate-transformation methods into a single workflow, thereby simplifying procedures and reducing targeting time.
 
 ---
 
-## Implementation
+## State of the Field
 
-### 3.1 Feature 1: Particle Detection (u, v extraction)
+Particle detection and coordinate extraction on images can be performed using general-purpose image-analysis software (e.g., ImageJ/FIJI) or image-processing libraries such as OpenCV [1]. In recent years, machine-learning-based segmentation has advanced rapidly, and segmentation foundation models have also been applied in domain-specific contexts (e.g., Segment Anything in Medical Images) [5].
 
-To automatically extract image coordinates $(u, v)$ from BSE images, PiXY uses a multi-stage pipeline.
+In practical microanalysis workflows, however, a common bottleneck lies in converting detected “microscopy image coordinates” into “physical stage coordinates” and providing outputs in formats usable by instrument software (e.g., CSV or clipboard transfer). Fiducial-marker-based registration methods are widely used to align microscopy images with stage coordinates (e.g., [6]), but they require prior marking and may be difficult to introduce depending on specimen constraints, instrument configuration, and operational policies.
 
-#### K-means clustering
-
-BSE images are suitable for intensity-based clustering because brightness reflects atomic-number contrast. PiXY uses OpenCV `cv2.kmeans` to partition pixels into $K$ clusters and posterize (quantize) the image. To improve stability, PiXY uses k-means++ (PP-Centers) initialization with a fixed random seed. Users can set $K$ via the GUI ("Number of Groups"). The resulting discrete intensity groups are well suited to subsequent connected-component analysis.
-
-#### Connected-component analysis and filtering
-
-PiXY applies connected-component labeling with 4-connectivity to the posterized image (`CalcCentroid.py`) so that adjacent pixels of the same value form a single component (candidate particle). Here, 4-connectivity means that each pixel is connected only to its up/down/left/right neighbors (diagonal adjacency is excluded). Components are then filtered by area: a minimum area threshold removes noise and small artifacts, and a maximum area threshold removes large matrix regions.
-
-#### Centroid extraction
-
-For each retained component, PiXY computes the centroid (geometric center) and outputs it as image coordinates $(u, v)$. For efficiency, PiXY can run K-means and connected-component labeling on a downscaled image (typically 50–75% of the original) and then rescale the detected centroid coordinates back to the original resolution using the scaling factor. This supports fast interactive preview while preserving accurate final coordinates.
+PiXY integrates particle detection (via an internal lightweight method or by importing pre-processed images from external workflows), reference-point-based coordinate transformation, residual inspection, and instrument-ready output into a single GUI, enabling rapid iteration during targeting.
 
 ---
 
-### 3.2 Feature 2: Coordinate Transformation (u, v → X, Y, Z)
+## Software Design
 
-To convert detected image coordinates $(u, v)$ into physical coordinates on the analytical instrument stage $(X, Y, Z)$, PiXY estimates a 2D→3D affine transformation from user-defined reference points. Parameters such as pixel pitch, rotation angle, and translation are estimated automatically from these reference points, and the correspondence is obtained in a single transformation.
+PiXY is designed to (1) automatically extract particle locations from microscopy images and (2) convert image coordinates into physical stage coordinates, thereby semi-automating targeting on analytical instruments. Because any distinctive points on a specimen can be used as reference points, PiXY does not require specialized platforms or surface marking. The GUI allows users to tune detection parameters and immediately inspect detection and transformation results. Converted coordinates can be exported as CSV or transferred via the clipboard for input into instrument software.
 
-**PiXY** models the mapping from full-resolution image coordinates to stage coordinates using an affine transformation. Each stage axis is expressed as a linear function of the image coordinates:
+The contribution of PiXY lies less in proposing new algorithms than in integrating established image-processing and coordinate-transformation techniques into a workflow that is usable in routine laboratory operations. Specifically, PiXY emphasizes usability by providing immediate preview of detection results, reference point entry, residual inspection for coordinate transformation, and export (CSV/clipboard) within a single GUI, thereby reducing rework and human error.
+
+### Design trade-offs
+
+For particle detection, PiXY adopts a reproducible and portable approach by combining K-means clustering with connected-component analysis, leveraging the intensity contrast typically available in electron microscopy images. Segmentation quality, however, depends strongly on image modality and specimen conditions, and both classical and machine-learning-based methods evolve rapidly [5]. Rather than competing directly across the full segmentation landscape, PiXY is designed to accept inputs pre-processed by external specialized software or workflows (e.g., binarization, posterization, clustering, or ML-based segmentation) and to place those results into the same coordinate-transformation and export pipeline.
+Accordingly, PiXY tolerates multiple pre-processing routes, enabling users to choose segmentation methods appropriate to their instruments, domains, and image quality.
+In addition, because reference-point acquisition is often the time-limiting step in practice, PiXY adopts an affine approximation (2D→3D) that can be estimated stably from a small number of points, rather than using overly complex nonlinear models.
+PiXY is distributed both as Python source code and as a standalone executable so that users without a programming environment can adopt it.
+
+### Particle detection algorithm (u, v extraction)
+
+To automatically extract particle image coordinates $(u, v)$ from electron microscopy images, PiXY applies the following pipeline:
+
+1. The image is clustered by K-means to facilitate separation of particles and background (the number of clusters is configurable in the GUI) [3].
+2. Candidate particle regions are extracted by connected-component analysis, and noise or matrix regions are excluded using area thresholds.
+3. The centroid of each remaining region is computed and output as $(u, v)$.
+
+For performance, PiXY processes a downscaled image during preview, and then rescales detected coordinates to the original resolution.
+
+---
+
+### Coordinate transformation algorithm (u, v → X, Y, Z)
+
+To convert detected **image coordinates ($u, v$)** into **physical stage coordinates ($X, Y, Z$)**, PiXY estimates a **2D→3D affine transformation** from user-defined reference points. Pixel pitch, rotation angle, translation, and other parameters are estimated automatically from these reference points, and the correspondence is obtained in a single transformation.
+
+#### Affine transformation estimation
+
+PiXY models the mapping from image coordinates to physical stage coordinates using an affine approximation. Each stage axis is expressed as a linear combination of the image coordinates $(x, y, 1)$, allowing planar dependence of $Z$ on image position to be handled within the same framework.
 
 $$
 \begin{pmatrix}
@@ -91,108 +121,64 @@ y_{\text{full}} \\
 \end{pmatrix}.
 $$
 
-This parameterization captures pixel-to-stage scaling, rotation, and translation, as well as any planar dependence of $Z$ on $(x, y)$ (e.g., sample tilt) present in the calibration data.
+This model captures pixel-to-physical scaling, rotation, translation, and cases where $Z$ depends on $(x, y)$ (approximable as a plane). Given multiple reference-point pairs $(x_i, y_i) \rightarrow (X_i, Y_i, Z_i)$, parameters are estimated by least squares.
+
+#### Reference point setting and workflow
+
+PiXY does not require artificial marks; distinctive points on the specimen (e.g., particle tips or scratches) can be used as reference points. Users select reference points on the image, measure the corresponding stage coordinates on the analytical instrument, and enter them in the GUI (three or more points are recommended).
+
+In practice, the most time-consuming operation is locating these reference points on the instrument stage to acquire coordinates. To support efficient operation, PiXY includes manual rotation and flip functions. Once reference points are entered, scaling/rotation/translation for XY and tilt parameters for Z are computed automatically, and subsequent particle-detection results are converted into stage coordinates.
 
 ---
 
-#### Parameter Estimation: Least-Squares Method
+### Software architecture
 
-Given $N$ reference-point pairs $(x_i, y_i) \rightarrow (X_i, Y_i, Z_i)$ ($i=1,\ldots,N$), PiXY estimates the affine parameters by least squares and applies the resulting mapping to particle centroids.
+PiXY is implemented in Python 3.8+ and uses PySide6 (Qt for Python) [4] for the GUI and OpenCV [1] and NumPy [2] for image processing. It also provides a single-file Windows executable packaged with PyInstaller.
 
-This procedure is implemented in `Util.py` (functions `fit_affine_2d_to_3d` and `apply_affine_2d_to_3d`).
+The software is modularized by functionality: `Ui.py` provides the main interface and display; `CalcCentroid.py` implements centroid extraction; `Util.py` provides helper routines such as K-means and affine transformation; `rendering.py` handles visualization overlays; and `Main.py` serves as the entry point.
 
-```python
-from Util import fit_affine_2d_to_3d, apply_affine_2d_to_3d
-
-A, info = fit_affine_2d_to_3d(points_2d, points_3d)
-stage_xyz = apply_affine_2d_to_3d(A, centroids_xy)
-```
-
-At least $N=3$ point pairs are required; using more than three points improves robustness.
+The GUI enables interactive tuning of parameters (e.g., cluster count and area thresholds). Results can be exported as CSV or copied to the clipboard for input into instrument software.
 
 ---
 
-#### User Workflow: Reference Point Calibration
-
-PiXY does not require artificial marks. Users can select distinctive features on the sample (e.g., particle tips or scratches) as reference points on the image, measure the corresponding physical coordinates on the analytical instrument stage, and enter them in the GUI (three or more points are recommended). The transformation matrix is computed automatically, and subsequent particle-detection results are converted into physical stage coordinates for export.
-
----
-
-### Software Architecture
-
-PiXY is implemented in Python 3.8+ with PySide6 (Qt for Python) for the GUI and OpenCV/NumPy for image processing. It is distributed both as a single-file Windows executable (packaged via PyInstaller) and as open-source Python code.
-
-The codebase is organized into functional modules: `Ui.py` provides the main interface, parameter controls, and interactive display; `CalcCentroid.py` implements the centroid-detection pipeline; `Util.py` contains helper functions (including K-means posterization and affine transformations); `rendering.py` handles visualization overlays; and `Main.py` serves as the entry point.
-
-The GUI supports interactive parameter tuning (e.g., cluster count and area thresholds) with real-time preview (Auto Mode) or manual recalculation for large images. It provides multiple visualization modes (original image, posterized view, and overlays with boundaries/centroids) and a coordinate-system toggle between image and stage. Detection results can be exported as CSV or copied via the clipboard for transfer into analytical instrument software. Performance is sufficient for interactive use: a typical 1560×1920 px BSE image completes in under 1 second, both in the standalone executable and when running from the Python source.
-
----
-
-## Validation & Results
+## Validation
 
 ### Experimental setup
 
-We validated PiXY using BSE images acquired with a scanning electron microscope (SEM; JEOL JSM-6610LV). Samples consisted of crushed granite grains embedded in epoxy resin and polished to a mirror finish. Imaging was performed at 15× magnification (1560×1920 px resolution; 3.33 μm/pixel). Standard PiXY parameters were $K=4$ (number of clusters), minimum area 30 px, and maximum area 1000 px.
+Validation used BSE images acquired by a scanning electron microscope (JEOL JSM-6610LV). Samples consisted of crushed granite grains embedded in 6-mm-diameter epoxy resin and polished to a mirror finish. Imaging conditions were 15× magnification, 1560×1920 px resolution, and a scale factor of 3.33 μm/pixel. After imaging, the specimen was mounted on a laser ablation system (Raijin, Seishin Co., Ltd.). The system uses an optical microscope (10× objective) and a micro-step motorized stage to position the specimen. XY coordinates were recorded when each reference point was centered in the field of view, and Z coordinates were recorded after adjustment using the system’s autofocus function.
 
-For coordinate references, the specimen was mounted on a laser ablation system (Raijin, Seishin Co., Ltd.) and observed with the instrument’s optical microscope (10× objective). XY stage coordinates were recorded when each reference point was centered in the field of view, and Z coordinates were recorded after adjustment using the instrument’s autofocus function. Three reference points were acquired approximately 120° apart along the sample periphery so that their centroid lay near the sample center.
+### Evaluation of coordinate accuracy and trueness
 
-### Coordinate accuracy
+The BSE image was loaded into PiXY, and particle centroids were detected using standard parameters: K = 5 (number of clusters), minimum area 20 px, and maximum area 2000 px. Reference points for coordinate transformation were acquired under two conditions: (i) three points approximately 120° apart and (ii) five points approximately 70° apart, both placed near the specimen periphery so that their centroid lay near the specimen center.
 
-Transformed stage coordinates were exported and loaded into the laser ablation system. For 10 representative particles on the sample surface, we moved the stage to the coordinates output by PiXY and measured residuals in X, Y, and Z by comparing the field-of-view center with the corresponding centroid position in PiXY. We conducted three full validation runs, each consisting of specimen mounting, reference acquisition, stage-coordinate export, and accuracy evaluation (including remounting between runs).
+After coordinate transformation, stage coordinates were exported and loaded into the laser ablation system to verify targeting. Residuals (differences between target and reached positions) were computed for X, Y, and Z by comparing the centroid position shown in PiXY with the actual reached position after moving the stage to the coordinates output by PiXY. Validation was conducted for three sets including remounting. Measurement points were distributed over approximately 5000 μm in X and Y and approximately 400 μm in Z.
 
-**Centroid position error distributions**:
+Results by reference-point count (values to be replaced) are shown below.
 
-| X residual range | Particle count | Percentage |
-|---|---:|---:|
-| 0–1 px (0–3.3 μm) | 45 | 68% |
-| 1–2 px (3–7 μm) | 15 | 23% |
-| 2–3 px (7–10 μm) | 5 | 8% |
-| >3 px (>10 μm) | 1 | 1% |
+| Number of reference points | X residual (mean ± SD) [μm] | Y residual (mean ± SD) [μm] | Z residual (mean ± SD) [μm] | N |
+|---:|---:|---:|---:|---:|
+| 3 | __ ± __ | __ ± __ | __ ± __ | __ |
+| 5 | __ ± __ | __ ± __ | __ ± __ | __ |
 
-| Y residual range | Particle count | Percentage |
-|---|---:|---:|
-| 0–1 px (0–3.3 μm) | 45 | 68% |
-| 1–2 px (3–7 μm) | 15 | 23% |
-| 2–3 px (7–10 μm) | 5 | 8% |
-| >3 px (>10 μm) | 1 | 1% |
+In general, increasing the number of reference points strengthens constraints in least-squares estimation, often reducing both the mean residual (bias; related to trueness) and the standard deviation (scatter; related to precision). In this dataset, the five-point condition showed better trueness and precision than the three-point condition (see the table above).
 
-| Z residual range | Particle count | Percentage |
-|---|---:|---:|
-| 0–1 px (0–3.3 μm) | 45 | 68% |
-| 1–2 px (3–7 μm) | 15 | 23% |
-| 2–3 px (7–10 μm) | 5 | 8% |
-| >3 px (>10 μm) | 1 | 1% |
-
-68% of particles showed <3.3 μm residuals, which is sufficient for micrometer-scale precision targeting on analytical stages.
-
-(We also evaluated registration performance using mean absolute error (MAE) and the standard deviation (SD) of absolute errors on corresponding landmarks. We applied both the proposed automatic landmark-based image registration method and the method in [5]. Figure 4 shows the images in the test dataset. We compared MAE and SD for all corresponding landmarks; the registration results are presented in Table 1. The confocal image size is 511×511 pixels. In the ideal case the MAE and SD are 0 (perfect match). Our method improved registration accuracy in both MAE and SD for the corresponding landmarks.)
 ---
 
-## Conclusions
+## Research Impact Statement
 
-PiXY is a practical tool that addresses bottlenecks in particle detection and coordinate transformation in microanalysis workflows. By combining K-means clustering with connected-component analysis, PiXY automatically detects particles in BSE images; by estimating an affine transformation, it converts image coordinates into physical stage coordinates. This automation reduces analysis-point setup from hours to minutes and increases throughput per sample. Releasing all algorithms as open-source software supports reproducibility standards expected for peer-reviewed software papers and facilitates community-driven improvement and customization.
+The primary impact of PiXY is reducing the time and human cost of targeting in microanalysis. Targeting—searching micrometer-scale measurement locations in the limited field of view on an analytical instrument and determining measurement positions—often limits effective instrument time, and the required time depends strongly on operator skill. With PiXY, physical stage coordinates for measurement sites selected on pre-acquired images can be obtained quickly, substantially improving targeting efficiency. In addition, because PiXY does not assume dedicated fixtures or surface marking, it reduces operational constraints. Overall, PiXY improves throughput per specimen, supports a more reproducible workflow, and avoids costs associated with commercial software licenses.
 
-### Quantitative outcomes
+---
 
-Centroid-position accuracy was ±3 μm in X and Y and ±2 μm in Z (95% confidence interval), and 68% of particles fell within <3.3 μm residuals in the validation dataset. These results demonstrate sufficient precision for micrometer-scale targeting on analytical instruments.
+## AI Usage Disclosure
 
-### Scope and design philosophy
-
-**Target samples and instruments**: Resin-mounted samples, polished sections, and stages for LA-ICP-MS, SIMS, and EPMA.
-
-**Flexibility**: PiXY includes an internal K-means posterization step but also accepts posterized images produced by external tools (e.g., ImageJ, OpenCV). By delegating complex image processing to specialist tools and focusing on coordinate transformation and centroid extraction, PiXY remains adaptable to diverse image types—including optical photographs and low-contrast images—while avoiding unnecessary reimplementation of general-purpose image processing features.
-
-### Summary
-
-PiXY is a practical, extensible tool that addresses particle detection and coordinate conversion bottlenecks in microanalysis. Its open-source distribution simplifies customization, accelerates research, and reduces costs.
-
-**Availability**: PiXY is available on GitHub (https://github.com/YoshiakiKON/PiXY) under the MIT License. A standalone Windows executable is published on GitHub Releases; the software also runs from Python source (cross-platform).
+During development, the authors used AI-assisted pair-programming tools (GitHub Copilot, Google Gemini, xAI Grok, and Anthropic Claude). All generated code and text were reviewed and validated by the authors, who retain full responsibility for the contents. AI tools were used mainly to generate candidate code and alternative wording; final decisions were made by the authors based on specifications, execution results, and visual inspection.
 
 ---
 
 ## Acknowledgments
 
-This work was supported by JSPS KAKENHI Grant Number JP25H00682. The developer communities behind the open-source scientific computing ecosystem (Python, OpenCV, NumPy, and PySide6).
+This work was supported by JSPS KAKENHI (Grant Number: 25H00682). We also thank the developer communities behind the open-source scientific computing ecosystem, including Python, OpenCV, NumPy, and PySide6.
 
 ---
 
@@ -202,36 +188,10 @@ This work was supported by JSPS KAKENHI Grant Number JP25H00682. The developer c
 
 [2] Harris, C. R., Millman, K. J., van der Walt, S. J., et al. (2020). "Array programming with NumPy". Nature, 585(7825), 357–362.
 
-[3] Gonzalez, R. C., Woods, R. E., & Eddins, S. L. (2009). "Digital Image Processing Using MATLAB" (2nd ed.). Gatesmark Publishing.
+[3] Lloyd, S. P. (1982). "Least squares quantization in PCM". IEEE Transactions on Information Theory, 28(2), 129–137.
 
-[4] Lloyd, S. P. (1982). "Least squares quantization in PCM". IEEE Transactions on Information Theory, 28(2), 129–137.
+[4] The Qt Company. (2024). "Qt for Python (PySide6)". Retrieved from https://wiki.qt.io/Qt_for_Python
 
-[5] The Qt Company. (2024). "Qt for Python (PySide6)". Retrieved from https://wiki.qt.io/Qt_for_Python
+[5] Ma, J., He, Y., Li, F., et al. (2024). Segment anything in medical images. Nature Communications, 15, 654.
 
-[6] Rosten, E., & Drummond, T. (2006). "Machine Learning for High-Speed Corner Detection". In European Conference on Computer Vision (pp. 430-443). Springer.
-
----
-
-## JOSS Metadata
-
-```yaml
-title: "PiXY: Interactive Centroid Detection Tool for Granular Material Analysis"
-authors:
-  - name: Yoshiaki KON
-    affiliation: "Geological Survey of Japan, National Institute of Advanced Industrial Science and Technology (AIST)"
-    orcid: ""
-date-published: 2026-01-16
-repository: https://github.com/YoshiakiKON/PiXY
-repository-code: https://github.com/YoshiakiKON/PiXY
-zenodo: https://zenodo.org/uploads/18385866
-keywords:
-  - particle detection
-  - image segmentation
-  - K-means clustering
-  - coordinate transformation
-  - microanalysis
-  - electron microscopy
-  - open-source software
-license: MIT
-version: 1.1.8
-```
+[6] Sheriff, J., Fletcher, I. W., & Cumpson, P. J. (2020). Computer-readable Image Markers for Automated Registration in Correlative Microscopy (autoCRIM). arXiv:2011.14949. https://doi.org/10.48550/arXiv.2011.14949

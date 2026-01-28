@@ -165,7 +165,7 @@ Transformed stage coordinates were exported and loaded into the laser ablation s
 
 68% of particles showed <3.3 μm residuals, which is sufficient for micrometer-scale precision targeting on analytical stages.
 
-
+(We also evaluated registration performance using mean absolute error (MAE) and the standard deviation (SD) of absolute errors on corresponding landmarks. We applied both the proposed automatic landmark-based image registration method and the method in [5]. Figure 4 shows the images in the test dataset. We compared MAE and SD for all corresponding landmarks; the registration results are presented in Table 1. The confocal image size is 511×511 pixels. In the ideal case the MAE and SD are 0 (perfect match). Our method improved registration accuracy in both MAE and SD for the corresponding landmarks.)
 ---
 
 ## Conclusions

@@ -1,52 +1,24 @@
 # PiXY
 
-PiXY は画像中の粒子の重心を検出し、参照点（RefPoint）を使ってピクセル座標を実世界座標に変換するための GUI ツールです。
+PiXY is a desktop GUI tool that detects centroids of particle-like regions in images and converts pixel coordinates to real-world coordinates using user-defined reference points.
 
-## 特徴
-- 画像から重心（centroids）を抽出
-- 参照点を追加・編集してアフィン / 類似変換を推定
-- 転置表示の参照テーブルと即時プレビュー
+## Features
 
-## 必要環境
-- Python 3.10+（環境に合わせて調整してください）
-- 依存パッケージは `requirements.txt` を参照
-
-## Documentation
-
-ユーザ向けマニュアルとクイックスタート（日本語 / English）は `documentation/` にあります:
-
-- `documentation/QuickManual_JP.md` — クイックマニュアル（日本語、スクリーンショットは `documentation/images/` に配置してください）
-- `documentation/QuickManual_EN.md` — Quick Manual (English)
-- `documentation/Manual_JP.md` — 詳細マニュアル（日本語）
-- `documentation/Manual_EN.md` — Manual (English)
-- `documentation/SCREENSHOT_GUIDE.md` — スクリーンショット撮影手順
-
-クイックマニュアル用のスクリーンショットは `documentation/images/` に保存してください。自動キャプチャ用スクリプトも `documentation/capture_screenshots.py` として用意していますが、手動で撮影して頂いても問題ありません。
-
-## インストール（開発用）
-```powershell
-# PiXY — Centroid to Real-World Coordinate Converter
-
-PiXY detects region centroids in images and converts pixel coordinates to real-world coordinates using user-defined reference points. It provides an interactive GUI for centroid inspection, reference-point editing, and export.
-
-## Key Features
-
-- Detect centroids from segmented image regions (posterization/clustering).
-- Add and edit reference points to estimate affine/similarity transforms.
-- Interactive, transposed reference table view for quick editing and verification.
+- Detect centroids from segmented image regions.
+- Add and edit reference points to estimate affine or similarity transforms between image and stage coordinates.
+- Interactive table view for quick inspection and editing of reference observations and residuals.
 - Export coordinates and reference data (CSV supported).
 
 ## Requirements
 
-- Python 3.10 or newer (adjust as needed for your environment).
-- See `requirements.txt` for Python package dependencies.
+- Python 3.10 or newer.
+- See [requirements.txt](requirements.txt) for Python package dependencies.
 
-## Install (development)
+## Installation
 
-PowerShell example:
+Create and activate a virtual environment, then install dependencies. Example (Windows PowerShell):
 
 ```powershell
-cd C:\Python\PiXY
 python -m venv .venv
 .\.venv\Scripts\Activate.ps1
 pip install --upgrade pip
@@ -61,7 +33,7 @@ From the repository root:
 python Main.py
 ```
 
-You can optionally pass an image path:
+Optionally provide an image path:
 
 ```powershell
 python Main.py path\to\image.jpg
@@ -69,37 +41,89 @@ python Main.py path\to\image.jpg
 
 ## Basic Usage
 
-- Open an image with `Open Image`.
-- Use `Add Ref` to enter reference-point mode, then click image points to add reference observations.
-- Edit reference `u`/`v` (image coordinates) and `Stage X`/`Stage Y` (and `Stage Z` if applicable) in the reference table to refine the transform.
-- The left transposed table shows residuals and transformed coordinates for quick inspection.
+- Open an image using the `Open Image` action.
+- Use the `Add Ref` tool to add reference points by clicking image locations and entering the corresponding real-world coordinates.
+- Edit reference `u`/`v` (image coordinates) and `Stage X`/`Stage Y` in the reference table to refine the transform.
+- Inspect residuals to evaluate transform quality and export results to CSV.
 
-## Development & Contribution
+## Documentation
 
-- Report bugs and feature requests via GitHub Issues.
-- Pull requests are welcome — please include tests or reproduction steps when possible.
+User manuals and quick-start guides are available in the `documentation/` folder:
+
+- `documentation/QuickManual_EN.md` — Quick start (English)
+- `documentation/Manual_EN.md` — Detailed manual (English)
+
+Screenshots for the quick manual are stored under `documentation/images/`.
 
 ## Citation
 
-If you publish results generated with this software, please cite this repository. If you use a Zenodo artifact/link for an archived release, record that link in `CITATION.cff`.
+If you publish work that uses this software, please cite this repository. See [CITATION.cff](CITATION.cff) for citation metadata.
 
 ## License
 
-See the `LICENSE` file in the repository for license terms (e.g. MIT).
+This project is released under the terms described in the `LICENSE` file.
+
+## Contributing
+
+- Report bugs and feature requests via GitHub Issues.
+- Pull requests are welcome; include tests or reproduction steps when possible.
+
+## Notes for Distributors
+
+- For PyPI or packaged distributions, provide a short README (README-short.md) and ensure `requirements.txt` lists runtime dependencies only.
+
+## Acknowledgements
+
+Some development assistance used AI-assisted tools; all outputs were reviewed and validated by the human authors. See [NOTICE.md](NOTICE.md) for additional acknowledgements.
 
 ---
 
-## AI-Assisted Development / AI支援について
+If you want, I can commit this update, create a branch/PR, and produce a shorter README for PyPI.
+## Quick Manual (embedded)
 
-This project was developed using AI-assisted pair programming (GitHub Copilot / GPT-5, Google Gemini, xAI Grok, Anthropic Claude (Sonnet)). All outputs were reviewed and validated by the human author(s); AI tools are not listed as authors. See NOTICE.md for details.
+Below is the Quick Manual PDF. If your viewer does not display the embedded PDF, use the link below to open it directly.
 
-本プロジェクトはAI支援ペアプログラミング（GitHub Copilot / GPT-5、Google Gemini、xAI Grok、Anthropic Claude（Sonnet））を活用して開発しました。生成物は最終的に人間の著者がレビュー・検証しており、AIは著者として記載していません。詳細は NOTICE.md を参照してください。
+<iframe src="QuickManual.pdf" width="100%" height="800px">Your browser does not support embedded PDFs. <a href="QuickManual.pdf">Open QuickManual.pdf</a>.</iframe>
+
+- [Open QuickManual.pdf](QuickManual.pdf)
+## Basic Usage
+
+- Open an image using the `Open Image` action.
+- Use the `Add Ref` tool to add reference points by clicking image locations and entering the corresponding real-world coordinates.
+- Edit reference `u`/`v` (image coordinates) and `Stage X`/`Stage Y` in the reference table to refine the transform.
+- Inspect residuals to evaluate transform quality and export results to CSV.
+
+## Documentation
+
+User manuals and quick-start guides are available in the `documentation/` folder:
+
+- `documentation/QuickManual_EN.md` — Quick start (English)
+- `documentation/Manual_EN.md` — Detailed manual (English)
+
+Screenshots for the quick manual are stored under `documentation/images/`.
+
+## Citation
+
+If you publish work that uses this software, please cite this repository. See [CITATION.cff](CITATION.cff) for citation metadata.
+
+## License
+
+This project is released under the terms described in the `LICENSE` file.
+
+## Contributing
+
+- Report bugs and feature requests via GitHub Issues.
+- Pull requests are welcome; include tests or reproduction steps when possible.
+
+## Notes for Distributors
+
+- For PyPI or packaged distributions, provide a short README (README-short.md) and ensure `requirements.txt` lists runtime dependencies only.
+
+## Acknowledgements
+
+Some development assistance used AI-assisted tools; all outputs were reviewed and validated by the human authors. See [NOTICE.md](NOTICE.md) for additional acknowledgements.
 
 ---
 
-If you'd like, I can also:
-
-- Commit this change and push a branch/PR.
-- Produce a shorter `README-short.md` for display on PyPI/GitHub release pages.
-- Draft a `paper.md` for JOSS submission using the repository metadata and release link (once available).
+If you want, I can commit this update, create a branch/PR, and produce a shorter README for PyPI.
 

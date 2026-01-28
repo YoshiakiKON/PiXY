@@ -1,4 +1,5 @@
-# PiXY
+# PiXY: Pixel to stage-XY Coordinate Converter
+Yoshiaki KON (Geological Survey of JAPAN, National Institute of Advanced Industrial Science and Technology)
 
 [![Quick Manual preview](README.png)](QuickManual.pdf)
 

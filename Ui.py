@@ -5295,8 +5295,24 @@ class CentroidFinderWindow(QMainWindow):
             if t is not None and 0 <= idx < t.columnCount():
                 try:
                     t.blockSignals(True)
-                    # canonical table_ref has 2 pseudo-header rows; choose X row for current cell
-                    t.setCurrentCell(2, idx)
+                    # canonical table_ref has 2 pseudo-header rows.
+                    # Do not force currentRow back to row 2 when the user is trying to edit
+                    # Stage X/Y/Z (rows 4-6). Forcing it breaks edit initiation.
+                    row_for_current = 2
+                    try:
+                        cur_r = int(t.currentRow())
+                    except Exception:
+                        cur_r = -1
+                    try:
+                        # If currently editing, never change the current cell here.
+                        if int(getattr(t, 'state', lambda: 0)()) == int(getattr(QAbstractItemView, 'EditingState', 0)):
+                            row_for_current = cur_r
+                    except Exception:
+                        pass
+                    if cur_r in (4, 5, 6):
+                        row_for_current = cur_r
+                    if row_for_current is not None and int(row_for_current) >= 0:
+                        t.setCurrentCell(int(row_for_current), idx)
                     t.selectColumn(idx)
                 finally:
                     try:

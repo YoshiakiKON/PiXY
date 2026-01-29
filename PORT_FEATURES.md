@@ -1,0 +1,42 @@
+# コード移植チェックリスト（v1.1.5 → v1.1.9）
+
+方針
+- docs/資産は後回し。まず **実行コードとEXE安定性** に関係する変更だけを段階導入する。
+- 1ステップ = 1コミット = 1回スモーク（[SMOKE_TEST_EXE.md](../SMOKE_TEST_EXE.md)）
+
+## Baseline（固定）
+- [ ] ベースラインは v1.1.5 相当コード（タグ v1.1.5）
+- [ ] EXEビルド設定は v1.1.5相当（console/windowed 等をまず一致）
+
+## 復旧ステップ（低リスク → 高リスク）
+
+### Step 1: v1.1.6 UIフッター（低リスク）
+- [ ] `Ui.py`: タイトルからバージョン除去、フッターに表示（見た目のみ）
+- [ ] `pyproject.toml`: version更新（挙動に影響なし）
+
+### Step 2: v1.1.7 安定性ガード（低〜中リスク）
+- [ ] `Ui.py`: `_update_image_actual()` の poster未定義ガード（UnboundLocalError回避）
+- [ ] `Ui.py`: overlay/boundary 描画のガード（poster無し時に落ちない）
+
+### Step 3: v1.1.7 処理分離/Manual制御（中〜高リスク）
+- [ ] `Ui.py`: posterizationとcentroid再計算の分離（Manualでも見た目は即時、重い計算は抑制）
+- [ ] `Ui.py`: Auto/Manual（ReCalculate）導入
+
+### Step 4: v1.1.8 EXEリソース探索（低〜中リスク/安定化寄り）
+- [ ] `Main.py`: PyInstaller凍結時に `sys._MEIPASS` を優先
+
+### Step 5: v1.1.8 しきい値デフォルト（中リスク/結果が変わる）
+- [ ] `Config.py`: `DEFAULT_MAX_GRAIN_AREA` / `DEFAULT_MIN_GRAIN_AREA`
+- [ ] `Ui.py`: ヒストグラム初期選択に上限/下限キャップ
+
+### Step 6: v1.1.8 テーブルレイアウト（低〜中リスク）
+- [ ] `tables.py`: 左テーブルの幅固定（追加でレイアウトが揺れない）
+
+### Step 7: v1.1.8 PyInstaller spec（環境依存/中リスク）
+- [ ] `PiXY.spec`: icon/console/データ同梱の更新（EXE挙動差に直結）
+
+---
+
+## メモ（不安定化したら）
+- 直前ステップを `git revert` して原因を確定する（まとめて戻さない）
+- 必要ならフラグ化してON/OFF比較できるようにする

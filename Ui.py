@@ -2095,6 +2095,21 @@ class CentroidFinderWindow(QMainWindow):
             self.table_ref_view.currentCellChanged.connect(self._on_ref_view_current_changed)
         except Exception:
             pass
+        # Single-click edit in transposed view for Stage X/Y/Z columns
+        try:
+            self.table_ref_view.cellClicked.connect(self._on_ref_view_cell_clicked)
+        except Exception:
+            pass
+        # Enable user-initiated edits (Stage columns only are editable at item-level)
+        try:
+            triggers = (
+                QAbstractItemView.EditKeyPressed
+                | QAbstractItemView.SelectedClicked
+                | QAbstractItemView.DoubleClicked
+            )
+            self.table_ref_view.setEditTriggers(triggers)
+        except Exception:
+            pass
         try:
             # Ensure the transposed delegate is installed so Enter commits and advances
             try:
@@ -5331,13 +5346,64 @@ class CentroidFinderWindow(QMainWindow):
                 if 0 <= view_r < rv.rowCount():
                     try:
                         rv.blockSignals(True)
-                        rv.setCurrentCell(view_r, 0)
+                        # Do not force column 0 when user is editing Stage columns (2-4).
+                        col_for_current = 0
+                        try:
+                            cur_c = int(rv.currentColumn())
+                        except Exception:
+                            cur_c = -1
+                        try:
+                            if int(getattr(rv, 'state', lambda: 0)()) == int(getattr(QAbstractItemView, 'EditingState', 0)):
+                                col_for_current = cur_c
+                        except Exception:
+                            pass
+                        if cur_c in (2, 3, 4):
+                            col_for_current = cur_c
+                        if col_for_current is None or int(col_for_current) < 0:
+                            col_for_current = 0
+                        rv.setCurrentCell(view_r, int(col_for_current))
                         rv.selectRow(view_r)
                     finally:
                         try:
                             rv.blockSignals(False)
                         except Exception:
                             pass
+        except Exception:
+            pass
+
+    def _on_ref_view_cell_clicked(self, row, col):
+        # Transposed view: data rows start at row>=2; editable Stage columns are 2,3,4.
+        try:
+            header_rows = 2
+            if row is None or col is None:
+                return
+            if int(row) < header_rows:
+                return
+            if int(col) not in (2, 3, 4):
+                return
+            item = self.table_ref_view.item(int(row), int(col))
+            if item is None:
+                return
+            if not (item.flags() & Qt.ItemIsEditable):
+                return
+            try:
+                self.table_ref_view.setCurrentCell(int(row), int(col))
+                self.table_ref_view.selectRow(int(row))
+            except Exception:
+                pass
+            try:
+                self.table_ref_view.setFocus(Qt.MouseFocusReason)
+            except Exception:
+                try:
+                    self.table_ref_view.setFocus()
+                except Exception:
+                    pass
+            # Defer edit start slightly so selection updates don't immediately cancel it.
+            try:
+                from qt_compat.QtCore import QTimer
+                QTimer.singleShot(0, lambda: self.table_ref_view.editItem(item))
+            except Exception:
+                self.table_ref_view.editItem(item)
         except Exception:
             pass
 

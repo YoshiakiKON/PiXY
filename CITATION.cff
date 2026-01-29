@@ -4,7 +4,8 @@ title: "PiXY: Pixel to stage-XY Coordinate Converter"
 version: "1.2.0"
 url: "https://github.com/YoshiakiKON/PiXY"
 repository-code: "https://github.com/YoshiakiKON/PiXY"
-repository-artifact: "https://zenodo.org/uploads/18385866"
+doi: 10.5281/zenodo.18417046
+repository-artifact: "https://doi.org/10.5281/zenodo.18417046"
 authors:
   - family-names: "Kon"
     given-names: "Yoshiaki"

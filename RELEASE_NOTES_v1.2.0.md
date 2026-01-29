@@ -81,6 +81,7 @@ If you are coming from older builds:
 
 If you use PiXY in published work, please cite the software.
 - See `CITATION.cff` for the recommended citation metadata.
+- DOI (v1.2.0): https://doi.org/10.5281/zenodo.18417046
 
 ---
 

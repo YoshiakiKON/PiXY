@@ -20,7 +20,7 @@ date: 16 January 2026
 bibliography: paper.bib
 repository: https://github.com/YoshiakiKON/PiXY
 repository-code: https://github.com/YoshiakiKON/PiXY
-zenodo: https://zenodo.org/uploads/18385866
+zenodo: https://doi.org/10.5281/zenodo.18417046
 license: MIT
 version: 1.1.9
 ---

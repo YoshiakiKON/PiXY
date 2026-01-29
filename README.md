@@ -1,47 +1,29 @@
 # PiXY
 
-PiXY は画像中の粒子の重心を検出し、参照点（RefPoint）を使ってピクセル座標を実世界座標に変換するための GUI ツールです。
+PiXY is a GUI tool that detects particle centroids in images and converts pixel coordinates to real-world (stage) coordinates using user-defined reference points.
 
-## 特徴
-- 画像から重心（centroids）を抽出
-- 参照点を追加・編集してアフィン / 類似変換を推定
-- 転置表示の参照テーブルと即時プレビュー
-
-## 必要環境
-- Python 3.10+（環境に合わせて調整してください）
-- 依存パッケージは `requirements.txt` を参照
-- 推奨画面サイズ: 1200×900 以上
-
-## Documentation
-
-ユーザ向けマニュアルとクイックスタート（日本語 / English）は `documentation/` にあります:
-
-- `documentation/QuickManual_JP.md` — クイックマニュアル（日本語、スクリーンショットは `documentation/images/` に配置してください）
-- `documentation/QuickManual_EN.md` — Quick Manual (English)
-- `documentation/Manual_JP.md` — 詳細マニュアル（日本語）
-- `documentation/Manual_EN.md` — Manual (English)
-- `documentation/SCREENSHOT_GUIDE.md` — スクリーンショット撮影手順
-
-クイックマニュアル用のスクリーンショットは `documentation/images/` に保存してください。自動キャプチャ用スクリプトも `documentation/capture_screenshots.py` として用意していますが、手動で撮影して頂いても問題ありません。
-
-## インストール（開発用）
-```powershell
-# PiXY — Centroid to Real-World Coordinate Converter
-
-PiXY detects region centroids in images and converts pixel coordinates to real-world coordinates using user-defined reference points. It provides an interactive GUI for centroid inspection, reference-point editing, and export.
-
-## Key Features
+## Key features
 
 - Detect centroids from segmented image regions (posterization/clustering).
-- Add and edit reference points to estimate affine/similarity transforms.
+- Add and edit reference points to estimate an affine/similarity transform.
 - Interactive, transposed reference table view for quick editing and verification.
 - Export coordinates and reference data (CSV supported).
 
 ## Requirements
 
-- Python 3.10 or newer (adjust as needed for your environment).
+- Python 3.10+ (adjust as needed for your environment).
 - See `requirements.txt` for Python package dependencies.
 - Recommended window size: 1200×900 or larger.
+
+## Documentation
+
+User manuals and quick-start guides (English and Japanese) are in `documentation/`:
+
+- `documentation/QuickManual_EN.md` — Quick Manual
+- `documentation/Manual_EN.md` — Manual
+- `documentation/SCREENSHOT_GUIDE.md` — Screenshot capture guide
+
+Screenshots for the quick manuals should be placed under `documentation/images/`.
 
 ## Install (development)
 
@@ -50,7 +32,7 @@ PowerShell example:
 ```powershell
 cd C:\Python\PiXY
 python -m venv .venv
-.\.venv\Scripts\Activate.ps1
+\.\.venv\Scripts\Activate.ps1
 pip install --upgrade pip
 pip install -r requirements.txt
 ```
@@ -69,31 +51,18 @@ You can optionally pass an image path:
 python Main.py path\to\image.jpg
 ```
 
-## Basic Usage
+## Basic usage
 
-- Open an image with `Open Image`.
-- Use `Add Ref` to enter reference-point mode, then click image points to add reference observations.
-- Edit reference `u`/`v` (image coordinates) and `Stage X`/`Stage Y` (and `Stage Z` if applicable) in the reference table to refine the transform.
-- The left transposed table shows residuals and transformed coordinates for quick inspection.
-
-## Development & Contribution
-
-- Report bugs and feature requests via GitHub Issues.
-- Pull requests are welcome — please include tests or reproduction steps when possible.
+1. Open an image with `Open Image`.
+2. Use `Add Ref` to enter reference-point mode, then click image points to add reference observations.
+3. Edit reference `u`/`v` (image coordinates) and `Stage X`/`Stage Y` (and `Stage Z` if applicable) in the reference table to refine the transform.
+4. Export results as CSV or copy to clipboard.
 
 ## Citation
 
-If you publish results generated with this software, please cite this repository. When a DOI is available (via Zenodo), add it here and update `CITATION.cff`.
+If you publish results generated with this software, please cite this repository (see `CITATION.cff`).
 
 ## License
 
-See the `LICENSE` file in the repository for license terms (e.g. MIT).
-
----
-
-If you'd like, I can also:
-
-- Commit this change and push a branch/PR.
-- Produce a shorter `README-short.md` for display on PyPI/GitHub release pages.
-- Draft a `paper.md` for JOSS submission using the repository metadata and release DOI (once available).
+MIT License — see `LICENSE`.
 

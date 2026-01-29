@@ -29,7 +29,14 @@ from qt_compat.QtGui import QPixmap, QFont, QCursor, QPainter, QPen, QColor, QPa
 
 from Util import cvimg_to_qpixmap, kmeans_posterize
 from CalcCentroid import CentroidProcessor
-from Config import PROC_TARGET_WIDTH, save_last_image_path, load_last_image_path, DEBUG
+from Config import (
+    PROC_TARGET_WIDTH,
+    save_last_image_path,
+    load_last_image_path,
+    DEBUG,
+    DEFAULT_MAX_GRAIN_AREA,
+    DEFAULT_MIN_GRAIN_AREA,
+)
 
 import numpy as np
 import cv2
@@ -3868,6 +3875,18 @@ class CentroidFinderWindow(QMainWindow):
                     # Clamp to valid range
                     sel_min = max(float(mn), min(float(mx), sel_min))
                     sel_max = max(float(mn), min(float(mx), sel_max))
+                    # Apply configured default maximum cap to initial selection
+                    try:
+                        if sel_max is not None:
+                            sel_max = min(sel_max, float(DEFAULT_MAX_GRAIN_AREA))
+                    except Exception:
+                        pass
+                    # Enforce a minimum cap so autoset doesn't choose too-small grains
+                    try:
+                        if sel_min is not None:
+                            sel_min = max(sel_min, float(DEFAULT_MIN_GRAIN_AREA))
+                    except Exception:
+                        pass
                     if sel_min > sel_max:
                         sel_min, sel_max = sel_max, sel_min
                     

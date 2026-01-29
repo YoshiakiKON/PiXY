@@ -29,8 +29,8 @@
 - [x] `Main.py`: PyInstaller凍結時に `sys._MEIPASS` を優先
 
 ### Step 5: v1.1.8 しきい値デフォルト（中リスク/結果が変わる）
-- [ ] `Config.py`: `DEFAULT_MAX_GRAIN_AREA` / `DEFAULT_MIN_GRAIN_AREA`
-- [ ] `Ui.py`: ヒストグラム初期選択に上限/下限キャップ
+- [x] `Config.py`: `DEFAULT_MAX_GRAIN_AREA` / `DEFAULT_MIN_GRAIN_AREA`
+- [x] `Ui.py`: ヒストグラム初期選択に上限/下限キャップ
 
 ### Step 6: v1.1.8 テーブルレイアウト（低〜中リスク）
 - [ ] `tables.py`: 左テーブルの幅固定（追加でレイアウトが揺れない）

@@ -1507,41 +1507,6 @@ class CentroidFinderWindow(QMainWindow):
             center_controls = QHBoxLayout()
             center_controls.setContentsMargins(0, 0, 0, 0)
             center_controls.setSpacing(6)
-
-            # Recalculation Trigger controls (自動/手動 with 手動 -> 再計算 label)
-            try:
-                self.calc_mode_controls = QWidget()
-                cml = QHBoxLayout(self.calc_mode_controls)
-                cml.setContentsMargins(0, 0, 0, 0)
-                cml.setSpacing(6)
-                self.lbl_calc_mode = QLabel("計算")
-                try:
-                    fcm = self.lbl_calc_mode.font()
-                    fcm.setBold(True)
-                    self.lbl_calc_mode.setFont(fcm)
-                except Exception:
-                    pass
-                cml.addWidget(self.lbl_calc_mode)
-                try:
-                    self.toggle_calc_mode = SegmentControl(["自動", "手動"], checked_index=0, btn_w=80, btn_h=24)
-                    try:
-                        self.toggle_calc_mode.set_on_changed(lambda idx: self._on_toggle_calc_mode(int(idx)))
-                    except Exception:
-                        pass
-                    try:
-                        # Manual button click triggers recalculation when already in manual mode
-                        self.toggle_calc_mode._buttons[1].clicked.connect(self._on_manual_recalculate_clicked)
-                    except Exception:
-                        pass
-                    cml.addWidget(self.toggle_calc_mode)
-                except Exception:
-                    self.toggle_calc_mode = None
-                center_controls.addWidget(self.calc_mode_controls)
-            except Exception:
-                self.calc_mode_controls = None
-                self.lbl_calc_mode = None
-                self.toggle_calc_mode = None
-
             img_header.addLayout(center_controls)
         except Exception:
             pass
@@ -2259,6 +2224,45 @@ class CentroidFinderWindow(QMainWindow):
             gl.setSpacing(6)
             if getattr(self, 'grain_ident_controls', None) is not None:
                 gl.addWidget(self.grain_ident_controls, 0)
+
+            # Recalculation Trigger controls (v1.1.9-style): Auto/Manual with Manual -> ReCalculate
+            try:
+                self._suppress_manual_recalc_click_once = False
+            except Exception:
+                pass
+            try:
+                self.calc_mode_controls = QWidget()
+                cml = QHBoxLayout(self.calc_mode_controls)
+                cml.setContentsMargins(0, 0, 0, 0)
+                cml.setSpacing(6)
+                self.lbl_calc_mode = QLabel("Recalculation Trigger")
+                try:
+                    fcm = self.lbl_calc_mode.font()
+                    fcm.setBold(True)
+                    self.lbl_calc_mode.setFont(fcm)
+                except Exception:
+                    pass
+                cml.addWidget(self.lbl_calc_mode)
+                try:
+                    self.toggle_calc_mode = SegmentControl(["Auto", "Manual"], checked_index=0, btn_w=108, btn_h=24)
+                    try:
+                        self.toggle_calc_mode.set_on_changed(lambda idx: self._on_toggle_calc_mode(int(idx)))
+                    except Exception:
+                        pass
+                    try:
+                        # Manual button click triggers recalculation when already in manual mode
+                        self.toggle_calc_mode._buttons[1].clicked.connect(self._on_manual_recalculate_clicked)
+                    except Exception:
+                        pass
+                    cml.addWidget(self.toggle_calc_mode)
+                except Exception:
+                    self.toggle_calc_mode = None
+                gl.addWidget(self.calc_mode_controls, 0)
+            except Exception:
+                self.calc_mode_controls = None
+                self.lbl_calc_mode = None
+                self.toggle_calc_mode = None
+
             gl.addLayout(sliders_layout)
         except Exception:
             self.grain_section = None
@@ -2847,12 +2851,20 @@ class CentroidFinderWindow(QMainWindow):
         # Swap label on the Manual segment
         try:
             if getattr(self, 'toggle_calc_mode', None) is not None:
-                btn = getattr(self.toggle_calc_mode, '_buttons', [None, None])[1]
-                if btn is not None:
+                buttons = getattr(self.toggle_calc_mode, '_buttons', [None, None])
+                btn0 = buttons[0] if len(buttons) > 0 else None
+                btn1 = buttons[1] if len(buttons) > 1 else None
+                if btn0 is not None:
+                    btn0.setText('Auto')
+                if btn1 is not None:
                     if str(getattr(self, 'calc_mode', 'auto')) == 'manual':
-                        btn.setText('再計算')
+                        btn1.setText('ReCalculate')
+                        try:
+                            self._suppress_manual_recalc_click_once = True
+                        except Exception:
+                            pass
                     else:
-                        btn.setText('手動')
+                        btn1.setText('Manual')
         except Exception:
             pass
 
@@ -2868,6 +2880,12 @@ class CentroidFinderWindow(QMainWindow):
     def _on_manual_recalculate_clicked(self):
         # Only act if Manual is active; otherwise ignore
         try:
+            try:
+                if getattr(self, '_suppress_manual_recalc_click_once', False):
+                    self._suppress_manual_recalc_click_once = False
+                    return
+            except Exception:
+                pass
             if str(getattr(self, 'calc_mode', 'auto')) != 'manual':
                 return
         except Exception:

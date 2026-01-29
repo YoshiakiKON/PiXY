@@ -5388,6 +5388,30 @@ class CentroidFinderWindow(QMainWindow):
         except Exception:
             pass
 
+        # Debounced redraw: selecting a different ref changes marker emphasis.
+        # Calling _apply_proc_zoom() directly here can be expensive and can visually
+        # flicker during rapid selection/table updates, so coalesce into one tick.
+        try:
+            if not getattr(self, '_ref_redraw_pending', False):
+                self._ref_redraw_pending = True
+                try:
+                    from qt_compat.QtCore import QTimer
+                    QTimer.singleShot(0, self._do_ref_redraw)
+                except Exception:
+                    self._do_ref_redraw()
+        except Exception:
+            pass
+
+    def _do_ref_redraw(self):
+        try:
+            self._ref_redraw_pending = False
+        except Exception:
+            pass
+        try:
+            self._apply_proc_zoom()
+        except Exception:
+            pass
+
     def _on_ref_view_cell_clicked(self, row, col):
         # Transposed view: data rows start at row>=2; editable Stage columns are 2,3,4.
         try:
@@ -5421,12 +5445,6 @@ class CentroidFinderWindow(QMainWindow):
                 QTimer.singleShot(0, lambda: self.table_ref_view.editItem(item))
             except Exception:
                 self.table_ref_view.editItem(item)
-        except Exception:
-            pass
-
-        # Redraw so RefPoint marker sizes update immediately
-        try:
-            self._apply_proc_zoom()
         except Exception:
             pass
 

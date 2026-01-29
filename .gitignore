@@ -11,6 +11,15 @@ build/
 # Logs
 debug_px2xy.log
 
+# Runtime state
+last_image_path.txt
+
+# Local git worktrees (keep outside repo when possible)
+worktrees/
+
+# Office temp files
+~$*.xlsx
+
 # Virtual environments
 .venv/
 env/

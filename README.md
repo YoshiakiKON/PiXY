@@ -65,7 +65,10 @@ Or run the provided Windows executable: `PiXY_ver120.exe`.
 
 ## Citation
 
-If you publish results generated with this software, please cite this repository. When a DOI is available (via Zenodo), add it here and update `CITATION.cff`.
+If you publish results generated with this software, please cite this repository.
+
+- Zenodo DOI (v1.2.0): https://doi.org/10.5281/zenodo.18417046
+- See `CITATION.cff` for the recommended citation metadata.
 
 ## License
 

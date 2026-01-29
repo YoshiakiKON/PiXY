@@ -11,9 +11,9 @@ Typical use cases:
 
 **Recommended screen size**: 1200×900 or larger (the UI is more comfortable at this size).
 
-## Screenshot
+## Overview figure
 
-![PiXY main UI](documentation/images/fig_ui.png)
+![PiXY overview workflow](documentation/images/workflow_v2.svg)
 
 ## What’s Included
 
@@ -72,6 +72,10 @@ If you are coming from older builds:
 
 - `documentation/QuickManual_EN.md` — Quick start
 - `documentation/Manual_EN.md` — Full manual
+
+## UI screenshot (optional)
+
+![PiXY main UI](documentation/images/fig_ui.png)
 
 ## Citation
 

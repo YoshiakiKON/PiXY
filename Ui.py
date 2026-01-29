@@ -2227,10 +2227,6 @@ class CentroidFinderWindow(QMainWindow):
 
             # Recalculation Trigger controls (v1.1.9-style): Auto/Manual with Manual -> ReCalculate
             try:
-                self._suppress_manual_recalc_click_once = False
-            except Exception:
-                pass
-            try:
                 self.calc_mode_controls = QWidget()
                 cml = QHBoxLayout(self.calc_mode_controls)
                 cml.setContentsMargins(0, 0, 0, 0)
@@ -2863,13 +2859,6 @@ class CentroidFinderWindow(QMainWindow):
                 if btn1 is not None:
                     if str(getattr(self, 'calc_mode', 'auto')) == 'manual':
                         btn1.setText('ReCalculate')
-                        # Suppress the initial click used to switch into manual mode.
-                        # Subsequent clicks while already in manual should trigger recalculation.
-                        try:
-                            if prev_mode != 'manual':
-                                self._suppress_manual_recalc_click_once = True
-                        except Exception:
-                            pass
                     else:
                         btn1.setText('Manual')
         except Exception:
@@ -2887,24 +2876,72 @@ class CentroidFinderWindow(QMainWindow):
     def _on_manual_recalculate_clicked(self):
         # Only act if Manual is active; otherwise ignore
         try:
-            try:
-                if getattr(self, '_suppress_manual_recalc_click_once', False):
-                    self._suppress_manual_recalc_click_once = False
-                    return
-            except Exception:
-                pass
             if str(getattr(self, 'calc_mode', 'auto')) != 'manual':
                 return
         except Exception:
             return
         try:
-            self._manual_recompute_request = True
+            if bool(getattr(self, '_manual_recalc_in_progress', False)):
+                return
         except Exception:
             pass
+
         try:
-            self.schedule_update(force=True, recompute_centroids=True)
+            self._manual_recalc_in_progress = True
         except Exception:
             pass
+
+        # Provide immediate visual feedback and let the event loop paint before heavy work.
+        try:
+            btns = getattr(getattr(self, 'toggle_calc_mode', None), '_buttons', [])
+            btn0 = btns[0] if len(btns) > 0 else None
+            btn1 = btns[1] if len(btns) > 1 else None
+        except Exception:
+            btn0 = None
+            btn1 = None
+
+        try:
+            if btn0 is not None:
+                btn0.setEnabled(False)
+            if btn1 is not None:
+                btn1.setEnabled(False)
+                btn1.setText('ReCalculating...')
+        except Exception:
+            pass
+
+        try:
+            QApplication.processEvents()
+        except Exception:
+            pass
+
+        def _do_recalc():
+            try:
+                try:
+                    self._manual_recompute_request = True
+                except Exception:
+                    pass
+                try:
+                    self.schedule_update(force=True, recompute_centroids=True)
+                except Exception:
+                    pass
+            finally:
+                try:
+                    self._manual_recalc_in_progress = False
+                except Exception:
+                    pass
+                try:
+                    if btn0 is not None:
+                        btn0.setEnabled(True)
+                    if btn1 is not None:
+                        btn1.setEnabled(True)
+                        btn1.setText('ReCalculate')
+                except Exception:
+                    pass
+
+        try:
+            QTimer.singleShot(0, _do_recalc)
+        except Exception:
+            _do_recalc()
 
     # 境界線表示トグルハンドラ
     def _on_toggle_boundaries(self, checked):

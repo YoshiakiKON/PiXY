@@ -2,6 +2,14 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.2.0] - 2026-01-29
+- UI: restore v1.1.9-style manual recalculation trigger (Auto / ReCalculate) and improve responsiveness.
+- Stability: guards around poster/boundary rendering and recomputation gating in manual mode.
+- Packaging: prefer `sys._MEIPASS` for bundled assets (PyInstaller).
+- Startup: prefer last opened image; fall back to bundled demo image.
+- Defaults: add initial histogram selection caps for grain area.
+- UI: show version in footer reliably (EXE + source).
+
 ## [1.1.8] - 2026-01-27
 - Release: Stable release 1.1.8. Bumped project version and updated JOSS/metadata files.
 

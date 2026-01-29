@@ -3,20 +3,31 @@ Yoshiaki KON (Geological Survey of JAPAN, National Institute of Advanced Industr
 
 PiXY is a desktop GUI tool that detects centroids of particle-like regions in images and converts pixel coordinates to real-world stage coordinates using user-defined reference points.
 
-[![Quick Manual preview](README.png)](QuickManual.pdf)
-
+[![Quick Manual preview](README.png)](README.png)
 
 
 ## Features
 
-- Detect centroids from posterized/segmented image regions (K-means + connected components).
-- Add and edit reference points to estimate affine (or similarity) transforms between image and stage coordinates.
-- Interactive reference table and overlay preview for quick inspection and parameter tuning.
-- Export detected coordinates and reference data (CSV supported).
+- Detect centroids from segmented image regions (posterization/clustering).
+- Add and edit reference points to estimate an affine/similarity transform.
+- Interactive, transposed reference table view for quick editing and verification.
+- Export coordinates and reference data (CSV supported).
 
 ## Requirements
 
-- Python 3.10 or newer (for running from source). See `requirements.txt` for dependencies.
+- Python 3.10+ (adjust as needed for your environment).
+- See `requirements.txt` for Python package dependencies.
+- Recommended window size: 1200×900 or larger.
+
+## Documentation
+
+User manuals and quick-start guides (English and Japanese) are in `documentation/`:
+
+- `documentation/QuickManual_EN.md` — Quick Manual
+- `documentation/Manual_EN.md` — Manual
+- `documentation/SCREENSHOT_GUIDE.md` — Screenshot capture guide
+
+Screenshots for the quick manuals should be placed under `documentation/images/`.
 
 ## Installation (development)
 
@@ -25,7 +36,7 @@ PowerShell example:
 ```powershell
 cd C:\Python\Px2XY
 python -m venv .venv
-.\.venv\Scripts\Activate.ps1
+\.\.venv\Scripts\Activate.ps1
 pip install --upgrade pip
 pip install -r requirements.txt
 ```
@@ -38,44 +49,33 @@ From the repository root (Python source):
 python Main.py
 ```
 
-Or run the provided Windows executable: `PiXY_ver118.exe`.
+Or run the provided Windows executable: `PiXY_ver120.exe`.
 
-## Basic Usage
+## Basic usage
 
 - Open an image with `Open Image`.
-- Click `Add Ref` and add at least 3 (non-collinear) reference points: click image locations and enter corresponding stage `X,Y,Z`.
-- Adjust detection parameters ("Number of Groups", area thresholds) and run detection.
-- Export stage coordinates (CSV) or copy to clipboard for instrument import.
+- Use `Add Ref` to enter reference-point mode, then click image points to add reference observations.
+- Edit reference `u`/`v` (image coordinates) and `Stage X`/`Stage Y` (and `Stage Z` if applicable) in the reference table to refine the transform.
+- The left transposed table shows residuals and transformed coordinates for quick inspection.
 
-## Quick Manual
+## Development & Contribution
 
-Click the preview image above to open the one-page Quick Manual PDF (`QuickManual.pdf`).
-
-## Documentation
-
-- `documentation/QuickManual_EN.md` — Quick start (English)
-- `documentation/Manual_EN.md` — Detailed manual (English)
-
-Screenshots for manuals are in `documentation/images/`.
+- Report bugs and feature requests via GitHub Issues.
+- Pull requests are welcome — please include tests or reproduction steps when possible.
 
 ## Citation
 
-If you publish work that uses this software, please cite the repository. See `CITATION.cff` for citation metadata.
+If you publish results generated with this software, please cite this repository. When a DOI is available (via Zenodo), add it here and update `CITATION.cff`.
 
 ## License
 
-This software is released under the MIT License (see `LICENSE`).
-
-## Contributing
-
-- Report issues on GitHub Issues.
-- Pull requests are welcome; include reproduction steps or tests where possible.
-
-## Acknowledgements
-
-Some development assistance used AI-assisted tools; all outputs were reviewed and validated by the human authors. See `NOTICE.md` for details.
+See the `LICENSE` file in the repository for license terms (e.g. MIT).
 
 ---
 
-If you want additional edits (different preview image, shorter README for PyPI, or a README localized to Japanese), tell me which and I will update it.
+If you'd like, I can also:
+
+- Commit this change and push a branch/PR.
+- Produce a shorter `README-short.md` for display on PyPI/GitHub release pages.
+- Draft a `paper.md` for JOSS submission using the repository metadata and release DOI (once available).
 

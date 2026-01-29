@@ -74,22 +74,24 @@ class RefTableDelegate(QStyledItemDelegate):
                             pass
                         # 全列で 2(Obs.X) -> 3(Obs.Y) -> 4(Obs.Z) と進み、
                         # 4 の次は 隣の列の 2(Obs.X) へ移動。
-                        if r == 2:
-                            self.table.setCurrentCell(3, c)
-                            item = self.table.item(3, c)
-                            if item is not None and (item.flags() & Qt.ItemIsEditable):
-                                self.table.editItem(item)
-                            return
-                        if r == 3:
-                            self.table.setCurrentCell(4, c)
-                            item = self.table.item(4, c)
-                            if item is not None and (item.flags() & Qt.ItemIsEditable):
-                                self.table.editItem(item)
-                            return
+                        # Note: canonical ref table has 2 pseudo-header rows.
+                        # Editable Stage rows are 4(Stage X),5(Stage Y),6(Stage Z).
                         if r == 4:
+                            self.table.setCurrentCell(5, c)
+                            item = self.table.item(5, c)
+                            if item is not None and (item.flags() & Qt.ItemIsEditable):
+                                self.table.editItem(item)
+                            return
+                        if r == 5:
+                            self.table.setCurrentCell(6, c)
+                            item = self.table.item(6, c)
+                            if item is not None and (item.flags() & Qt.ItemIsEditable):
+                                self.table.editItem(item)
+                            return
+                        if r == 6:
                             next_c = c + 1 if (c + 1) < self.table.columnCount() else c
-                            self.table.setCurrentCell(2, next_c)
-                            item = self.table.item(2, next_c)
+                            self.table.setCurrentCell(4, next_c)
+                            item = self.table.item(4, next_c)
                             if item is not None and (item.flags() & Qt.ItemIsEditable):
                                 self.table.editItem(item)
                             return

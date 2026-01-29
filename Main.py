@@ -148,11 +148,49 @@ if __name__ == "__main__":
         win.run_auto_and_exit()
     else:
         # Load default image in background while splash is showing
-        # Prefer DemoBSE.png in project root (requested default), fall back to DemoBMP.bmp
-        default_image = os.path.join(project_dir, "DemoBSE.png")
-        if not os.path.exists(default_image):
-            default_image = os.path.join(project_dir, "DemoBMP.bmp")
-        if os.path.exists(default_image):
+        # Priority: last opened image -> demo image(s)
+        default_candidates = []
+        try:
+            from Config import load_last_image_path
+            last_path = load_last_image_path()
+            if last_path:
+                default_candidates.append(last_path)
+        except Exception:
+            pass
+        try:
+            # Look for demo images next to this script (worktree) and also in the repo root.
+            # This helps when running from a git worktree that does not carry the demo assets.
+            repo_root = None
+            try:
+                repo_root = os.path.abspath(os.path.join(os.path.dirname(__file__), os.pardir, os.pardir))
+            except Exception:
+                repo_root = None
+
+            demo_names = [
+                "DemoBSE.png",
+                "DemoBSE.PNG",
+                "Demo.png",
+                "Demo.PNG",
+                "DemoBMP.bmp",
+            ]
+
+            for name in demo_names:
+                default_candidates.append(os.path.join(project_dir, name))
+                if repo_root:
+                    default_candidates.append(os.path.join(repo_root, name))
+        except Exception:
+            pass
+
+        default_image = None
+        for p in default_candidates:
+            try:
+                if p and os.path.isfile(p):
+                    default_image = p
+                    break
+            except Exception:
+                continue
+
+        if default_image:
             try:
                 # Start loading image immediately (in background during splash)
                 QTimer.singleShot(0, lambda: win._open_image_from_path(default_image))

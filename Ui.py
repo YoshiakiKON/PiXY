@@ -29,7 +29,14 @@ from qt_compat.QtGui import QPixmap, QFont, QCursor, QPainter, QPen, QColor, QPa
 
 from Util import cvimg_to_qpixmap, kmeans_posterize
 from CalcCentroid import CentroidProcessor
-from Config import PROC_TARGET_WIDTH, save_last_image_path, load_last_image_path, DEBUG, DEFAULT_MAX_GRAIN_AREA, DEFAULT_MIN_GRAIN_AREA
+from Config import (
+    PROC_TARGET_WIDTH,
+    save_last_image_path,
+    load_last_image_path,
+    DEBUG,
+    DEFAULT_MAX_GRAIN_AREA,
+    DEFAULT_MIN_GRAIN_AREA,
+)
 
 import numpy as np
 import cv2
@@ -74,11 +81,8 @@ class SegmentControl(QWidget):
         qss_base = (
             # Force square corners by default; we'll round only the outer corners explicitly.
             "QPushButton { border: 1px solid lightgray; padding: 2px 10px; border-radius: 0px; }"
-            "QPushButton:checked {"
-            "  color: white; font-weight: bold; border: 1px solid #505050;"
-            "  background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 rgba(255,255,255,0.35), stop:0.48 rgba(255,255,255,0.12), stop:0.52 rgba(0,0,0,0.18), stop:1 rgba(0,0,0,0.28)), " + blue + ";"
-            "}"
-            "QPushButton:!checked { background-color: white; color: gray; font-weight: normal; }"
+            "QPushButton:checked { background-color: " + blue + "; color: white; }"
+            "QPushButton:!checked { background-color: white; color: black; }"
         )
 
         for i, lbl in enumerate(labels):
@@ -91,22 +95,29 @@ class SegmentControl(QWidget):
                 b.setFixedSize(btn_w, btn_h)
             except Exception:
                 pass
+            # Set normal (non-bold) font
+            try:
+                f = b.font()
+                f.setBold(False)
+                b.setFont(f)
+            except Exception:
+                pass
             # apply corner styling depending on position
             if i == 0:
                 # Left-most: round only the outer-left corners; keep inner-right corners square.
                 b.setStyleSheet(
                     qss_base
-                    + "QPushButton { border-top-left-radius: 10px; border-bottom-left-radius: 10px; border-top-right-radius: 0px; border-bottom-right-radius: 0px; border-right: none; }"
+                    + "QPushButton { border-top-left-radius: 10px; border-bottom-left-radius: 10px; border-top-right-radius: 0px; border-bottom-right-radius: 0px; border-right: none; font-weight: normal; }"
                 )
             elif i == len(labels) - 1:
                 # Right-most: round only the outer-right corners; keep inner-left corners square.
                 b.setStyleSheet(
                     qss_base
-                    + "QPushButton { border-top-right-radius: 10px; border-bottom-right-radius: 10px; border-top-left-radius: 0px; border-bottom-left-radius: 0px; border-left: none; }"
+                    + "QPushButton { border-top-right-radius: 10px; border-bottom-right-radius: 10px; border-top-left-radius: 0px; border-bottom-left-radius: 0px; border-left: none; font-weight: normal; }"
                 )
             else:
                 # Middle segments: all corners square.
-                b.setStyleSheet(qss_base + "QPushButton { border-radius: 0px; border-left: none; border-right: none; }")
+                b.setStyleSheet(qss_base + "QPushButton { border-radius: 0px; border-left: none; border-right: none; font-weight: normal; }")
             layout.addWidget(b)
             self._group.addButton(b, i)
             self._buttons.append(b)
@@ -618,7 +629,7 @@ class AreaHistogramWidget(QWidget):
                 painter.translate(x0 + rect_w + 14, margin_t + rect_h / 2.0)
                 # Flip reading direction (180° from previous): use +90 instead of -90
                 painter.rotate(90)
-                painter.drawText(QRect(-rect_h // 2, -10, rect_h, 20), Qt.AlignHCenter | Qt.AlignVCenter, "Total Area")
+                painter.drawText(QRect(-rect_h // 2, -10, rect_h, 20), Qt.AlignHCenter | Qt.AlignVCenter, "Area")
                 painter.restore()
             except Exception:
                 pass
@@ -793,27 +804,17 @@ class Footer(QWidget):
         
         layout = QHBoxLayout(self)
         layout.setContentsMargins(4, 0, 4, 0)
-        self.label = QLabel("")
-        self.label.setStyleSheet("color: white; font-size: 11px;")
-        try:
-            lf = self.label.font()
-            lf.setBold(True)
-            self.label.setFont(lf)
-        except Exception:
-            pass
-        layout.addWidget(self.label)
-        layout.addStretch(1)
-        # Right-aligned author/credit label (small, white)
-        self.credit_label = QLabel("PiXY — © Y. KON")
-        self.credit_label.setStyleSheet("color: white; font-size: 11px;")
-        self.credit_label.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
-        try:
-            cf = self.credit_label.font()
-            cf.setBold(True)
-            self.credit_label.setFont(cf)
-        except Exception:
-            pass
-        layout.addWidget(self.credit_label)
+        layout.setSpacing(8)
+
+        self.status_label = QLabel("")
+        self.status_label.setStyleSheet("color: white; font-size: 11px;")
+        self.status_label.setAlignment(Qt.AlignVCenter | Qt.AlignLeft)
+        layout.addWidget(self.status_label, 1)
+
+        self.version_label = QLabel("")
+        self.version_label.setStyleSheet("color: white; font-size: 11px;")
+        self.version_label.setAlignment(Qt.AlignVCenter | Qt.AlignRight)
+        layout.addWidget(self.version_label, 0)
 
     def paintEvent(self, event):
         """Force paint background to ensure color is applied."""
@@ -821,7 +822,13 @@ class Footer(QWidget):
         painter.fillRect(self.rect(), QColor(0, 0, 0))
         
     def showMessage(self, msg):
-        self.label.setText(msg)
+        self.status_label.setText(msg)
+
+    def setVersion(self, version: str | None):
+        if version:
+            self.version_label.setText(f"Ver. {version}")
+        else:
+            self.version_label.setText("")
 
 
 class RoundedWindow(QWidget):
@@ -872,43 +879,78 @@ class CentroidFinderWindow(QMainWindow):
 
     def __init__(self):
         super().__init__()
-        # ウィンドウタイトル設定（pyproject.toml の version を付加）
+        # v1.1.6+: window title is stable; version is shown in the footer.
+        self._app_version = None
         try:
-            version = None
-            try:
-                # Python 3.11+: tomllib
-                import tomllib
-                with open(os.path.join(os.path.dirname(__file__), 'pyproject.toml'), 'rb') as tf:
-                    data = tomllib.load(tf)
-                    version = data.get('project', {}).get('version')
-            except Exception:
+            import sys
+
+            def _read_version_from_pyproject(pyproject_path: str) -> str | None:
+                try:
+                    if not pyproject_path or not os.path.isfile(pyproject_path):
+                        return None
+                except Exception:
+                    return None
+                # Prefer tomllib if available
+                try:
+                    import tomllib
+                    with open(pyproject_path, 'rb') as tf:
+                        data = tomllib.load(tf)
+                    v = data.get('project', {}).get('version')
+                    return str(v) if v else None
+                except Exception:
+                    pass
                 # Fallback: simple regex parse
                 try:
                     import re
-                    pth = os.path.join(os.path.dirname(__file__), 'pyproject.toml')
-                    with open(pth, 'r', encoding='utf-8') as tf:
+                    with open(pyproject_path, 'r', encoding='utf-8') as tf:
                         txt = tf.read()
                     m = re.search(r"^version\s*=\s*['\"]([^'\"]+)['\"]", txt, re.M)
-                    if m:
-                        version = m.group(1)
+                    return m.group(1) if m else None
+                except Exception:
+                    return None
+
+            version = None
+            here = os.path.dirname(__file__)
+            candidates = [
+                os.path.join(here, 'pyproject.toml'),
+            ]
+            try:
+                if getattr(sys, 'frozen', False) and hasattr(sys, '_MEIPASS'):
+                    candidates.insert(0, os.path.join(sys._MEIPASS, 'pyproject.toml'))
+            except Exception:
+                pass
+            try:
+                # If running from an EXE without _MEIPASS (edge cases), also try the EXE directory.
+                candidates.append(os.path.join(os.path.dirname(sys.executable), 'pyproject.toml'))
+            except Exception:
+                pass
+            try:
+                # Repo root when running from a worktree (../..)
+                candidates.append(os.path.abspath(os.path.join(here, os.pardir, os.pardir, 'pyproject.toml')))
+            except Exception:
+                pass
+
+            for pth in candidates:
+                version = _read_version_from_pyproject(pth)
+                if version:
+                    break
+
+            if not version:
+                # If installed as a package, try package metadata
+                try:
+                    import importlib.metadata as _im
+                    version = _im.version('pixy')
                 except Exception:
                     version = None
-            # Store parsed version for later use (footer). Do NOT show it in the window title.
+
             self._app_version = version
-            try:
-                self.setWindowTitle(STR.APP_TITLE)
-            except Exception:
-                pass
         except Exception:
-            # If parsing failed, ensure attribute exists and set simple title
-            try:
-                self._app_version = None
-            except Exception:
-                pass
-            try:
-                self.setWindowTitle(STR.APP_TITLE)
-            except Exception:
-                pass
+            self._app_version = None
+
+        try:
+            self.setWindowTitle(STR.APP_TITLE)
+        except Exception:
+            pass
 
         # デバッグ出力ヘルパ
         def _dbg(msg):
@@ -1300,8 +1342,7 @@ class CentroidFinderWindow(QMainWindow):
         # 残すのは PosterLevel と Min Area に加え、Trim(pix)
         # Use code-safe internal keys for widgets; display text comes from self.display_labels
         self.edit_levels, self.slider_levels = self._make_spin_slider('poster_level', 4, 2, 20, 1)
-        # Set default Min Area from Config (range 10..5000)
-        self.edit_min_area, self.slider_min_area = self._make_spin_slider('min_area', DEFAULT_MIN_GRAIN_AREA, 10, 5000, 1)
+        self.edit_min_area, self.slider_min_area = self._make_spin_slider('min_area', 50, 10, 5000, 1)
         self.edit_trim, self.slider_trim = self._make_spin_slider('trim', 0, 0, 10, 1)
         self.edit_neck_sep, self.slider_neck_sep = self._make_spin_slider('neck_separation', 0, 0, 10, 1)
         self.edit_shape_complex, self.slider_shape_complex = self._make_spin_slider('shape_complexity', 10, 0, 10, 1)
@@ -1328,6 +1369,13 @@ class CentroidFinderWindow(QMainWindow):
         self.chk_auto_update = None
         # Recalc ボタン表示は不要
         self.btn_recalc = None
+
+        # v1.1.7+: heavy recomputation can be manual-triggered
+        self.calc_mode = 'auto'  # 'auto' | 'manual'
+        self._manual_recompute_request = False
+        self.calc_mode_controls = None
+        self.lbl_calc_mode = None
+        self.toggle_calc_mode = None
 
         # ピックモード（ルーペ制御）
         self.pick_mode = None  # None / 'add' / 'update'
@@ -1499,8 +1547,8 @@ class CentroidFinderWindow(QMainWindow):
         # 中央上には自動更新/手動再計算をまとめる
         try:
             center_controls = QHBoxLayout()
-            # Auto Update の UI 表示は不要
-            # Recalc は不要
+            center_controls.setContentsMargins(0, 0, 0, 0)
+            center_controls.setSpacing(6)
             img_header.addLayout(center_controls)
         except Exception:
             pass
@@ -1698,13 +1746,13 @@ class CentroidFinderWindow(QMainWindow):
                 fhl.setContentsMargins(0, 0, 0, 0)
                 fhl.setSpacing(6)
                 try:
-                    self.flip_toggle_image = SegmentControl(["Normal", "Flip"], checked_index=0, btn_w=80, btn_h=24)
+                    self.flip_toggle_image = SegmentControl(["Normal", "Flip"], checked_index=0, btn_w=72, btn_h=24)
                     self.flip_toggle_image.set_on_changed(lambda idx: self._on_flip_changed('image', int(idx)))
                 except Exception:
                     self.flip_toggle_image = None
                 # Keep stage flip toggle object for backward compatibility, but do not show it here.
                 try:
-                    self.flip_toggle_stage = SegmentControl(["Auto", "Normal", "Flip"], checked_index=0, btn_w=80, btn_h=24)
+                    self.flip_toggle_stage = SegmentControl(["Auto", "Normal", "Flip"], checked_index=0, btn_w=72, btn_h=24)
                     self.flip_toggle_stage.set_on_changed(lambda idx: self._on_flip_changed('stage', int(idx)))
                     self.flip_toggle_stage.setVisible(False)
                 except Exception:
@@ -1896,7 +1944,7 @@ class CentroidFinderWindow(QMainWindow):
         # Helper to build Number of Groups row for Basic mode
         def _build_num_groups_row_widget():
             try:
-                self.edit_num_groups, self.slider_num_groups = self._make_spin_slider('num_groups', 4, 2, 20, 1)
+                self.edit_num_groups, self.slider_num_groups = self._make_spin_slider('num_groups', 2, 2, 20, 1)
                 r = _build_control_row('num_groups', 'Number of Groups', self.edit_num_groups, self.slider_num_groups, self._nudge_num_groups, self._nudge_num_groups)
                 if r is not None:
                     roww = QWidget()
@@ -2116,6 +2164,21 @@ class CentroidFinderWindow(QMainWindow):
             self.table_ref_view.currentCellChanged.connect(self._on_ref_view_current_changed)
         except Exception:
             pass
+        # Single-click edit in transposed view for Stage X/Y/Z columns
+        try:
+            self.table_ref_view.cellClicked.connect(self._on_ref_view_cell_clicked)
+        except Exception:
+            pass
+        # Enable user-initiated edits (Stage columns only are editable at item-level)
+        try:
+            triggers = (
+                QAbstractItemView.EditKeyPressed
+                | QAbstractItemView.SelectedClicked
+                | QAbstractItemView.DoubleClicked
+            )
+            self.table_ref_view.setEditTriggers(triggers)
+        except Exception:
+            pass
         try:
             # Ensure the transposed delegate is installed so Enter commits and advances
             try:
@@ -2152,10 +2215,6 @@ class CentroidFinderWindow(QMainWindow):
         # Build Grain Identification block (to be placed below ref table)
         try:
             self.grain_ident_mode = 'basic'
-        except Exception:
-            pass
-        try:
-            self.calc_mode = 'auto'
         except Exception:
             pass
         try:
@@ -2200,41 +2259,6 @@ class CentroidFinderWindow(QMainWindow):
         except Exception:
             self.grain_ident_controls = None
 
-        # Recalculation Trigger controls (Auto/Manual toggle with Manual -> ReCalculate label)
-        try:
-            self.calc_mode_controls = QWidget()
-            cml = QHBoxLayout(self.calc_mode_controls)
-            try:
-                cml.setContentsMargins(0, 0, 0, 0)
-                cml.setSpacing(6)
-            except Exception:
-                pass
-            self.lbl_calc_mode = QLabel("Recalculation Trigger")
-            try:
-                fcm = self.lbl_calc_mode.font()
-                fcm.setBold(True)
-                self.lbl_calc_mode.setFont(fcm)
-            except Exception:
-                pass
-            cml.addWidget(self.lbl_calc_mode)
-            try:
-                # Match Basic/Advanced toggle size (btn_w=108, btn_h=24)
-                self.toggle_calc_mode = SegmentControl(["Auto", "Manual"], checked_index=0, btn_w=108, btn_h=24)
-                try:
-                    self.toggle_calc_mode.set_on_changed(lambda idx: self._on_toggle_calc_mode(int(idx)))
-                except Exception:
-                    pass
-                try:
-                    # Manual button click triggers recalculation when already in manual mode
-                    self.toggle_calc_mode._buttons[1].clicked.connect(self._on_manual_recalculate_clicked)
-                except Exception:
-                    pass
-                cml.addWidget(self.toggle_calc_mode)
-            except Exception:
-                self.toggle_calc_mode = None
-        except Exception:
-            self.calc_mode_controls = None
-
         try:
             self.grain_section = QWidget()
             gl = QVBoxLayout(self.grain_section)
@@ -2242,8 +2266,41 @@ class CentroidFinderWindow(QMainWindow):
             gl.setSpacing(6)
             if getattr(self, 'grain_ident_controls', None) is not None:
                 gl.addWidget(self.grain_ident_controls, 0)
-            if getattr(self, 'calc_mode_controls', None) is not None:
+
+            # Recalculation Trigger controls (v1.1.9-style): Auto/Manual with Manual -> ReCalculate
+            try:
+                self.calc_mode_controls = QWidget()
+                cml = QHBoxLayout(self.calc_mode_controls)
+                cml.setContentsMargins(0, 0, 0, 0)
+                cml.setSpacing(6)
+                self.lbl_calc_mode = QLabel("Recalculation Trigger")
+                try:
+                    fcm = self.lbl_calc_mode.font()
+                    fcm.setBold(True)
+                    self.lbl_calc_mode.setFont(fcm)
+                except Exception:
+                    pass
+                cml.addWidget(self.lbl_calc_mode)
+                try:
+                    self.toggle_calc_mode = SegmentControl(["Auto", "Manual"], checked_index=0, btn_w=108, btn_h=24)
+                    try:
+                        self.toggle_calc_mode.set_on_changed(lambda idx: self._on_toggle_calc_mode(int(idx)))
+                    except Exception:
+                        pass
+                    try:
+                        # Manual button click triggers recalculation when already in manual mode
+                        self.toggle_calc_mode._buttons[1].clicked.connect(self._on_manual_recalculate_clicked)
+                    except Exception:
+                        pass
+                    cml.addWidget(self.toggle_calc_mode)
+                except Exception:
+                    self.toggle_calc_mode = None
                 gl.addWidget(self.calc_mode_controls, 0)
+            except Exception:
+                self.calc_mode_controls = None
+                self.lbl_calc_mode = None
+                self.toggle_calc_mode = None
+
             gl.addLayout(sliders_layout)
         except Exception:
             self.grain_section = None
@@ -2634,17 +2691,11 @@ class CentroidFinderWindow(QMainWindow):
 
         # Footer (solid black)
         self.ui_footer = Footer(main_container)
-        main_layout.addWidget(self.ui_footer)
-        # If a version was parsed earlier, show it in the footer next to the credit label.
         try:
-            ver = getattr(self, '_app_version', None)
-            if ver:
-                try:
-                    self.ui_footer.credit_label.setText(f"PiXY (Ver. {ver}) — © Y. KON")
-                except Exception:
-                    pass
+            self.ui_footer.setVersion(getattr(self, '_app_version', None))
         except Exception:
             pass
+        main_layout.addWidget(self.ui_footer)
 
         # Remove native status bar to prevent white strip at bottom
         self.setStatusBar(None)
@@ -2819,6 +2870,120 @@ class CentroidFinderWindow(QMainWindow):
         except Exception:
             pass
         self.schedule_update(force=True)
+
+    # Recalculation Trigger toggle handler (Auto/Manual)
+    def _on_toggle_calc_mode(self, idx):
+        try:
+            prev_mode = str(getattr(self, 'calc_mode', 'auto'))
+        except Exception:
+            prev_mode = 'auto'
+        try:
+            if int(idx) == 1:
+                self.calc_mode = 'manual'
+            else:
+                self.calc_mode = 'auto'
+        except Exception:
+            self.calc_mode = 'auto'
+
+        try:
+            self.auto_update_mode = (str(getattr(self, 'calc_mode', 'auto')) == 'auto')
+        except Exception:
+            self.auto_update_mode = True
+
+        # Swap label on the Manual segment
+        try:
+            if getattr(self, 'toggle_calc_mode', None) is not None:
+                buttons = getattr(self.toggle_calc_mode, '_buttons', [None, None])
+                btn0 = buttons[0] if len(buttons) > 0 else None
+                btn1 = buttons[1] if len(buttons) > 1 else None
+                if btn0 is not None:
+                    btn0.setText('Auto')
+                if btn1 is not None:
+                    if str(getattr(self, 'calc_mode', 'auto')) == 'manual':
+                        btn1.setText('ReCalculate')
+                    else:
+                        btn1.setText('Manual')
+        except Exception:
+            pass
+
+        # Switching to manual should update visuals but avoid heavy recompute
+        try:
+            if str(getattr(self, 'calc_mode', 'auto')) == 'manual':
+                self.schedule_update(force=True, recompute_centroids=False)
+            else:
+                self.schedule_update(force=True)
+        except Exception:
+            pass
+
+    def _on_manual_recalculate_clicked(self):
+        # Only act if Manual is active; otherwise ignore
+        try:
+            if str(getattr(self, 'calc_mode', 'auto')) != 'manual':
+                return
+        except Exception:
+            return
+        try:
+            if bool(getattr(self, '_manual_recalc_in_progress', False)):
+                return
+        except Exception:
+            pass
+
+        try:
+            self._manual_recalc_in_progress = True
+        except Exception:
+            pass
+
+        # Provide immediate visual feedback and let the event loop paint before heavy work.
+        try:
+            btns = getattr(getattr(self, 'toggle_calc_mode', None), '_buttons', [])
+            btn0 = btns[0] if len(btns) > 0 else None
+            btn1 = btns[1] if len(btns) > 1 else None
+        except Exception:
+            btn0 = None
+            btn1 = None
+
+        try:
+            if btn0 is not None:
+                btn0.setEnabled(False)
+            if btn1 is not None:
+                btn1.setEnabled(False)
+                btn1.setText('ReCalc')
+        except Exception:
+            pass
+
+        try:
+            QApplication.processEvents()
+        except Exception:
+            pass
+
+        def _do_recalc():
+            try:
+                try:
+                    self._manual_recompute_request = True
+                except Exception:
+                    pass
+                try:
+                    self.schedule_update(force=True, recompute_centroids=True)
+                except Exception:
+                    pass
+            finally:
+                try:
+                    self._manual_recalc_in_progress = False
+                except Exception:
+                    pass
+                try:
+                    if btn0 is not None:
+                        btn0.setEnabled(True)
+                    if btn1 is not None:
+                        btn1.setEnabled(True)
+                        btn1.setText('ReCalculate')
+                except Exception:
+                    pass
+
+        try:
+            QTimer.singleShot(0, _do_recalc)
+        except Exception:
+            _do_recalc()
 
     # 境界線表示トグルハンドラ
     def _on_toggle_boundaries(self, checked):
@@ -3006,118 +3171,6 @@ class CentroidFinderWindow(QMainWindow):
         try:
             self._apply_grain_ident_visibility()
             self.schedule_update(force=True)
-        except Exception:
-            pass
-
-    # Recalculation Trigger toggle handler (Auto/Manual)
-    def _on_toggle_calc_mode(self, idx):
-        try:
-            if int(idx) == 0:
-                self.calc_mode = 'auto'
-            else:
-                self.calc_mode = 'manual'
-        except Exception:
-            self.calc_mode = 'auto'
-        try:
-            if getattr(self, 'toggle_calc_mode', None) is not None:
-                # Swap label on the Manual segment
-                try:
-                    if str(self.calc_mode) == 'manual':
-                        self.toggle_calc_mode._buttons[1].setText("ReCalculate")
-                    else:
-                        self.toggle_calc_mode._buttons[1].setText("Manual")
-                except Exception:
-                    pass
-        except Exception:
-            pass
-
-    def _on_manual_recalculate_clicked(self):
-        # Only act if Manual is active; otherwise ignore
-        try:
-            if str(getattr(self, 'calc_mode', 'auto')) != 'manual':
-                return
-        except Exception:
-            pass
-        # Immediate visual feedback: show spinner on the Manual button
-        try:
-            self._start_recalc_spinner()
-        except Exception:
-            pass
-
-        def _run_recompute():
-            try:
-                self._manual_recompute_request = True
-            except Exception:
-                pass
-            try:
-                self.schedule_update(force=True, recompute_centroids=True)
-            finally:
-                try:
-                    self._stop_recalc_spinner()
-                except Exception:
-                    pass
-
-        # Defer heavy work to allow the UI to repaint first (give spinner priority)
-        try:
-            QTimer.singleShot(0, _run_recompute)
-        except Exception:
-            _run_recompute()
-
-    def _start_recalc_spinner(self):
-        btn = None
-        try:
-            btn = getattr(self.toggle_calc_mode, '_buttons', [None, None])[1]
-        except Exception:
-            btn = None
-        if btn is None:
-            return
-        try:
-            self._recalc_prev_text = btn.text()
-            btn.setText("Calculating")
-            try:
-                btn.repaint()
-            except Exception:
-                pass
-            try:
-                QApplication.processEvents()
-            except Exception:
-                pass
-        except Exception:
-            pass
-        try:
-            t = getattr(self, '_recalc_spinner_timer', None)
-            if t is not None:
-                t.stop()
-        except Exception:
-            pass
-
-    def _tick_recalc_spinner(self):
-        try:
-            btn = getattr(self.toggle_calc_mode, '_buttons', [None, None])[1]
-            frames = getattr(self, '_recalc_spinner_frames', None)
-            if btn is None or not frames:
-                return
-            idx = int(getattr(self, '_recalc_spinner_index', 0))
-            idx = (idx + 1) % len(frames)
-            self._recalc_spinner_index = idx
-            btn.setText(frames[idx])
-        except Exception:
-            pass
-
-    def _stop_recalc_spinner(self):
-        try:
-            t = getattr(self, '_recalc_spinner_timer', None)
-            if t is not None:
-                t.stop()
-        except Exception:
-            pass
-        try:
-            btn = getattr(self.toggle_calc_mode, '_buttons', [None, None])[1]
-            if btn is not None:
-                if str(getattr(self, 'calc_mode', 'auto')) == 'manual':
-                    btn.setText("ReCalculate")
-                else:
-                    btn.setText("Manual")
         except Exception:
             pass
 
@@ -4041,6 +4094,7 @@ class CentroidFinderWindow(QMainWindow):
                     boundary_mask_now = getattr(self.centroid_processor, 'last_boundary_mask', None)
                     # Also compute and cache full-image u,v coordinates for centroids
                     try:
+                        # centroids are returned in proc coords (group, x_proc, y_proc)
                         img_base = getattr(self, '_img_base_size', None)
                         spf = float(getattr(self, 'scale_proc_to_full', 1.0) or 1.0)
                         uvs = []
@@ -4096,26 +4150,31 @@ class CentroidFinderWindow(QMainWindow):
                 # 表示用にポスター画像をフル解像度へ拡大
                 poster_full = None
                 poster_edges_full = None
-                if poster is not None:
-                    scale = 1.0 / self.scale_proc_to_full
-                    if scale != 1.0:
-                        new_w = self.img_full.shape[1]
-                        new_h = self.img_full.shape[0]
-                        poster_full = cv2.resize(poster, (new_w, new_h), interpolation=cv2.INTER_LINEAR)
-                        # Boundary のエッジ検出は最近傍で拡大したポスターを使う（線が太くなる原因を避ける）
-                        poster_edges_full = cv2.resize(poster, (new_w, new_h), interpolation=cv2.INTER_NEAREST)
-                    else:
-                        poster_full = poster.copy()
-                        poster_edges_full = poster_full
-                # Overlay selection by mode: Original / Posterized (Mixed removed)
+                try:
+                    if poster is not None:
+                        scale = 1.0 / self.scale_proc_to_full
+                        if scale != 1.0:
+                            new_w = self.img_full.shape[1]
+                            new_h = self.img_full.shape[0]
+                            poster_full = cv2.resize(poster, (new_w, new_h), interpolation=cv2.INTER_LINEAR)
+                            # Boundary のエッジ検出は最近傍で拡大したポスターを使う（線が太くなる原因を避ける）
+                            poster_edges_full = cv2.resize(poster, (new_w, new_h), interpolation=cv2.INTER_NEAREST)
+                        else:
+                            poster_full = poster.copy()
+                            poster_edges_full = poster_full
+                except Exception:
+                    poster_full = None
+                    poster_edges_full = None
+
+                # Overlay selection by mode: Original / Posterized
                 try:
                     overlay_mode = str(getattr(self, 'overlay_mode', 'Mixed')).lower()
                 except Exception:
                     overlay_mode = 'original'
-                if overlay_mode == 'original' or poster_full is None:
-                    overlay_full = self.img_full.copy()
-                else:
+                if overlay_mode == 'posterized' and poster_full is not None:
                     overlay_full = poster_full.copy()
+                else:
+                    overlay_full = self.img_full.copy()
 
                 try:
                     self._update_area_histogram(areas_now or [])
@@ -4123,7 +4182,7 @@ class CentroidFinderWindow(QMainWindow):
                     pass
                 # ポスタリゼーション境界に白線を描画（オプション）
                 try:
-                    if self.show_boundaries and (poster_edges_full is not None):
+                    if self.show_boundaries and poster_edges_full is not None:
                         # エッジ検出は最近傍補間（ギザ）版を使って細い境界を得る
                         # Build poster_for_edges at full resolution and apply trim in full-pixel units
                         try:
@@ -5468,8 +5527,24 @@ class CentroidFinderWindow(QMainWindow):
             if t is not None and 0 <= idx < t.columnCount():
                 try:
                     t.blockSignals(True)
-                    # canonical table_ref has 2 pseudo-header rows; choose X row for current cell
-                    t.setCurrentCell(2, idx)
+                    # canonical table_ref has 2 pseudo-header rows.
+                    # Do not force currentRow back to row 2 when the user is trying to edit
+                    # Stage X/Y/Z (rows 4-6). Forcing it breaks edit initiation.
+                    row_for_current = 2
+                    try:
+                        cur_r = int(t.currentRow())
+                    except Exception:
+                        cur_r = -1
+                    try:
+                        # If currently editing, never change the current cell here.
+                        if int(getattr(t, 'state', lambda: 0)()) == int(getattr(QAbstractItemView, 'EditingState', 0)):
+                            row_for_current = cur_r
+                    except Exception:
+                        pass
+                    if cur_r in (4, 5, 6):
+                        row_for_current = cur_r
+                    if row_for_current is not None and int(row_for_current) >= 0:
+                        t.setCurrentCell(int(row_for_current), idx)
                     t.selectColumn(idx)
                 finally:
                     try:
@@ -5488,7 +5563,22 @@ class CentroidFinderWindow(QMainWindow):
                 if 0 <= view_r < rv.rowCount():
                     try:
                         rv.blockSignals(True)
-                        rv.setCurrentCell(view_r, 0)
+                        # Do not force column 0 when user is editing Stage columns (2-4).
+                        col_for_current = 0
+                        try:
+                            cur_c = int(rv.currentColumn())
+                        except Exception:
+                            cur_c = -1
+                        try:
+                            if int(getattr(rv, 'state', lambda: 0)()) == int(getattr(QAbstractItemView, 'EditingState', 0)):
+                                col_for_current = cur_c
+                        except Exception:
+                            pass
+                        if cur_c in (2, 3, 4):
+                            col_for_current = cur_c
+                        if col_for_current is None or int(col_for_current) < 0:
+                            col_for_current = 0
+                        rv.setCurrentCell(view_r, int(col_for_current))
                         rv.selectRow(view_r)
                     finally:
                         try:
@@ -5498,9 +5588,63 @@ class CentroidFinderWindow(QMainWindow):
         except Exception:
             pass
 
-        # Redraw so RefPoint marker sizes update immediately
+        # Debounced redraw: selecting a different ref changes marker emphasis.
+        # Calling _apply_proc_zoom() directly here can be expensive and can visually
+        # flicker during rapid selection/table updates, so coalesce into one tick.
+        try:
+            if not getattr(self, '_ref_redraw_pending', False):
+                self._ref_redraw_pending = True
+                try:
+                    from qt_compat.QtCore import QTimer
+                    QTimer.singleShot(0, self._do_ref_redraw)
+                except Exception:
+                    self._do_ref_redraw()
+        except Exception:
+            pass
+
+    def _do_ref_redraw(self):
+        try:
+            self._ref_redraw_pending = False
+        except Exception:
+            pass
         try:
             self._apply_proc_zoom()
+        except Exception:
+            pass
+
+    def _on_ref_view_cell_clicked(self, row, col):
+        # Transposed view: data rows start at row>=2; editable Stage columns are 2,3,4.
+        try:
+            header_rows = 2
+            if row is None or col is None:
+                return
+            if int(row) < header_rows:
+                return
+            if int(col) not in (2, 3, 4):
+                return
+            item = self.table_ref_view.item(int(row), int(col))
+            if item is None:
+                return
+            if not (item.flags() & Qt.ItemIsEditable):
+                return
+            try:
+                self.table_ref_view.setCurrentCell(int(row), int(col))
+                self.table_ref_view.selectRow(int(row))
+            except Exception:
+                pass
+            try:
+                self.table_ref_view.setFocus(Qt.MouseFocusReason)
+            except Exception:
+                try:
+                    self.table_ref_view.setFocus()
+                except Exception:
+                    pass
+            # Defer edit start slightly so selection updates don't immediately cancel it.
+            try:
+                from qt_compat.QtCore import QTimer
+                QTimer.singleShot(0, lambda: self.table_ref_view.editItem(item))
+            except Exception:
+                self.table_ref_view.editItem(item)
         except Exception:
             pass
 
@@ -6074,7 +6218,7 @@ class CentroidFinderWindow(QMainWindow):
         except Exception:
             pass
 
-    def _end_pick_mode(self):
+    def _end_pick_mode(self, redraw: bool = True):
         self.pick_mode = None
         self.pick_ref_index = None
         # 通常は手のカーソル
@@ -6104,10 +6248,11 @@ class CentroidFinderWindow(QMainWindow):
             pass
 
         # Clear any crosshair overlay by re-rendering the base pixmap.
-        try:
-            self._apply_proc_zoom()
-        except Exception:
-            pass
+        if redraw:
+            try:
+                self._apply_proc_zoom()
+            except Exception:
+                pass
 
     def _handle_image_click(self, pos):
         # クリック座標を右画像の元サイズ（overlay_full）座標に変換（ズームのみ考慮）
@@ -6245,14 +6390,17 @@ class CentroidFinderWindow(QMainWindow):
                         self._refresh_transposed_views()
                     except Exception:
                         pass
-                    # 要望: Add で点を指定したら即赤点を描画し、Addモードを抜ける
+                    # End pick mode first so _apply_proc_zoom() won't re-draw the crosshair.
                     try:
-                        self._apply_proc_zoom()  # ref_points を反映して再描画（赤点が即時出る）
+                        if self.pick_mode in ('add', 'update'):
+                            self._end_pick_mode(redraw=False)
                     except Exception:
                         pass
-                    # End pick mode for both add and update after handling click
-                    if self.pick_mode in ('add', 'update'):
-                        self._end_pick_mode()
+                    # Redraw once to reflect the newly added/updated ref point.
+                    try:
+                        self._apply_proc_zoom()
+                    except Exception:
+                        pass
 
     def _on_ref_item_changed(self, item):
         # 左テーブル（Ref）の Stage.* 行（2,3,4行目）入力を半角へ正規化し、内部配列に反映
@@ -6794,8 +6942,8 @@ class CentroidFinderWindow(QMainWindow):
     def _auto_fit_table_fonts(self):
         """Reduce table cell font size to avoid clipping long numeric strings.
 
-        Uses row-group-based sizing: u,v rows share one size; Stage X,Y,Z share another;
-        Residual X,Y,Z,R share a third. Each group's size is determined across all tables.
+        Applies to canonical and transposed tables. Header fonts are set explicitly
+        elsewhere, so shrinking the table font mainly affects the items.
         """
         try:
             if getattr(self, '_auto_fit_fonts_running', False):
@@ -6804,50 +6952,27 @@ class CentroidFinderWindow(QMainWindow):
         except Exception:
             pass
         try:
-            # Define row groups (rows are 0-indexed, but tables have 2 pseudo-header rows)
-            # Group 1: u, v (rows 2, 3 in table_ref and table_between)
-            # Group 2: Stage X, Y, Z (rows 4, 5, 6 in table_ref; rows 2, 3, 4 in table_between for Calc)
-            # Group 3: Residual X, Y, Z, R (rows 7, 8, 9, 10 in table_ref)
-            
-            table_ref = getattr(self, 'table_ref', None)
-            table_between = getattr(self, 'table_between', None)
-            table_ref_view = getattr(self, 'table_ref_view', None)
-            
-            min_pt, max_pt = 8, 12
-            
-            # Group 1: u, v rows (Image coordinates)
-            # table_ref rows 2-3, table_between rows 2-3, table_ref_view rows 2-3
-            group1_size = self._find_best_font_for_group([
-                (table_ref, [2, 3]),
-                (table_between, [2, 3]),
-                (table_ref_view, [2, 3]),
-            ], min_pt, max_pt)
-            
-            # Group 2: Stage/Calc X, Y, Z
-            # table_ref rows 4-6 (Stage input), table_between rows 4-6 (Calc output)
-            group2_size = self._find_best_font_for_group([
-                (table_ref, [4, 5, 6]),
-                (table_between, [4, 5, 6]),
-                (table_ref_view, [4, 5, 6]),
-            ], min_pt, max_pt)
-            
-            # Group 3: Residual X, Y, Z, R
-            # table_ref rows 7-10
-            group3_size = self._find_best_font_for_group([
-                (table_ref, [7, 8, 9, 10]),
-                (table_ref_view, [7, 8, 9, 10]),
-            ], min_pt, max_pt)
-            
-            # Apply sizes to each group
-            self._apply_font_to_group([(table_ref, [2, 3]), (table_between, [2, 3]), (table_ref_view, [2, 3])], group1_size)
-            self._apply_font_to_group([(table_ref, [4, 5, 6]), (table_between, [4, 5, 6]), (table_ref_view, [4, 5, 6])], group2_size)
-            self._apply_font_to_group([(table_ref, [7, 8, 9, 10]), (table_ref_view, [7, 8, 9, 10])], group3_size)
-            
-            # Right table (table) - apply simple sizing (no grouping needed)
-            table = getattr(self, 'table', None)
-            if table is not None:
+            tables = []
+            try:
+                tables.append((getattr(self, 'table_ref', None), 2))
+            except Exception:
+                pass
+            try:
+                tables.append((getattr(self, 'table', None), 2))
+            except Exception:
+                pass
+            try:
+                tables.append((getattr(self, 'table_ref_view', None), 2))
+            except Exception:
+                pass
+            try:
+                tables.append((getattr(self, 'table_between', None), 2))
+            except Exception:
+                pass
+
+            for tbl, row_start in tables:
                 try:
-                    self._auto_fit_table_font(table, row_start=2, min_pt=min_pt, max_pt=max_pt)
+                    self._auto_fit_table_font(tbl, row_start=row_start, min_pt=8, max_pt=12)
                 except Exception:
                     pass
         finally:
@@ -7010,139 +7135,6 @@ class CentroidFinderWindow(QMainWindow):
                 pass
         except Exception:
             pass
-
-    def _find_best_font_for_group(self, table_row_pairs, min_pt, max_pt):
-        """Find the best font size that fits all cells in the specified row group across multiple tables.
-        
-        Args:
-            table_row_pairs: List of (table, row_list) tuples
-            min_pt: Minimum font size
-            max_pt: Maximum font size
-        
-        Returns:
-            Best font size (int) that fits all cells
-        """
-        try:
-            from qt_compat.QtGui import QFont, QFontMetrics
-        except Exception:
-            return max_pt
-        
-        # Test each font size from max down to min
-        for pt in range(int(max_pt), int(min_pt) - 1, -1):
-            if self._test_font_fits_group(table_row_pairs, pt):
-                return int(pt)
-        return int(min_pt)
-    
-    def _test_font_fits_group(self, table_row_pairs, pt):
-        """Test if a given font size fits all cells in the group."""
-        try:
-            from qt_compat.QtGui import QFont, QFontMetrics
-        except Exception:
-            return True
-        
-        pad = 10  # Conservative padding per cell
-        
-        for tbl, row_list in table_row_pairs:
-            if tbl is None:
-                continue
-            try:
-                rows = int(tbl.rowCount())
-                cols = int(tbl.columnCount())
-            except Exception:
-                continue
-            
-            for r in row_list:
-                if r >= rows:
-                    continue
-                for c in range(cols):
-                    try:
-                        it = tbl.item(r, c)
-                        if it is None:
-                            continue
-                        t = str(it.text() or "").strip()
-                        if not t:
-                            continue
-                        # Skip very short texts
-                        if len(t) < 5 and ('.' not in t) and ('-' not in t):
-                            continue
-                        
-                        # Get column width
-                        try:
-                            avail = int(tbl.columnWidth(c)) - pad
-                        except Exception:
-                            avail = None
-                        if avail is None or avail <= 6:
-                            continue
-                        
-                        # Measure text width with this font size
-                        try:
-                            f_item = QFont(it.font())
-                        except Exception:
-                            try:
-                                f_item = QFont(tbl.font())
-                            except Exception:
-                                f_item = QFont()
-                        try:
-                            f_item.setPointSize(int(pt))
-                        except Exception:
-                            pass
-                        fm = QFontMetrics(f_item)
-                        try:
-                            w = int(fm.horizontalAdvance(t))
-                        except Exception:
-                            try:
-                                w = int(fm.width(t))
-                            except Exception:
-                                w = 0
-                        if w > avail:
-                            return False
-                    except Exception:
-                        pass
-        return True
-    
-    def _apply_font_to_group(self, table_row_pairs, pt):
-        """Apply a font size to all cells in the specified row group."""
-        try:
-            from qt_compat.QtGui import QFont
-        except Exception:
-            return
-        
-        for tbl, row_list in table_row_pairs:
-            if tbl is None:
-                continue
-            try:
-                rows = int(tbl.rowCount())
-                cols = int(tbl.columnCount())
-            except Exception:
-                continue
-            
-            for r in row_list:
-                if r >= rows:
-                    continue
-                for c in range(cols):
-                    try:
-                        it = tbl.item(r, c)
-                        if it is None:
-                            continue
-                        t = str(it.text() or "").strip()
-                        if not t:
-                            continue
-                        
-                        # Apply font size
-                        try:
-                            f_item = QFont(it.font())
-                        except Exception:
-                            try:
-                                f_item = QFont(tbl.font())
-                            except Exception:
-                                f_item = QFont()
-                        try:
-                            f_item.setPointSize(int(pt))
-                            it.setFont(f_item)
-                        except Exception:
-                            pass
-                    except Exception:
-                        pass
 
     def _refresh_transposed_views(self):
         # Create/update transposed copies of `self.table_ref` and `self.table`.
@@ -7677,17 +7669,25 @@ class CentroidFinderWindow(QMainWindow):
             except Exception:
                 pass
 
-            # Apply width/layout adjustments synchronously to avoid oscillating relayouts
-            try:
-                self._shrink_visible_columns()
-            except Exception:
-                pass
-            try:
-                self._adjust_center_column_widths(fixed_px=350)
-            except Exception:
-                pass
+            # Rebuild fixed header widgets now that column counts exist
             try:
                 self._rebuild_fixed_headers()
+            except Exception:
+                pass
+            # After updating transposed views, ensure fixed pixel widths are applied
+            try:
+                # schedule immediately so layout has applied sizes
+                QTimer.singleShot(0, self._shrink_visible_columns)
+            except Exception:
+                pass
+            # After widths are applied, sync fixed headers to final widths
+            try:
+                QTimer.singleShot(0, self._rebuild_fixed_headers)
+            except Exception:
+                pass
+            # Keep center column width stable to avoid subtle layout shifts
+            try:
+                QTimer.singleShot(0, lambda: self._adjust_center_column_widths(fixed_px=350))
             except Exception:
                 pass
         except Exception:
@@ -8578,14 +8578,14 @@ class CentroidFinderWindow(QMainWindow):
             if ncols >= 6:
                 group_configs = [
                     (0, 1, ""),  # col 0
-                    (1, 3, "Image"),          # cols 1-3 (expanded)
-                    (4, 2, "Stage"),          # cols 4-5 (adjusted)
+                    (1, 2, "Image"),          # cols 1-2
+                    (3, 3, "Stage"),          # cols 3-5
                 ]
                 sub_labels = ["Grp", "u", "v", "X", "Y", "Z"]
             else:
                 group_configs = [
-                    (0, 3, "Image"),      # cols 0-2 (expanded)
-                    (3, 2, "Stage"),      # cols 3-4 (adjusted)
+                    (0, 2, "Image"),      # cols 0-1
+                    (2, 3, "Stage"),      # cols 2-4
                 ]
                 sub_labels = ["u", "v", "X", "Y", "Z"]
             for col_start, col_span, label in group_configs:

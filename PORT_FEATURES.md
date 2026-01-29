@@ -18,8 +18,8 @@
 - [x] `pyproject.toml`: version更新（挙動に影響なし）
 
 ### Step 2: v1.1.7 安定性ガード（低〜中リスク）
-- [ ] `Ui.py`: `_update_image_actual()` の poster未定義ガード（UnboundLocalError回避）
-- [ ] `Ui.py`: overlay/boundary 描画のガード（poster無し時に落ちない）
+- [x] `Ui.py`: `_update_image_actual()` の poster未定義ガード（UnboundLocalError回避）
+- [x] `Ui.py`: overlay/boundary 描画のガード（poster無し時に落ちない）
 
 ### Step 3: v1.1.7 処理分離/Manual制御（中〜高リスク）
 - [ ] `Ui.py`: posterizationとcentroid再計算の分離（Manualでも見た目は即時、重い計算は抑制）

@@ -3817,6 +3817,10 @@ class CentroidFinderWindow(QMainWindow):
                 areas_now = cache_areas
                 boundary_mask_now = self._cache.get("boundary_mask")
 
+                # v1.1.7+: poster can be absent (e.g. when recompute is skipped).
+                # Always define it so later overlay/boundary code does not crash.
+                poster = cache_poster
+
                 need_poster_recalc = (
                     cache_poster is None
                     or cache_levels != params["levels"]
@@ -3832,11 +3836,13 @@ class CentroidFinderWindow(QMainWindow):
                         centroids = cache_centroids
                         areas_now = cache_areas
                         boundary_mask_now = self._cache.get("boundary_mask")
+                        poster = cache_poster
                     else:
                         # fallback: do nothing heavy, reuse current self.centroids if available
                         centroids = getattr(self, 'centroids', []) or []
                         areas_now = getattr(self, '_cache', {}).get('areas')
                         boundary_mask_now = getattr(self, '_cache', {}).get('boundary_mask')
+                        poster = getattr(self, '_cache', {}).get('poster')
                 # 自動モードでは通常通り重い処理を行う
                 elif self.auto_update_mode:
                     if need_poster_recalc:
@@ -3956,25 +3962,33 @@ class CentroidFinderWindow(QMainWindow):
                             "boundary_mask": boundary_mask_now,
                         })
                 # 表示用にポスター画像をフル解像度へ拡大
-                scale = 1.0 / self.scale_proc_to_full
-                if scale != 1.0:
-                    new_w = self.img_full.shape[1]
-                    new_h = self.img_full.shape[0]
-                    poster_full = cv2.resize(poster, (new_w, new_h), interpolation=cv2.INTER_LINEAR)
-                    # Boundary のエッジ検出は最近傍で拡大したポスターを使う（線が太くなる原因を避ける）
-                    poster_edges_full = cv2.resize(poster, (new_w, new_h), interpolation=cv2.INTER_NEAREST)
-                else:
-                    poster_full = poster.copy()
-                    poster_edges_full = poster_full
-                # Overlay selection by mode: Original / Posterized (Mixed removed)
+                poster_full = None
+                poster_edges_full = None
+                try:
+                    if poster is not None:
+                        scale = 1.0 / self.scale_proc_to_full
+                        if scale != 1.0:
+                            new_w = self.img_full.shape[1]
+                            new_h = self.img_full.shape[0]
+                            poster_full = cv2.resize(poster, (new_w, new_h), interpolation=cv2.INTER_LINEAR)
+                            # Boundary のエッジ検出は最近傍で拡大したポスターを使う（線が太くなる原因を避ける）
+                            poster_edges_full = cv2.resize(poster, (new_w, new_h), interpolation=cv2.INTER_NEAREST)
+                        else:
+                            poster_full = poster.copy()
+                            poster_edges_full = poster_full
+                except Exception:
+                    poster_full = None
+                    poster_edges_full = None
+
+                # Overlay selection by mode: Original / Posterized
                 try:
                     overlay_mode = str(getattr(self, 'overlay_mode', 'Mixed')).lower()
                 except Exception:
                     overlay_mode = 'original'
-                if overlay_mode == 'original':
-                    overlay_full = self.img_full.copy()
-                else:
+                if overlay_mode == 'posterized' and poster_full is not None:
                     overlay_full = poster_full.copy()
+                else:
+                    overlay_full = self.img_full.copy()
 
                 try:
                     self._update_area_histogram(areas_now or [])
@@ -3982,7 +3996,7 @@ class CentroidFinderWindow(QMainWindow):
                     pass
                 # ポスタリゼーション境界に白線を描画（オプション）
                 try:
-                    if self.show_boundaries:
+                    if self.show_boundaries and poster_edges_full is not None:
                         # エッジ検出は最近傍補間（ギザ）版を使って細い境界を得る
                         # Build poster_for_edges at full resolution and apply trim in full-pixel units
                         try:

@@ -20,6 +20,10 @@ worktrees/
 # Office temp files
 ~$*.xlsx
 
+# Historical snapshot artifacts (kept out of submission repo)
+PiXY-1.1.5/
+v1.1.5.tar.gz
+
 # Virtual environments
 .venv/
 env/

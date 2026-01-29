@@ -6018,7 +6018,7 @@ class CentroidFinderWindow(QMainWindow):
         except Exception:
             pass
 
-    def _end_pick_mode(self):
+    def _end_pick_mode(self, redraw: bool = True):
         self.pick_mode = None
         self.pick_ref_index = None
         # 通常は手のカーソル
@@ -6048,10 +6048,11 @@ class CentroidFinderWindow(QMainWindow):
             pass
 
         # Clear any crosshair overlay by re-rendering the base pixmap.
-        try:
-            self._apply_proc_zoom()
-        except Exception:
-            pass
+        if redraw:
+            try:
+                self._apply_proc_zoom()
+            except Exception:
+                pass
 
     def _handle_image_click(self, pos):
         # クリック座標を右画像の元サイズ（overlay_full）座標に変換（ズームのみ考慮）
@@ -6189,14 +6190,17 @@ class CentroidFinderWindow(QMainWindow):
                         self._refresh_transposed_views()
                     except Exception:
                         pass
-                    # 要望: Add で点を指定したら即赤点を描画し、Addモードを抜ける
+                    # End pick mode first so _apply_proc_zoom() won't re-draw the crosshair.
                     try:
-                        self._apply_proc_zoom()  # ref_points を反映して再描画（赤点が即時出る）
+                        if self.pick_mode in ('add', 'update'):
+                            self._end_pick_mode(redraw=False)
                     except Exception:
                         pass
-                    # End pick mode for both add and update after handling click
-                    if self.pick_mode in ('add', 'update'):
-                        self._end_pick_mode()
+                    # Redraw once to reflect the newly added/updated ref point.
+                    try:
+                        self._apply_proc_zoom()
+                    except Exception:
+                        pass
 
     def _on_ref_item_changed(self, item):
         # 左テーブル（Ref）の Stage.* 行（2,3,4行目）入力を半角へ正規化し、内部配列に反映

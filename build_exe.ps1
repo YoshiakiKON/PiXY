@@ -44,6 +44,7 @@ $addData = @()
 $addDataLocalCandidates = @(
     "DemoBMP.bmp;.",
     "DemoBSE.png;.",
+    "pyproject.toml;.",
     "last_image_path.txt;.",
     "PiXY_splash.png;.",
     "PiXY_icon.ico;.",

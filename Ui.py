@@ -882,25 +882,67 @@ class CentroidFinderWindow(QMainWindow):
         # v1.1.6+: window title is stable; version is shown in the footer.
         self._app_version = None
         try:
-            version = None
-            try:
-                # Python 3.11+: tomllib
-                import tomllib
-                with open(os.path.join(os.path.dirname(__file__), 'pyproject.toml'), 'rb') as tf:
-                    data = tomllib.load(tf)
-                    version = data.get('project', {}).get('version')
-            except Exception:
+            import sys
+
+            def _read_version_from_pyproject(pyproject_path: str) -> str | None:
+                try:
+                    if not pyproject_path or not os.path.isfile(pyproject_path):
+                        return None
+                except Exception:
+                    return None
+                # Prefer tomllib if available
+                try:
+                    import tomllib
+                    with open(pyproject_path, 'rb') as tf:
+                        data = tomllib.load(tf)
+                    v = data.get('project', {}).get('version')
+                    return str(v) if v else None
+                except Exception:
+                    pass
                 # Fallback: simple regex parse
                 try:
                     import re
-                    pth = os.path.join(os.path.dirname(__file__), 'pyproject.toml')
-                    with open(pth, 'r', encoding='utf-8') as tf:
+                    with open(pyproject_path, 'r', encoding='utf-8') as tf:
                         txt = tf.read()
                     m = re.search(r"^version\s*=\s*['\"]([^'\"]+)['\"]", txt, re.M)
-                    if m:
-                        version = m.group(1)
+                    return m.group(1) if m else None
+                except Exception:
+                    return None
+
+            version = None
+            here = os.path.dirname(__file__)
+            candidates = [
+                os.path.join(here, 'pyproject.toml'),
+            ]
+            try:
+                if getattr(sys, 'frozen', False) and hasattr(sys, '_MEIPASS'):
+                    candidates.insert(0, os.path.join(sys._MEIPASS, 'pyproject.toml'))
+            except Exception:
+                pass
+            try:
+                # If running from an EXE without _MEIPASS (edge cases), also try the EXE directory.
+                candidates.append(os.path.join(os.path.dirname(sys.executable), 'pyproject.toml'))
+            except Exception:
+                pass
+            try:
+                # Repo root when running from a worktree (../..)
+                candidates.append(os.path.abspath(os.path.join(here, os.pardir, os.pardir, 'pyproject.toml')))
+            except Exception:
+                pass
+
+            for pth in candidates:
+                version = _read_version_from_pyproject(pth)
+                if version:
+                    break
+
+            if not version:
+                # If installed as a package, try package metadata
+                try:
+                    import importlib.metadata as _im
+                    version = _im.version('pixy')
                 except Exception:
                     version = None
+
             self._app_version = version
         except Exception:
             self._app_version = None

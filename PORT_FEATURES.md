@@ -22,8 +22,8 @@
 - [x] `Ui.py`: overlay/boundary 描画のガード（poster無し時に落ちない）
 
 ### Step 3: v1.1.7 処理分離/Manual制御（中〜高リスク）
-- [ ] `Ui.py`: posterizationとcentroid再計算の分離（Manualでも見た目は即時、重い計算は抑制）
-- [ ] `Ui.py`: Auto/Manual（ReCalculate）導入
+- [x] `Ui.py`: posterizationとcentroid再計算の分離（Manualでも見た目は即時、重い計算は抑制）
+- [x] `Ui.py`: Auto/Manual（ReCalculate）導入
 
 ### Step 4: v1.1.8 EXEリソース探索（低〜中リスク/安定化寄り）
 - [ ] `Main.py`: PyInstaller凍結時に `sys._MEIPASS` を優先

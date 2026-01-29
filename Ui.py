@@ -2905,7 +2905,7 @@ class CentroidFinderWindow(QMainWindow):
                 btn0.setEnabled(False)
             if btn1 is not None:
                 btn1.setEnabled(False)
-                btn1.setText('ReCalculating...')
+                btn1.setText('ReCalc')
         except Exception:
             pass
 

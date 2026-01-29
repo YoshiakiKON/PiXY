@@ -1,9 +1,11 @@
 # PiXY: Pixel to stage-XY Coordinate Converter
 Yoshiaki KON (Geological Survey of JAPAN, National Institute of Advanced Industrial Science and Technology)
 
+PiXY is a desktop GUI tool that detects centroids of particle-like regions in images and converts pixel coordinates to real-world stage coordinates using user-defined reference points.
+
 [![Quick Manual preview](README.png)](QuickManual.pdf)
 
-PiXY is a desktop GUI tool that detects centroids of particle-like regions in images and converts pixel coordinates to real-world stage coordinates using user-defined reference points.
+
 
 ## Features
 

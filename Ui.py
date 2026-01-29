@@ -1508,13 +1508,13 @@ class CentroidFinderWindow(QMainWindow):
             center_controls.setContentsMargins(0, 0, 0, 0)
             center_controls.setSpacing(6)
 
-            # Recalculation Trigger controls (Auto/Manual toggle with Manual -> ReCalculate label)
+            # Recalculation Trigger controls (自動/手動 with 手動 -> 再計算 label)
             try:
                 self.calc_mode_controls = QWidget()
                 cml = QHBoxLayout(self.calc_mode_controls)
                 cml.setContentsMargins(0, 0, 0, 0)
                 cml.setSpacing(6)
-                self.lbl_calc_mode = QLabel("Recalculation")
+                self.lbl_calc_mode = QLabel("計算")
                 try:
                     fcm = self.lbl_calc_mode.font()
                     fcm.setBold(True)
@@ -1523,7 +1523,7 @@ class CentroidFinderWindow(QMainWindow):
                     pass
                 cml.addWidget(self.lbl_calc_mode)
                 try:
-                    self.toggle_calc_mode = SegmentControl(["Auto", "Manual"], checked_index=0, btn_w=96, btn_h=24)
+                    self.toggle_calc_mode = SegmentControl(["自動", "手動"], checked_index=0, btn_w=80, btn_h=24)
                     try:
                         self.toggle_calc_mode.set_on_changed(lambda idx: self._on_toggle_calc_mode(int(idx)))
                     except Exception:
@@ -2850,9 +2850,9 @@ class CentroidFinderWindow(QMainWindow):
                 btn = getattr(self.toggle_calc_mode, '_buttons', [None, None])[1]
                 if btn is not None:
                     if str(getattr(self, 'calc_mode', 'auto')) == 'manual':
-                        btn.setText('ReCalculate')
+                        btn.setText('再計算')
                     else:
-                        btn.setText('Manual')
+                        btn.setText('手動')
         except Exception:
             pass
 

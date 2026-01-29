@@ -2836,6 +2836,10 @@ class CentroidFinderWindow(QMainWindow):
     # Recalculation Trigger toggle handler (Auto/Manual)
     def _on_toggle_calc_mode(self, idx):
         try:
+            prev_mode = str(getattr(self, 'calc_mode', 'auto'))
+        except Exception:
+            prev_mode = 'auto'
+        try:
             if int(idx) == 1:
                 self.calc_mode = 'manual'
             else:
@@ -2859,8 +2863,11 @@ class CentroidFinderWindow(QMainWindow):
                 if btn1 is not None:
                     if str(getattr(self, 'calc_mode', 'auto')) == 'manual':
                         btn1.setText('ReCalculate')
+                        # Suppress the initial click used to switch into manual mode.
+                        # Subsequent clicks while already in manual should trigger recalculation.
                         try:
-                            self._suppress_manual_recalc_click_once = True
+                            if prev_mode != 'manual':
+                                self._suppress_manual_recalc_click_once = True
                         except Exception:
                             pass
                     else:

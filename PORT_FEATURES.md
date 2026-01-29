@@ -26,7 +26,7 @@
 - [x] `Ui.py`: Auto/Manual（ReCalculate）導入
 
 ### Step 4: v1.1.8 EXEリソース探索（低〜中リスク/安定化寄り）
-- [ ] `Main.py`: PyInstaller凍結時に `sys._MEIPASS` を優先
+- [x] `Main.py`: PyInstaller凍結時に `sys._MEIPASS` を優先
 
 ### Step 5: v1.1.8 しきい値デフォルト（中リスク/結果が変わる）
 - [ ] `Config.py`: `DEFAULT_MAX_GRAIN_AREA` / `DEFAULT_MIN_GRAIN_AREA`

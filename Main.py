@@ -72,7 +72,13 @@ if __name__ == "__main__":
         pass
 
     # Ensure splash/icon files exist (write simple PPM dummies if necessary)
-    project_dir = os.path.dirname(__file__)
+    # When frozen by PyInstaller, bundled data files are extracted to
+    # `sys._MEIPASS`. Prefer that path when available so bundled images
+    # (PiXY_splash.png / PiXY_icon.ico) are found inside the one-file exe.
+    if getattr(sys, 'frozen', False) and hasattr(sys, '_MEIPASS'):
+        project_dir = sys._MEIPASS
+    else:
+        project_dir = os.path.dirname(__file__)
     # Prefer a bundled PiXY.png for the splash if present
     bundled_png = os.path.join(project_dir, "PiXY_splash.png")
     splash_path = bundled_png if os.path.exists(bundled_png) else os.path.join(project_dir, "splash.ppm")

@@ -2,6 +2,12 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.2.0] - 2026-01-29
+- UI: restore v1.1.9-style manual recalculation trigger (Auto / ReCalculate) and improve responsiveness.
+- Stability: guards around poster/boundary rendering and recomputation gating in manual mode.
+- Packaging: prefer `sys._MEIPASS` for bundled assets (PyInstaller).
+- Defaults: add initial histogram selection caps for grain area.
+
 ## [1.1.5] - 2026-01-15
 - Packaging: build `PiXY_ver115.exe` (single-file) and add multi-size `PiXY_icon.ico` for Windows.
 - Packaging: remove PPM fallback assets from the repository and build inputs (use ICO/PNG instead) to reduce bundle size.

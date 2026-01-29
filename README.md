@@ -10,6 +10,7 @@ PiXY は画像中の粒子の重心を検出し、参照点（RefPoint）を使�
 ## 必要環境
 - Python 3.10+（環境に合わせて調整してください）
 - 依存パッケージは `requirements.txt` を参照
+- 推奨画面サイズ: 1200×900 以上
 
 ## Documentation
 
@@ -40,6 +41,7 @@ PiXY detects region centroids in images and converts pixel coordinates to real-w
 
 - Python 3.10 or newer (adjust as needed for your environment).
 - See `requirements.txt` for Python package dependencies.
+- Recommended window size: 1200×900 or larger.
 
 ## Install (development)
 

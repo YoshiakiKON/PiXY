@@ -11,7 +11,11 @@ Typical use cases:
 
 **Recommended screen size**: 1200×900 or larger (the UI is more comfortable at this size).
 
-## Overview figure
+## Overview image
+
+![PiXY overview image](README.png)
+
+## Workflow figure (optional)
 
 ![PiXY overview workflow](documentation/images/workflow_v2.svg)
 

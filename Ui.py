@@ -797,10 +797,17 @@ class Footer(QWidget):
         
         layout = QHBoxLayout(self)
         layout.setContentsMargins(4, 0, 4, 0)
-        self.label = QLabel("")
-        self.label.setStyleSheet("color: white; font-size: 11px;")
-        layout.addWidget(self.label)
-        layout.addStretch(1)
+        layout.setSpacing(8)
+
+        self.status_label = QLabel("")
+        self.status_label.setStyleSheet("color: white; font-size: 11px;")
+        self.status_label.setAlignment(Qt.AlignVCenter | Qt.AlignLeft)
+        layout.addWidget(self.status_label, 1)
+
+        self.version_label = QLabel("")
+        self.version_label.setStyleSheet("color: white; font-size: 11px;")
+        self.version_label.setAlignment(Qt.AlignVCenter | Qt.AlignRight)
+        layout.addWidget(self.version_label, 0)
 
     def paintEvent(self, event):
         """Force paint background to ensure color is applied."""
@@ -808,7 +815,13 @@ class Footer(QWidget):
         painter.fillRect(self.rect(), QColor(0, 0, 0))
         
     def showMessage(self, msg):
-        self.label.setText(msg)
+        self.status_label.setText(msg)
+
+    def setVersion(self, version: str | None):
+        if version:
+            self.version_label.setText(f"Ver. {version}")
+        else:
+            self.version_label.setText("")
 
 
 class RoundedWindow(QWidget):
@@ -859,7 +872,8 @@ class CentroidFinderWindow(QMainWindow):
 
     def __init__(self):
         super().__init__()
-        # ウィンドウタイトル設定（pyproject.toml の version を付加）
+        # v1.1.6+: window title is stable; version is shown in the footer.
+        self._app_version = None
         try:
             version = None
             try:
@@ -880,15 +894,14 @@ class CentroidFinderWindow(QMainWindow):
                         version = m.group(1)
                 except Exception:
                     version = None
-            if version:
-                self.setWindowTitle(f"{STR.APP_TITLE} (Ver. {version})")
-            else:
-                self.setWindowTitle(STR.APP_TITLE)
+            self._app_version = version
         except Exception:
-            try:
-                self.setWindowTitle(STR.APP_TITLE)
-            except Exception:
-                pass
+            self._app_version = None
+
+        try:
+            self.setWindowTitle(STR.APP_TITLE)
+        except Exception:
+            pass
 
         # デバッグ出力ヘルパ
         def _dbg(msg):
@@ -2587,6 +2600,10 @@ class CentroidFinderWindow(QMainWindow):
 
         # Footer (solid black)
         self.ui_footer = Footer(main_container)
+        try:
+            self.ui_footer.setVersion(getattr(self, '_app_version', None))
+        except Exception:
+            pass
         main_layout.addWidget(self.ui_footer)
 
         # Remove native status bar to prevent white strip at bottom

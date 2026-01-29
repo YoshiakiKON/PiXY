@@ -5,14 +5,17 @@
 - 1ステップ = 1コミット = 1回スモーク（[SMOKE_TEST_EXE.md](../SMOKE_TEST_EXE.md)）
 
 ## Baseline（固定）
-- [ ] ベースラインは v1.1.5 相当コード（タグ v1.1.5）
+- [x] ベースラインは v1.1.5 相当コード（タグ v1.1.5）
 - [ ] EXEビルド設定は v1.1.5相当（console/windowed 等をまず一致）
+
+## Baselineホットフィックス（v1.1.5のまま修正）
+- [x] 参照点テーブル（転置ビュー）の Stage X/Y/Z が単クリックで入力開始できる
 
 ## 復旧ステップ（低リスク → 高リスク）
 
 ### Step 1: v1.1.6 UIフッター（低リスク）
-- [ ] `Ui.py`: タイトルからバージョン除去、フッターに表示（見た目のみ）
-- [ ] `pyproject.toml`: version更新（挙動に影響なし）
+- [x] `Ui.py`: タイトルからバージョン除去、フッターに表示（見た目のみ）
+- [x] `pyproject.toml`: version更新（挙動に影響なし）
 
 ### Step 2: v1.1.7 安定性ガード（低〜中リスク）
 - [ ] `Ui.py`: `_update_image_actual()` の poster未定義ガード（UnboundLocalError回避）

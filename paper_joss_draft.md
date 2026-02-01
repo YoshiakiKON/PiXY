@@ -37,6 +37,8 @@ version: 1.2.0
 
 PiXY addresses this bottleneck through two functions. First, it automatically extracts particle image coordinates $(u, v)$ by combining K-means color clustering with connected-component analysis. Second, it estimates an affine mapping from user-defined reference points using a least-squares method and converts the extracted image coordinates into physical stage coordinates $(X, Y, Z)$. We evaluated the positional accuracy using real specimens and calculated the residuals relative to the full scale. The residual distribution (mean ± SD) was 0.1 ± 0.1 %FS in X, Y, and 4 ± 4 %FS in Z (N = 100).
 
+In particular, when using five reference points, the residual histograms show that approximately 60% of the measurement points fall within 5 μm on each axis (X, Y, and Z; Figure 2).
+
 PiXY does not assume specialized platforms or surface markings and can use arbitrary, distinctive features on the specimen as reference points. PiXY is released under the MIT License and is available both as a standalone Windows executable and as Python source code.
 
 ![Figure 1: PiXY GUI screenshot showing centroid overlays, reference points/residuals, and exportable coordinate tables.](documentation/images/fig_ui.png)
@@ -51,10 +53,10 @@ Microanalysis instruments such as LA-ICP-MS, SEM-EDS, EPMA, and SIMS require rel
 
 For example, zircon U–Pb dating by LA-ICP-MS requires selecting analysis points based on microscopy observations before subsequent elemental and isotopic measurements (e.g., [@Iizuka:2006]). A typical workflow proceeds as follows:
 
-1. **Sample preparation**: Selecting target mineral grains (e.g., by hand-picking), embedding them in resin, and polishing the mount.
-2. **Imaging with optical microscopy or SEM-BSE-CL**: Acquiring images of the resin mount.
-3. **Targeting on the analytical instrument**: Mounting the sample on the analytical instrument stage and rediscovering the previously selected analysis targets.
-4. **Local microanalysis**: Measuring elemental or isotopic compositions.
+1. **Sample preparation**: Select target mineral grains (e.g., by hand-picking), embed them in resin, and polish the mount.
+2. **Imaging**: Acquire optical or SEM–BSE/CL images of the resin mount.
+3. **Targeting**: Mount the sample on the analytical instrument and confirm the analysis spots.
+4. **Microanalysis**: Measure elemental or isotopic compositions at the spots.
 
 In this workflow, Step 3 (targeting on the analytical instrument) is often the bottleneck for efficient use of instrument time. For instance, while Step 4 may require 30–60 seconds per analysis point, targeting frequently takes longer. Because targeting time depends strongly on operator experience, semi-automation of Step 3 is valuable for stable and efficient operation.
 
@@ -161,10 +163,14 @@ After coordinate transformation, the stage coordinates calculated by PiXY were e
 Residual statistics were computed from N = 100 measurement points. For reporting, residuals were also normalized by the corresponding measurement span (full scale), i.e., ~5000 μm for X/Y and 100–400 μm for Z, and expressed as %FS. Across all points, the normalized residual distribution (mean ± SD) was 0.1 ± 0.1 %FS in X and Y, and 4 ± 4 %FS in Z.
 Results by reference-point count are shown below.
 
+![Figure 2: Residual histograms for each axis (X, Y, Z) comparing three vs. five reference points. With five reference points, the first bin (0–5 μm) contains ~60% of the residuals for all axes, indicating that most targets are reached within 5 μm.](documentation/images/fig_residual_hist.png)
+
 | Number of reference points | X residual (mean ± SD) [μm] | Y residual (mean ± SD) [μm] | Z residual (mean ± SD) [μm] |
 |---:|---:|---:|---:|
 | 3 | 15 ± 14 | 16 ± 17 | 9 ± 7 |
 | 5 | 4 ± 5 | 6 ± 7 | 8 ± 8 |
+
+Consistent with these statistics, the residual distributions are strongly concentrated near zero for the five-point condition: about 60% of points are within 5 μm in X, Y, and Z (Figure 2).
 
 In general, increasing the number of reference points strengthens constraints in least-squares estimation, often reducing both the mean residual (bias; related to trueness) and the standard deviation (scatter; related to precision). In this dataset, the five-point condition improved X and Y residuals, whereas Z residuals were comparable (see the table above).
 

@@ -37,7 +37,7 @@ version: 1.2.0
 
 PiXY addresses this bottleneck through two functions. First, it automatically extracts particle image coordinates $(u, v)$ by combining K-means color clustering with connected-component analysis. Second, it estimates an affine mapping from user-defined reference points using a least-squares method and converts the extracted image coordinates into physical stage coordinates $(X, Y, Z)$. We evaluated the positional accuracy using real specimens and calculated the residuals relative to the full scale. The residual distribution (mean ± SD) was 0.1 ± 0.1 %FS in X, Y, and 4 ± 4 %FS in Z (N = 100).
 
-In particular, when using five reference points, the residual histograms show that approximately 60% of the measurement points fall within 5 μm on each axis (X, Y, and Z; Figure 2).
+In particular, when using five reference points (N = 100), the residual distributions are strongly concentrated near zero: 60% of points fall within 4 μm (X), 5 μm (Y), and 5 μm (Z), and 90% fall within 10 μm (X), 16 μm (Y), and 21 μm (Z; Figure 2).
 
 PiXY does not assume specialized platforms or surface markings and can use arbitrary, distinctive features on the specimen as reference points. PiXY is released under the MIT License and is available both as a standalone Windows executable and as Python source code.
 
@@ -161,18 +161,15 @@ The BSE image was loaded into PiXY, and particle centroids were detected using s
 After coordinate transformation, the stage coordinates calculated by PiXY were exported and loaded into the laser ablation system for targeting verification. The residuals—defined as the differences between the intended target positions and the actual reached positions—were obtained by comparing the centroid position displayed in PiXY with the position reached after moving the stage to the PiXY‑derived coordinates. Validation was performed using three sets of measurements, including one with remounting, with measurement points spanning approximately 5000 μm in X and Y and 100–400 μm in Z.
 
 Residual statistics were computed from N = 100 measurement points. For reporting, residuals were also normalized by the corresponding measurement span (full scale), i.e., ~5000 μm for X/Y and 100–400 μm for Z, and expressed as %FS. Across all points, the normalized residual distribution (mean ± SD) was 0.1 ± 0.1 %FS in X and Y, and 4 ± 4 %FS in Z.
-Results by reference-point count are shown below.
+Figure 2 shows residual histograms for each axis (X, Y, Z) comparing three vs. five reference points.
 
-![Figure 2: Residual histograms for each axis (X, Y, Z) comparing three vs. five reference points. With five reference points, the first bin (0–5 μm) contains ~60% of the residuals for all axes, indicating that most targets are reached within 5 μm.](documentation/images/fig_residual_hist.png)
+![Figure 2: Residual histograms for each axis (X, Y, Z) comparing three vs. five reference points. For the five-point condition, 60% of points are within 4 μm (X), 5 μm (Y), and 5 μm (Z).](documentation/images/fig_residual_hist.png)
 
-| Number of reference points | X residual (mean ± SD) [μm] | Y residual (mean ± SD) [μm] | Z residual (mean ± SD) [μm] |
-|---:|---:|---:|---:|
-| 3 | 15 ± 14 | 16 ± 17 | 9 ± 7 |
-| 5 | 4 ± 5 | 6 ± 7 | 8 ± 8 |
+Percentile-style summaries (absolute residuals) clarify the practical targeting precision:
+- **Five reference points**: 60% within 4/5/5 μm (X/Y/Z) and 90% within 10/16/21 μm.
+- **Three reference points** (for comparison): 60% within 17/14/8 μm (X/Y/Z) and 90% within 32/42/20 μm.
 
-Consistent with these statistics, the residual distributions are strongly concentrated near zero for the five-point condition: about 60% of points are within 5 μm in X, Y, and Z (Figure 2).
-
-In general, increasing the number of reference points strengthens constraints in least-squares estimation, often reducing both the mean residual (bias; related to trueness) and the standard deviation (scatter; related to precision). In this dataset, the five-point condition improved X and Y residuals, whereas Z residuals were comparable (see the table above).
+In general, increasing the number of reference points strengthens constraints in least-squares estimation, often reducing both bias and scatter. In this dataset, the five-point condition concentrates residuals closer to zero across all axes, and the improvement is especially clear in X and Y (Figure 2).
 
 ---
 

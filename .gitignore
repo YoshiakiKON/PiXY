@@ -8,8 +8,7 @@ __pycache__/
 *$py.class
 
 # PyInstaller
-dist/*
-!dist/PiXY_ver*.exe
+dist/
 build/
 *.spec
 

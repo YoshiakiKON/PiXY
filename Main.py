@@ -29,6 +29,95 @@ from Ui import CentroidFinderWindow
 SPLASH_PNG_B64 = None
 ICON_PNG_B64 = None
 
+
+def _run_wheel_selftest(win, app):
+    """Inject synthetic wheel events into the image viewport and quit.
+
+    Enable with environment variable PIXY_SELFTEST_WHEEL=1.
+    This is intended for debugging responsiveness/regressions without manual GUI input.
+    """
+    try:
+        from qt_compat.QtCore import QEvent, QPoint
+    except Exception:
+        return
+
+    class _DummyWheelEvent:
+        def __init__(self, dy_steps: float, pos: QPoint):
+            self._dy_steps = float(dy_steps)
+            self._pos = QPoint(pos)
+
+        def type(self):
+            return QEvent.Wheel
+
+        def angleDelta(self):
+            return QPoint(0, int(round(120.0 * self._dy_steps)))
+
+        def pixelDelta(self):
+            return QPoint(0, 0)
+
+        def modifiers(self):
+            return Qt.NoModifier
+
+        def pos(self):
+            return QPoint(self._pos)
+
+    class _DummyMouseEvent:
+        def __init__(self, etype: QEvent.Type, pos: QPoint, button=None):
+            self._etype = etype
+            self._pos = QPoint(pos)
+            self._button = button
+
+        def type(self):
+            return self._etype
+
+        def pos(self):
+            return QPoint(self._pos)
+
+        def button(self):
+            # Only meaningful for press/release
+            return self._button
+
+    def _inject():
+        try:
+            vp = win.proc_scroll.viewport()
+            # Aim at viewport center
+            try:
+                pos = QPoint(int(vp.width() // 2), int(vp.height() // 2))
+            except Exception:
+                pos = QPoint(10, 10)
+
+            # Burst of wheel events (zoom in then out)
+            for _ in range(18):
+                win.interactions.eventFilter(vp, _DummyWheelEvent(+1.0, pos))
+            for _ in range(10):
+                win.interactions.eventFilter(vp, _DummyWheelEvent(-1.0, pos))
+
+            # Simulate a drag pan (grab image and move)
+            try:
+                p0 = QPoint(pos)
+                p1 = QPoint(pos.x() + 80, pos.y() + 60)
+                p2 = QPoint(pos.x() + 140, pos.y() + 110)
+                win.interactions.eventFilter(vp, _DummyMouseEvent(QEvent.MouseButtonPress, p0, button=Qt.LeftButton))
+                win.interactions.eventFilter(vp, _DummyMouseEvent(QEvent.MouseMove, p1, button=None))
+                win.interactions.eventFilter(vp, _DummyMouseEvent(QEvent.MouseMove, p2, button=None))
+                win.interactions.eventFilter(vp, _DummyMouseEvent(QEvent.MouseButtonRelease, p2, button=Qt.LeftButton))
+            except Exception:
+                pass
+        except Exception:
+            pass
+
+    def _quit():
+        try:
+            app.quit()
+        except Exception:
+            pass
+
+    # Give the window time to show/layout, then inject twice (spaced out so the
+    # profiler has time to report), then quit.
+    QTimer.singleShot(400, _inject)
+    QTimer.singleShot(1400, _inject)
+    QTimer.singleShot(2800, _quit)
+
 def _ensure_ppm(path: str, color=(80, 80, 200), w=256, h=128):
     """Create a simple PPM (P6) image at path if it doesn't exist.
 
@@ -114,16 +203,25 @@ if __name__ == "__main__":
         splash = None
 
     # Set app icon (if available)
+    # Note: On Windows, the taskbar icon can depend on the window icon as well,
+    # so we keep the loaded icon object and also apply it to the main window.
+    app_icon = None
     try:
         if os.path.exists(icon_path):
             icon = QIcon(icon_path)
             if not icon.isNull():
                 app.setWindowIcon(icon)
+                app_icon = icon
     except Exception:
-        pass
+        app_icon = None
 
     # Create main window (heavy init happens here)
     win = CentroidFinderWindow()
+    try:
+        if app_icon is not None:
+            win.setWindowIcon(app_icon)
+    except Exception:
+        pass
     # Start with a reasonable default that fits most screens (smaller by default)
     win.resize(800, 600)
     # Prevent the initial layout from being smaller than intended
@@ -134,6 +232,24 @@ if __name__ == "__main__":
 
     # Show the main window (maximized)
     win.showMaximized()
+
+    # Self-test mode: inject wheel events and exit.
+    try:
+        if bool(str(os.environ.get('PIXY_SELFTEST_WHEEL', '')).strip()):
+            if splash is not None:
+                app.processEvents()
+                try:
+                    splash.finish(win)
+                except Exception:
+                    pass
+            _run_wheel_selftest(win, app)
+            try:
+                rv = app.exec()
+            except AttributeError:
+                rv = app.exec_()
+            sys.exit(rv)
+    except Exception:
+        pass
     
     # CLI auto mode handling
     args = set(arg.lower() for arg in sys.argv[1:])

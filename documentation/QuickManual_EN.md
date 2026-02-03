@@ -3,7 +3,7 @@
 Short, step-by-step guide with screenshots for common tasks.
 
 ## Overview
-- Purpose: Detect particle centroids in images and convert pixel → real-world coordinates using reference points.
+- Purpose: Detect particle centroids in images and convert pixel → real-world coordinates using fiducial points.
 
 ## Requirements
 - Python 3.10+
@@ -26,8 +26,8 @@ python Main.py
 
 ![Detect Centroids](images/quick_en_2.png)
 
-3) Add reference points
-- Click `Add Ref`, then click image points to add observations.
+3) Add fiducial points
+- Click `Add Fiducial Point`, then click image points to add observations.
 
 ![Add Ref](images/quick_en_3.png)
 
@@ -38,7 +38,7 @@ python Main.py
 
 ## Quick Troubleshooting
 - Image won't load: try different formats (ppm, bmp, jpg).
-- Reference mismatch: re-add points and check residuals.
+- Fiducial mismatch: re-add points and check residuals.
 
 ---
 Place screenshots under `documentation/images/`. See `SCREENSHOT_GUIDE.md` for capture instructions.

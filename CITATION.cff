@@ -1,16 +1,16 @@
 cff-version: 1.2.0
 message: "If you use this software, please cite it using the following metadata."
 title: "PiXY: Pixel to stage-XY Coordinate Converter"
-version: "1.2.0"
+version: "1.2.1"
 url: "https://github.com/YoshiakiKON/PiXY"
 repository-code: "https://github.com/YoshiakiKON/PiXY"
-doi: 10.5281/zenodo.18417046
-repository-artifact: "https://doi.org/10.5281/zenodo.18417046"
+doi: 10.5281/zenodo.18174474
+repository-artifact: "https://doi.org/10.5281/zenodo.18174474"
 authors:
   - family-names: "Kon"
     given-names: "Yoshiaki"
     affiliation: "Geological Survey of Japan, AIST"
-date-released: 2026-01-29
+date-released: 2026-02-03
 license: "MIT"
 abstract: >
   This software was developed with AI-assisted pair programming using GitHub Copilot (GPT-5)

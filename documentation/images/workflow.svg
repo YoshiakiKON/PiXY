@@ -37,9 +37,9 @@
   <text x="440" y="155" class="text">Centroids (u, v)</text>
   <text x="440" y="180" class="note">K-means + connected components</text>
 
-  <!-- Input: Reference points -->
+  <!-- Input: Fiducial points -->
   <rect x="40" y="250" width="360" height="150" class="box" />
-  <text x="60" y="285" class="title">Reference points</text>
+  <text x="60" y="285" class="title">Fiducial points</text>
   <text x="60" y="315" class="text">Image points ↔ Stage points</text>
   <text x="60" y="345" class="note">Select distinctive features on image</text>
   <text x="60" y="370" class="note">Measure corresponding (X, Y, Z) on instrument</text>
@@ -48,7 +48,7 @@
   <rect x="420" y="250" width="360" height="150" class="box" />
   <text x="440" y="285" class="title">Coordinate transformation</text>
   <text x="440" y="315" class="text">2D → 3D affine mapping</text>
-  <text x="440" y="345" class="note">Least squares fit from reference pairs</text>
+  <text x="440" y="345" class="note">Least squares fit from fiducial pairs</text>
   <text x="440" y="370" class="note">Residual inspection & orientation adjustment</text>
 
   <!-- Output: Stage coordinate list -->

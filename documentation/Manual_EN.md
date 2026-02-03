@@ -7,7 +7,7 @@ Detailed reference describing features, configuration, logs, and file formats.
 - Installation
 - Startup options
 - UI components
-- Handling reference points
+- Handling fiducial points
 - Output files (CSV, centroids_*.txt)
 - Advanced configuration (`Config.py`)
 - Logs & debugging
@@ -27,11 +27,11 @@ pip install -r requirements.txt
 - `--auto-exit`: auto process and exit.
 
 ## Main UI
-- Main window contains: image view, centroid list, reference table, toolbar.
-- Reference table shows image coordinates (`u`, `v`) and stage coordinates (`Stage X`, `Stage Y`, `Stage Z`), transformed coordinates, and residuals.
+- Main window contains: image view, centroid list, fiducial table, toolbar.
+- Fiducial table shows image coordinates (`u`, `v`) and stage coordinates (`Stage X`, `Stage Y`, `Stage Z`), transformed coordinates, and residuals.
 
-## Reference points
-1. Click `Add Ref` to enter reference mode.
+## Fiducial points
+1. Click `Add Fiducial Point` to enter fiducial mode.
 2. Click known points on the image to add observations.
 3. Edit image coordinates (`u`, `v`) and stage coordinates (`Stage X`, `Stage Y`, `Stage Z`) in the table and re-fit.
 

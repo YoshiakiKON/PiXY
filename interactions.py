@@ -1,7 +1,8 @@
 from qt_compat.QtCore import Qt, QEvent, QPoint, QTimer, QObject
 from qt_compat.QtGui import QCursor
 from collections import deque
-from time import monotonic
+from time import monotonic, perf_counter
+import os
 
 
 def _evt_point(event):
@@ -66,21 +67,70 @@ class ImageViewController(QObject):
         self._kinetic_vy = 0.0
         self._kinetic_last_t = 0.0
 
+        # wheel zoom: coalesce frequent wheel events into ~1 redraw per frame
+        self._wheel_zoom_timer = QTimer(self)
+        self._wheel_zoom_timer.setSingleShot(True)
+        self._wheel_zoom_timer.setInterval(16)
+        self._wheel_zoom_timer.timeout.connect(self._on_wheel_zoom_tick)
+        self._wheel_zoom_pending = False
+        self._wheel_zoom_target = None
+        self._wheel_zoom_anchor_full = None
+        self._wheel_zoom_anchor_vp = None
+        self._wheel_zoom_pick_mode = None
+        self._wheel_zoom_last_event_t = None
+
+        # Optional performance logging
+        self._wheel_profile = bool(str(os.environ.get('PIXY_WHEEL_PROFILE', '')).strip())
+        self._wheel_ev_count = 0
+        self._wheel_apply_count = 0
+        self._wheel_apply_ms = deque(maxlen=120)
+        self._wheel_latency_ms = deque(maxlen=120)
+        self._wheel_last_report_t = perf_counter()
+
         # install event filters
         ui.proc_scroll.viewport().installEventFilter(self)
         ui.proc_scroll.viewport().setMouseTracking(True)
         ui.img_label_proc.installEventFilter(self)
         ui.img_label_proc.setMouseTracking(True)
 
+        # Some platforms/configs can dispatch wheel events to the focused widget
+        # even when the cursor is over a different widget (e.g., sliders change
+        # while the cursor is over the image). Install an application-wide filter
+        # so wheel-zoom works reliably when the cursor is over the image viewport.
+        try:
+            from qt_compat.QtWidgets import QApplication
+            app = QApplication.instance()
+            if app is not None:
+                app.installEventFilter(self)
+        except Exception:
+            pass
+
     # Qt expects QObject-style eventFilter, but we don't subclass QObject; Qt accepts any PyObject with eventFilter
     def eventFilter(self, obj, event):
         # Wrap entire handler in try/except to prevent uncaught exceptions
         # from propagating out of the event loop and crashing the app.
         try:
-            is_proc = (obj is self.ui.img_label_proc) or (obj is self.ui.proc_scroll.viewport())
-            if not is_proc:
-                return False
             et = event.type()
+
+            # Determine whether the cursor is currently over the image viewport.
+            # This allows us to handle wheel events even if Qt sent the event to a
+            # different focused widget.
+            cursor_over_proc = False
+            pos_vp_from_cursor = None
+            try:
+                vp = self.ui.proc_scroll.viewport()
+                gp = QCursor.pos()
+                pv = vp.mapFromGlobal(gp)
+                if vp.rect().contains(pv):
+                    cursor_over_proc = True
+                    pos_vp_from_cursor = QPoint(pv)
+            except Exception:
+                cursor_over_proc = False
+                pos_vp_from_cursor = None
+
+            is_proc_obj = (obj is self.ui.img_label_proc) or (obj is self.ui.proc_scroll.viewport())
+            if not is_proc_obj and not (et == QEvent.Wheel and cursor_over_proc):
+                return False
 
             if et == QEvent.MouseButtonPress and event.button() == Qt.LeftButton:
                 pos_vp = _evt_point(event) if obj is self.ui.proc_scroll.viewport() else self.ui._label_pos_to_viewport_pos(_evt_point(event))
@@ -192,7 +242,7 @@ class ImageViewController(QObject):
                                     if self.ui.selected_index != idx:
                                         self.ui.selected_index = idx
                                         # テーブル/表示を更新
-                                        self.ui.schedule_update(force=True)
+                                        self.ui.schedule_update(force=True, recompute_centroids=False)
                                         # immediately sync visible table selection to reflect change
                                         try:
                                             self.ui._sync_table_selection()
@@ -214,11 +264,44 @@ class ImageViewController(QObject):
                 # Google Maps-like zoom:
                 # Keep the content under the cursor (anchor) fixed while changing zoom.
                 # (Buttons/double-click often use center; wheel uses cursor anchor.)
-                pos_vp = _evt_point(event) if obj is self.ui.proc_scroll.viewport() else self.ui._label_pos_to_viewport_pos(_evt_point(event))
+                # Always anchor to cursor position within the viewport.
+                # If the wheel event was delivered to a different widget, event.pos()
+                # is not meaningful for the image view.
+                if pos_vp_from_cursor is not None:
+                    pos_vp = QPoint(pos_vp_from_cursor)
+                else:
+                    pos_vp = _evt_point(event) if obj is self.ui.proc_scroll.viewport() else self.ui._label_pos_to_viewport_pos(_evt_point(event))
 
                 pos_label_before = self.ui._viewport_pos_to_label_pos(pos_vp)
                 xf_yf = self.ui._display_to_full(pos_label_before)
-                delta = event.angleDelta().y() / 120.0
+
+                if self._wheel_profile:
+                    try:
+                        self._wheel_ev_count += 1
+                    except Exception:
+                        pass
+
+                # Prefer angleDelta, but fall back to pixelDelta for trackpads.
+                dy = 0
+                try:
+                    ad = event.angleDelta()
+                    ax = int(getattr(ad, 'x', lambda: 0)())
+                    ay = int(getattr(ad, 'y', lambda: 0)())
+                    dy = ay if abs(ay) >= abs(ax) else ax
+                except Exception:
+                    dy = 0
+                if dy == 0:
+                    try:
+                        pd = event.pixelDelta()
+                        px = int(getattr(pd, 'x', lambda: 0)())
+                        py = int(getattr(pd, 'y', lambda: 0)())
+                        dy = py if abs(py) >= abs(px) else px
+                    except Exception:
+                        dy = 0
+                if dy == 0:
+                    return False
+
+                delta = float(dy) / 120.0
                 # Exponential scaling feels more map-like than linear scaling.
                 base = 1.2
                 mods = event.modifiers() if hasattr(event, 'modifiers') else Qt.NoModifier
@@ -228,24 +311,32 @@ class ImageViewController(QObject):
                     factor = float(base) ** float(delta)
                 except Exception:
                     factor = 1.0
-                new_zoom = self.ui.proc_zoom * factor
+
+                base_zoom = self.ui.proc_zoom
+                try:
+                    if self._wheel_zoom_target is not None and (self._wheel_zoom_timer.isActive() or self._wheel_zoom_pending):
+                        base_zoom = float(self._wheel_zoom_target)
+                except Exception:
+                    base_zoom = self.ui.proc_zoom
+
+                new_zoom = float(base_zoom) * float(factor)
                 # Allow much larger zoom; rendering will downsample for display safety
                 new_zoom = max(0.01, min(1024.0, new_zoom))
-                if abs(new_zoom - self.ui.proc_zoom) > 1e-6:
-                    self.ui.proc_zoom = new_zoom
-                    self.ui._apply_proc_zoom()
-                    if xf_yf is not None:
-                        x_full, y_full = xf_yf
-                        lx, ly = self.ui._full_to_display(x_full, y_full)
-                        # QScrollArea is aligned top-left (Ui sets AlignLeft|AlignTop), so
-                        # label.pos() already reflects scroll offsets; do NOT add it here.
-                        sx = lx - pos_vp.x()
-                        sy = ly - pos_vp.y()
-                        self.ui._set_scroll(sx, sy)
-                    # ピックモード中は十字線を再描画
-                    if self.ui.pick_mode in ('add', 'update'):
-                        pos_label = self.ui._viewport_pos_to_label_pos(pos_vp)
-                        self.ui._draw_crosshair(pos_label)
+
+                if abs(new_zoom - float(base_zoom)) > 1e-9:
+                    # Coalesce redraws to reduce stutter during continuous wheel input.
+                    self._wheel_zoom_target = float(new_zoom)
+                    self._wheel_zoom_anchor_full = xf_yf
+                    self._wheel_zoom_anchor_vp = QPoint(pos_vp)
+                    self._wheel_zoom_pick_mode = self.ui.pick_mode
+                    self._wheel_zoom_pending = True
+                    if self._wheel_profile:
+                        try:
+                            self._wheel_zoom_last_event_t = perf_counter()
+                        except Exception:
+                            self._wheel_zoom_last_event_t = None
+                    if not self._wheel_zoom_timer.isActive():
+                        self._wheel_zoom_timer.start()
                 return True
             elif et == QEvent.Resize:
                 # ラベル/ビューポートのサイズ変更時に、ピックモードなら十字線を現在のカーソル位置で再描画
@@ -405,3 +496,84 @@ class ImageViewController(QObject):
             self._kinetic_vy *= 0.3
         if abs(self._kinetic_vx) < 5 and abs(self._kinetic_vy) < 5:
             self._stop_kinetic()
+
+    def _on_wheel_zoom_tick(self):
+        """Apply pending wheel zoom changes (debounced)."""
+        try:
+            if not getattr(self, '_wheel_zoom_pending', False):
+                return
+            if getattr(self, '_wheel_zoom_target', None) is None:
+                self._wheel_zoom_pending = False
+                return
+
+            target_zoom = float(self._wheel_zoom_target)
+            anchor_full = getattr(self, '_wheel_zoom_anchor_full', None)
+            anchor_vp = getattr(self, '_wheel_zoom_anchor_vp', None)
+            pick_mode = getattr(self, '_wheel_zoom_pick_mode', None)
+            evt_t = getattr(self, '_wheel_zoom_last_event_t', None)
+            self._wheel_zoom_pending = False
+
+            t0 = perf_counter() if self._wheel_profile else None
+            if abs(float(getattr(self.ui, 'proc_zoom', 1.0)) - target_zoom) > 1e-6:
+                self.ui.proc_zoom = target_zoom
+                self.ui._apply_proc_zoom()
+
+                # Keep anchor under cursor.
+                if anchor_full is not None and anchor_vp is not None:
+                    try:
+                        x_full, y_full = anchor_full
+                        lx, ly = self.ui._full_to_display(x_full, y_full)
+                        sx = lx - anchor_vp.x()
+                        sy = ly - anchor_vp.y()
+                        self.ui._set_scroll(sx, sy)
+                    except Exception:
+                        pass
+
+                # ピックモード中は十字線を再描画
+                try:
+                    if pick_mode in ('add', 'update') and anchor_vp is not None:
+                        pos_label = self.ui._viewport_pos_to_label_pos(anchor_vp)
+                        self.ui._draw_crosshair(pos_label)
+                except Exception:
+                    pass
+
+            if self._wheel_profile and t0 is not None:
+                t1 = perf_counter()
+                try:
+                    self._wheel_apply_count += 1
+                    self._wheel_apply_ms.append((t1 - t0) * 1000.0)
+                    if evt_t is not None:
+                        self._wheel_latency_ms.append((t0 - float(evt_t)) * 1000.0)
+                except Exception:
+                    pass
+
+                # Report roughly once per second
+                try:
+                    now = t1
+                    if (now - float(self._wheel_last_report_t)) >= 1.0:
+                        self._wheel_last_report_t = now
+                        ev = int(getattr(self, '_wheel_ev_count', 0) or 0)
+                        ap = int(getattr(self, '_wheel_apply_count', 0) or 0)
+                        co = max(0, ev - ap)
+                        am = list(getattr(self, '_wheel_apply_ms', []) or [])
+                        lm = list(getattr(self, '_wheel_latency_ms', []) or [])
+                        avg_apply = (sum(am) / len(am)) if am else 0.0
+                        max_apply = (max(am)) if am else 0.0
+                        avg_lat = (sum(lm) / len(lm)) if lm else 0.0
+                        max_lat = (max(lm)) if lm else 0.0
+                        print(f"[PIXY wheel] events={ev} applies={ap} coalesced={co} apply_ms(avg/max)={avg_apply:.1f}/{max_apply:.1f} latency_ms(avg/max)={avg_lat:.1f}/{max_lat:.1f}")
+                except Exception:
+                    pass
+
+            # If more wheel events arrived while rendering, schedule another tick.
+            if getattr(self, '_wheel_zoom_pending', False):
+                try:
+                    self._wheel_zoom_timer.start()
+                except Exception:
+                    pass
+        except Exception:
+            try:
+                import traceback
+                traceback.print_exc()
+            except Exception:
+                pass

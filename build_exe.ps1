@@ -14,7 +14,7 @@ Set-Location -Path $PSScriptRoot
 Write-Host "Installing PyInstaller (if missing)..."
 
 # Prefer the workspace virtualenv if present (more reproducible than global/user installs)
-$repoRoot = Resolve-Path (Join-Path $PSScriptRoot "..\..")
+$repoRoot = Resolve-Path $PSScriptRoot
 $venvPython = Join-Path $repoRoot ".venv\Scripts\python.exe"
 $python = if (Test-Path $venvPython) { $venvPython } else { "py" }
 
@@ -79,8 +79,17 @@ $addDataArgs = ($addData | ForEach-Object { "--add-data `"$($_)`"" }) -join ' '
 $exclude = @("PyQt5", "PyQt6")
 $excludeArgs = ($exclude | ForEach-Object { "--exclude-module $($_)" }) -join ' '
 
+# EXE icon (for Windows Explorer / taskbar)
+$iconArg = ""
+$iconPath = Join-Path $PSScriptRoot "PiXY_icon.ico"
+if (Test-Path $iconPath) {
+    $iconArg = "--icon `"$iconPath`""
+} else {
+    Write-Host "Icon file missing (skipping --icon): PiXY_icon.ico" -ForegroundColor Yellow
+}
+
 $main = "Main.py"
-$cmd = "$python -m PyInstaller --noconfirm --onefile --windowed --name $Name $excludeArgs $addDataArgs $main"
+$cmd = "$python -m PyInstaller --noconfirm --onefile --windowed --name $Name $iconArg $excludeArgs $addDataArgs $main"
 Write-Host "Running: $cmd"
 Invoke-Expression $cmd
 

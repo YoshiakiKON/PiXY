@@ -3,19 +3,19 @@
 This quick manual shows the minimal steps to use PiXY for image-to-stage coordinate mapping.
 
 ## 1. Launch
-- Run the standalone Windows executable `PiXY_ver118.exe` (or run `py Main.py` for Python).
+- Run the standalone Windows executable `PiXY_ver121.exe` (or run `py Main.py` for Python).
 
 ## 2. Open an image
 - Click `Open Image` and select a BSE/optical image (example below).
 
 ![Sample BSE image](DemoBSE.png)
 
-## 3. Add reference points (Add Ref)
-1. Click `Add Ref` to enter reference-point mode.
-2. Click a characteristic point on the image (particle tip, scratch, fiducial) and enter the corresponding stage `X, Y, Z` coordinates in the table.
+## 3. Add fiducial points
+1. Click `Add Fiducial Point` to enter fiducial-point mode.
+2. Click a characteristic point on the image (e.g., particle tip, scratch) and enter the corresponding stage `X, Y, Z` coordinates in the table.
 3. Repeat for at least 3 non-collinear points (we used ~120° spacing around sample).
 
-![Add reference points / mapping view](PiXY_Pix.png)
+![Add fiducial points / mapping view](PiXY_Pix.png)
 
 ## 4. Run automatic detection
 - Adjust detection parameters ("Number of Groups", area thresholds) and run detection.
@@ -28,7 +28,7 @@ This quick manual shows the minimal steps to use PiXY for image-to-stage coordin
 - For laser-ablation stage targeting, export stage coordinates (X,Y,Z) and load into the instrument.
 
 ## Tips
-- Use fiducial markers when available for highest accuracy (see paper for comparisons).
+- Use clear, reproducible fiducial points (artificial markers are optional, but not required).
 - For large images, use the preview (smaller scale) to speed up parameter tuning, then run full-resolution detection.
 
 ## Licensing & Where to get help

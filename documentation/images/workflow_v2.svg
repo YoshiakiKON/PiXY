@@ -49,19 +49,19 @@
   <text x="140" y="297" class="note">K-means + connected components (or import pre-processed mask)</text>
   <text x="140" y="321" class="note">PiXY: overlay centroids/boundaries</text>
 
-  <!-- Step 3: Pick reference points -->
+  <!-- Step 3: Pick fiducial points -->
   <rect x="70" y="355" width="500" height="135" class="box" />
   <rect x="90" y="375" width="34" height="34" class="step" rx="8" />
   <text x="107" y="398" text-anchor="middle" class="stepText">3</text>
-  <text x="140" y="387" class="title">Add reference points</text>
+  <text x="140" y="387" class="title">Add fiducial points</text>
   <text x="140" y="413" class="text">Pick distinctive features on image</text>
   <text x="140" y="438" class="note">≥ 3 points (recommended 5) near periphery</text>
-  <text x="140" y="463" class="note">PiXY: “Add Ref. Point”</text>
+  <text x="140" y="463" class="note">PiXY: “Add Fiducial Point”</text>
 
   <!-- Stage lane: Measure stage coords -->
   <rect x="710" y="100" width="500" height="120" class="box" />
   <text x="730" y="135" class="title">Measure stage coordinates</text>
-  <text x="730" y="161" class="text">(X, Y, Z) for each reference point</text>
+  <text x="730" y="161" class="text">(X, Y, Z) for each fiducial point</text>
   <text x="730" y="186" class="note">Read from instrument stage while centering the same feature</text>
 
   <!-- Step 4: Fit transform -->
@@ -69,7 +69,7 @@
   <rect x="730" y="265" width="34" height="34" class="step" rx="8" />
   <text x="747" y="288" text-anchor="middle" class="stepText">4</text>
   <text x="780" y="277" class="title">Fit 2D→3D affine transform</text>
-  <text x="780" y="303" class="text">Least squares from reference pairs</text>
+  <text x="780" y="303" class="text">Least squares from fiducial pairs</text>
   <text x="780" y="327" class="note">Inspect residuals; adjust rotation/flip if needed</text>
 
   <!-- Step 5: Export -->
@@ -87,5 +87,5 @@
 
   <rect x="485" y="12" width="310" height="48" class="box" />
   <text x="500" y="38" class="mono">(X,Y,Z) = A · (u,v,1)  (affine)</text>
-  <text x="500" y="56" class="note">A estimated from reference points</text>
+  <text x="500" y="56" class="note">A estimated from fiducial points</text>
 </svg>

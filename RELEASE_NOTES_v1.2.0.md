@@ -6,7 +6,7 @@ PiXY is a desktop GUI tool for image-based centroid extraction and pixel→stage
 
 Typical use cases:
 - Detect particle/grain-like regions in microscope/SEM images and extract their centroids.
-- Convert centroid pixel coordinates to stage coordinates using user-defined reference points.
+- Convert centroid pixel coordinates to stage coordinates using user-defined fiducial points.
 - Export results for downstream measurement workflows (e.g., stage navigation, automated acquisition).
 
 **Recommended screen size**: 1200×900 or larger (the UI is more comfortable at this size).
@@ -27,7 +27,7 @@ Typical use cases:
 1. Download `PiXY_ver120.exe`.
 2. Run it (no installer).
 3. Open an image via **Open Image**.
-4. (Optional but recommended) Add reference points via **Add Ref** (≥3 non-collinear points) to enable pixel→stage conversion.
+4. (Optional but recommended) Add fiducial points via **Add Fiducial Point** (≥3 non-collinear points) to enable pixel→stage conversion.
 5. Adjust detection parameters (e.g., number of groups, area thresholds) and run grain identification.
 6. Export results (CSV / clipboard as supported by the UI).
 
@@ -81,10 +81,14 @@ If you are coming from older builds:
 
 If you use PiXY in published work, please cite the software.
 - See `CITATION.cff` for the recommended citation metadata.
-- DOI (v1.2.0): https://doi.org/10.5281/zenodo.18417046
+- DOI: https://doi.org/10.5281/zenodo.18174474
 
 ---
 
 Build info
 - Version: 1.2.0
 - Release date: 2026-01-29
+
+Note
+- DOI is intentionally kept constant across PiXY versions: https://doi.org/10.5281/zenodo.18174474
+- For the latest release notes, see `RELEASE_NOTES_v1.2.1.md`.

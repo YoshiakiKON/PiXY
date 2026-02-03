@@ -80,9 +80,14 @@ class SegmentControl(QWidget):
 
         qss_base = (
             # Force square corners by default; we'll round only the outer corners explicitly.
-            "QPushButton { border: 1px solid lightgray; padding: 2px 10px; border-radius: 0px; }"
-            "QPushButton:checked { background-color: " + blue + "; color: white; }"
-            "QPushButton:!checked { background-color: white; color: black; }"
+            "QPushButton { border: 1px solid lightgray; padding: 2px 10px; border-radius: 0px; font-weight: normal; }"
+            # Selected: keep existing colors, but emphasize with bold.
+            "QPushButton:checked { background-color: " + blue + "; color: white; font-weight: bold; }"
+            # Unselected: dark gray text instead of black.
+            "QPushButton:!checked { background-color: white; color: #555555; font-weight: normal; }"
+            # Special-case: allow a checked segment to be rendered in normal weight (e.g. 'Calculating').
+            "QPushButton[pixy_calc_in_progress=\"true\"] { font-weight: normal; }"
+            "QPushButton[pixy_calc_in_progress=\"true\"]:checked { font-weight: normal; }"
         )
 
         for i, lbl in enumerate(labels):
@@ -107,17 +112,17 @@ class SegmentControl(QWidget):
                 # Left-most: round only the outer-left corners; keep inner-right corners square.
                 b.setStyleSheet(
                     qss_base
-                    + "QPushButton { border-top-left-radius: 10px; border-bottom-left-radius: 10px; border-top-right-radius: 0px; border-bottom-right-radius: 0px; border-right: none; font-weight: normal; }"
+                    + "QPushButton { border-top-left-radius: 10px; border-bottom-left-radius: 10px; border-top-right-radius: 0px; border-bottom-right-radius: 0px; border-right: none; }"
                 )
             elif i == len(labels) - 1:
                 # Right-most: round only the outer-right corners; keep inner-left corners square.
                 b.setStyleSheet(
                     qss_base
-                    + "QPushButton { border-top-right-radius: 10px; border-bottom-right-radius: 10px; border-top-left-radius: 0px; border-bottom-left-radius: 0px; border-left: none; font-weight: normal; }"
+                    + "QPushButton { border-top-right-radius: 10px; border-bottom-right-radius: 10px; border-top-left-radius: 0px; border-bottom-left-radius: 0px; border-left: none; }"
                 )
             else:
                 # Middle segments: all corners square.
-                b.setStyleSheet(qss_base + "QPushButton { border-radius: 0px; border-left: none; border-right: none; font-weight: normal; }")
+                b.setStyleSheet(qss_base + "QPushButton { border-radius: 0px; border-left: none; border-right: none; }")
             layout.addWidget(b)
             self._group.addButton(b, i)
             self._buttons.append(b)
@@ -432,9 +437,26 @@ class AreaHistogramWidget(QWidget):
         # Title
         try:
             painter.setPen(QPen(QColor("#000")))
-            painter.setFont(self.font())
             # Align title with other left-column labels (e.g., 'Number of Groups').
-            painter.drawText(QRect(0, 0, max(10, w), max(10, margin_t - 6)), Qt.AlignLeft | Qt.AlignVCenter, "Grain Size Threshold (pix)")
+            title_h = max(10, int(margin_t - 6))
+            line_h = max(10, int(title_h / 2))
+            r1 = QRect(0, 0, max(10, w), line_h)
+            r2 = QRect(0, int(line_h), max(10, w), max(10, int(title_h - line_h)))
+            painter.setFont(self.font())
+            painter.drawText(r1, Qt.AlignLeft | Qt.AlignVCenter, "Grain Size Threshold (pix)")
+            try:
+                fn = QFont(self.font())
+                try:
+                    ps = int(fn.pointSize() or 0)
+                    if ps > 0:
+                        fn.setPointSize(max(7, ps - 2))
+                except Exception:
+                    pass
+                painter.setFont(fn)
+                painter.setPen(QPen(QColor("#666666")))
+                painter.drawText(r2, Qt.AlignLeft | Qt.AlignVCenter, "*Drag to adjust the minimum and maximum thresholds.")
+            except Exception:
+                pass
         except Exception:
             pass
 
@@ -2149,6 +2171,15 @@ class CentroidFinderWindow(QMainWindow):
         except Exception:
             pass
 
+        # Use explicit font size for numeric contents (requested: specify directly)
+        try:
+            f = self.table_ref_view.font()
+            if f is not None:
+                f.setPointSize(10)
+                self.table_ref_view.setFont(f)
+        except Exception:
+            pass
+
         # Apply initial visibility for Basic/Advanced groups
         try:
             self._apply_grain_ident_visibility()
@@ -2206,6 +2237,15 @@ class CentroidFinderWindow(QMainWindow):
                 self.table_between.currentCellChanged.connect(self._on_table_between_current_changed)
             except Exception:
                 pass
+        except Exception:
+            pass
+
+        # Use explicit font size for numeric contents (requested: specify directly)
+        try:
+            f2 = self.table_between.font()
+            if f2 is not None:
+                f2.setPointSize(10)
+                self.table_between.setFont(f2)
         except Exception:
             pass
 
@@ -2899,6 +2939,10 @@ class CentroidFinderWindow(QMainWindow):
                 if btn0 is not None:
                     btn0.setText('Auto')
                 if btn1 is not None:
+                    try:
+                        btn1.setProperty('pixy_calc_in_progress', False)
+                    except Exception:
+                        pass
                     if str(getattr(self, 'calc_mode', 'auto')) == 'manual':
                         btn1.setText('ReCalculate')
                     else:
@@ -2947,7 +2991,20 @@ class CentroidFinderWindow(QMainWindow):
                 btn0.setEnabled(False)
             if btn1 is not None:
                 btn1.setEnabled(False)
-                btn1.setText('ReCalc')
+                try:
+                    btn1.setProperty('pixy_calc_in_progress', True)
+                    try:
+                        btn1.style().unpolish(btn1)
+                        btn1.style().polish(btn1)
+                    except Exception:
+                        pass
+                    try:
+                        btn1.update()
+                    except Exception:
+                        pass
+                except Exception:
+                    pass
+                btn1.setText('Calculating')
         except Exception:
             pass
 
@@ -2976,6 +3033,19 @@ class CentroidFinderWindow(QMainWindow):
                         btn0.setEnabled(True)
                     if btn1 is not None:
                         btn1.setEnabled(True)
+                        try:
+                            btn1.setProperty('pixy_calc_in_progress', False)
+                            try:
+                                btn1.style().unpolish(btn1)
+                                btn1.style().polish(btn1)
+                            except Exception:
+                                pass
+                            try:
+                                btn1.update()
+                            except Exception:
+                                pass
+                        except Exception:
+                            pass
                         btn1.setText('ReCalculate')
                 except Exception:
                     pass
@@ -3832,6 +3902,27 @@ class CentroidFinderWindow(QMainWindow):
             recompute_centroids (bool): if True allow heavy centroid recomputation;
                 if False, reuse cached centroids when possible.
         """
+        # Optional debug: trace unexpected heavy recomputation triggers.
+        # Enable by setting environment variable PIXY_UPDATE_TRACE=1.
+        try:
+            trace = bool(str(os.environ.get('PIXY_UPDATE_TRACE', '')).strip())
+        except Exception:
+            trace = False
+        if trace and bool(recompute_centroids):
+            try:
+                from time import perf_counter as _perf_counter
+                now = float(_perf_counter())
+                last = float(getattr(self, '_update_trace_last_t', 0.0) or 0.0)
+                if (now - last) >= 0.5:
+                    self._update_trace_last_t = now
+                    try:
+                        import traceback
+                        st = ''.join(traceback.format_stack(limit=8))
+                    except Exception:
+                        st = ''
+                    print(f"[TRACE][schedule_update] force={bool(force)} recompute_centroids={bool(recompute_centroids)} auto_update_mode={bool(getattr(self, 'auto_update_mode', False))}\n{st}")
+            except Exception:
+                pass
         try:
             # In manual mode, skip heavy recompute unless forced explicitly
             if str(getattr(self, 'calc_mode', 'auto')) == 'manual' and recompute_centroids:

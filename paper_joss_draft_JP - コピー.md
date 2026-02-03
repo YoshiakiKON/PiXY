@@ -429,7 +429,7 @@ PiXY では、あらかじめ人工的なマークを付ける必要はありま
 
 2. **分析装置でステージ座標を測定**:
    - 1で設定した参照点の装置の座標値 $(X, Y, Z)$ をデジタル表示から読み取り
-   - GUI の "Reference Points" パネルに各点の $(u, v, X, Y, Z)$ を入力
+   - GUI の "Fiducial Points" パネルに各点の $(u, v, X, Y, Z)$ を入力
 
 3. **複数点の測定**:
    - 3点以上を同じプロセスで繰り返す
@@ -862,7 +862,7 @@ authors:
 date-published: 2026-01-16
 repository: https://github.com/YoshiakiKON/PiXY
 repository-code: https://github.com/YoshiakiKON/PiXY
-zenodo: https://doi.org/10.5281/zenodo.18417046
+zenodo: https://doi.org/10.5281/zenodo.18174474
 keywords:
   - particle detection
   - image segmentation

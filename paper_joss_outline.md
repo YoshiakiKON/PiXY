@@ -55,11 +55,11 @@
 - **Transformation Pipeline**:
   1. Processing image (downscaled) → Full-resolution image scaling
   2. Full-resolution → Stage coordinates via affine transformation
-  3. Affine parameters estimated from reference point pairs (user-defined)
+  3. Affine parameters estimated from fiducial point pairs (user-defined)
   
 - **Mathematical Framework**:
   - 2D affine transformation: $(x', y') = A \cdot (x, y) + b$
-  - Least-squares estimation from ≥3 reference point pairs
+  - Least-squares estimation from ≥3 fiducial point pairs
   - Handles rotation, translation, scaling, and shear
   
 - **Software Architecture**:

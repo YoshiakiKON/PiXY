@@ -1,7 +1,7 @@
 # PiXY: Pixel to stage-XY Coordinate Converter
 Yoshiaki KON (Geological Survey of JAPAN, National Institute of Advanced Industrial Science and Technology)
 
-PiXY is a desktop GUI tool that detects centroids of particle-like regions in images and converts pixel coordinates to real-world stage coordinates using user-defined reference points.
+PiXY is a desktop GUI tool that detects centroids of particle-like regions in images and converts pixel coordinates to real-world stage coordinates using user-defined fiducial points (naturally occurring specimen features such as scratches or particle tips; not pre-made markers).
 
 [![Quick Manual preview](README.png)](README.png)
 
@@ -9,9 +9,9 @@ PiXY is a desktop GUI tool that detects centroids of particle-like regions in im
 ## Features
 
 - Detect centroids from segmented image regions (posterization/clustering).
-- Add and edit reference points to estimate an affine/similarity transform.
-- Interactive, transposed reference table view for quick editing and verification.
-- Export coordinates and reference data (CSV supported).
+- Add and edit fiducial points to estimate an affine/similarity transform.
+- Interactive, transposed fiducial table view for quick editing and verification.
+- Export coordinates and fiducial data (CSV supported).
 
 ## Requirements
 
@@ -49,13 +49,13 @@ From the repository root (Python source):
 python Main.py
 ```
 
-Or run the provided Windows executable: `PiXY_ver120.exe`.
+Or run the provided Windows executable: `PiXY_ver121.exe`.
 
 ## Basic usage
 
 - Open an image with `Open Image`.
-- Use `Add Ref` to enter reference-point mode, then click image points to add reference observations.
-- Edit reference `u`/`v` (image coordinates) and `Stage X`/`Stage Y` (and `Stage Z` if applicable) in the reference table to refine the transform.
+- Use `Add Fiducial Point` to enter fiducial-point mode, then click image points to add fiducial observations.
+- Edit fiducial `u`/`v` (image coordinates) and `Stage X`/`Stage Y` (and `Stage Z` if applicable) in the fiducial table to refine the transform.
 - The left transposed table shows residuals and transformed coordinates for quick inspection.
 
 ## Development & Contribution
@@ -67,7 +67,7 @@ Or run the provided Windows executable: `PiXY_ver120.exe`.
 
 If you publish results generated with this software, please cite this repository.
 
-- Zenodo DOI (v1.2.0): https://doi.org/10.5281/zenodo.18417046
+- Zenodo DOI: https://doi.org/10.5281/zenodo.18174474
 - See `CITATION.cff` for the recommended citation metadata.
 
 ## License

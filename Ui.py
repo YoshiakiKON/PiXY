@@ -437,26 +437,9 @@ class AreaHistogramWidget(QWidget):
         # Title
         try:
             painter.setPen(QPen(QColor("#000")))
-            # Align title with other left-column labels (e.g., 'Number of Groups').
-            title_h = max(10, int(margin_t - 6))
-            line_h = max(10, int(title_h / 2))
-            r1 = QRect(0, 0, max(10, w), line_h)
-            r2 = QRect(0, int(line_h), max(10, w), max(10, int(title_h - line_h)))
+            # Single-line title (no note line)
             painter.setFont(self.font())
-            painter.drawText(r1, Qt.AlignLeft | Qt.AlignVCenter, "Grain Size Threshold (pix)")
-            try:
-                fn = QFont(self.font())
-                try:
-                    ps = int(fn.pointSize() or 0)
-                    if ps > 0:
-                        fn.setPointSize(max(7, ps - 2))
-                except Exception:
-                    pass
-                painter.setFont(fn)
-                painter.setPen(QPen(QColor("#666666")))
-                painter.drawText(r2, Qt.AlignLeft | Qt.AlignVCenter, "*Drag to adjust the minimum and maximum thresholds.")
-            except Exception:
-                pass
+            painter.drawText(QRect(0, 0, max(10, w), max(10, int(margin_t - 6))), Qt.AlignLeft | Qt.AlignVCenter, "Grain Size Threshold (pix)")
         except Exception:
             pass
 
@@ -1768,13 +1751,13 @@ class CentroidFinderWindow(QMainWindow):
                 fhl.setContentsMargins(0, 0, 0, 0)
                 fhl.setSpacing(6)
                 try:
-                    self.flip_toggle_image = SegmentControl(["Normal", "Flip"], checked_index=0, btn_w=72, btn_h=24)
+                    self.flip_toggle_image = SegmentControl(["Normal", "Flip"], checked_index=0, btn_w=75, btn_h=24)
                     self.flip_toggle_image.set_on_changed(lambda idx: self._on_flip_changed('image', int(idx)))
                 except Exception:
                     self.flip_toggle_image = None
                 # Keep stage flip toggle object for backward compatibility, but do not show it here.
                 try:
-                    self.flip_toggle_stage = SegmentControl(["Auto", "Normal", "Flip"], checked_index=0, btn_w=72, btn_h=24)
+                    self.flip_toggle_stage = SegmentControl(["Auto", "Normal", "Flip"], checked_index=0, btn_w=75, btn_h=24)
                     self.flip_toggle_stage.set_on_changed(lambda idx: self._on_flip_changed('stage', int(idx)))
                     self.flip_toggle_stage.setVisible(False)
                 except Exception:

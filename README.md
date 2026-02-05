@@ -49,7 +49,7 @@ From the repository root (Python source):
 python Main.py
 ```
 
-Or run the provided Windows executable: `PiXY_ver121.exe`.
+Or run the provided Windows executable: `PiXY_ver122.exe`.
 
 ## Basic usage
 

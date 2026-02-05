@@ -1751,13 +1751,13 @@ class CentroidFinderWindow(QMainWindow):
                 fhl.setContentsMargins(0, 0, 0, 0)
                 fhl.setSpacing(6)
                 try:
-                    self.flip_toggle_image = SegmentControl(["Normal", "Flip"], checked_index=0, btn_w=75, btn_h=24)
+                    self.flip_toggle_image = SegmentControl(["Normal", "Flip"], checked_index=0, btn_w=77, btn_h=24)
                     self.flip_toggle_image.set_on_changed(lambda idx: self._on_flip_changed('image', int(idx)))
                 except Exception:
                     self.flip_toggle_image = None
                 # Keep stage flip toggle object for backward compatibility, but do not show it here.
                 try:
-                    self.flip_toggle_stage = SegmentControl(["Auto", "Normal", "Flip"], checked_index=0, btn_w=75, btn_h=24)
+                    self.flip_toggle_stage = SegmentControl(["Auto", "Normal", "Flip"], checked_index=0, btn_w=77, btn_h=24)
                     self.flip_toggle_stage.set_on_changed(lambda idx: self._on_flip_changed('stage', int(idx)))
                     self.flip_toggle_stage.setVisible(False)
                 except Exception:

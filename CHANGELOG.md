@@ -2,6 +2,10 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.2.2] - 2026-02-05
+- UI: adjust SegmentControl button widths for better readability (Normal/Flip).
+- Docs: minor proofreading and formatting updates in the JOSS draft.
+
 ## [1.2.1] - 2026-02-03
 - Docs: unify terminology to "fiducial point(s)" (naturally occurring specimen features; not pre-made markers).
 - Citation: use a fixed Zenodo DOI for all versions (10.5281/zenodo.18174474).

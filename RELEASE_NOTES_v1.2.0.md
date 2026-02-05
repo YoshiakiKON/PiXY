@@ -91,4 +91,4 @@ Build info
 
 Note
 - DOI is intentionally kept constant across PiXY versions: https://doi.org/10.5281/zenodo.18174474
-- For the latest release notes, see `RELEASE_NOTES_v1.2.1.md`.
+- For the latest release notes, see `RELEASE_NOTES_v1.2.2.md`.

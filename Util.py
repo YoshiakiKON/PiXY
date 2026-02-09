@@ -7,6 +7,9 @@
 
 import cv2
 import numpy as np
+import os
+import sys
+import time
 from qt_compat.QtGui import QPixmap, QImage
 
 
@@ -38,6 +41,12 @@ def kmeans_posterize(img_bgr, levels=2):
     Returns:
         ポスタライズされた画像
     """
+    try:
+        perf_enabled = bool(str(os.environ.get('PIXY_PERF', '')).strip())
+    except Exception:
+        perf_enabled = False
+    t0 = time.perf_counter() if perf_enabled else None
+
     Z = img_bgr.reshape((-1, 3)).astype(np.float32)
     K = max(1, int(levels))
     criteria = (cv2.TERM_CRITERIA_EPS + cv2.TERM_CRITERIA_MAX_ITER, 10, 1.0)
@@ -50,6 +59,26 @@ def kmeans_posterize(img_bgr, levels=2):
     centers = np.uint8(centers)
     res = centers[labels.flatten()]
     poster = res.reshape(img_bgr.shape)
+
+    if perf_enabled and t0 is not None:
+        try:
+            h, w = int(img_bgr.shape[0]), int(img_bgr.shape[1])
+        except Exception:
+            h, w = None, None
+        dt = float(time.perf_counter() - t0)
+        try:
+            mpix = (float(h) * float(w) / 1_000_000.0) if h is not None and w is not None else None
+        except Exception:
+            mpix = None
+        try:
+            mpix_s = f"{mpix:.2f}MP" if mpix is not None else "?MP"
+        except Exception:
+            mpix_s = "?MP"
+        try:
+            print(f"[PERF][kmeans_posterize] size={w}x{h} ({mpix_s}) K={K} time={dt:.3f}s", file=sys.stderr)
+        except Exception:
+            pass
+
     return poster
 
 

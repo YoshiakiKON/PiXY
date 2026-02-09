@@ -1378,6 +1378,8 @@ class CentroidFinderWindow(QMainWindow):
         # v1.1.7+: heavy recomputation can be manual-triggered
         self.calc_mode = 'auto'  # 'auto' | 'manual'
         self._manual_recompute_request = False
+        # Auto/Manualで計算パラメータを分離保持（切替時に保存/復元）
+        self._calc_params_by_mode = {'auto': None, 'manual': None}
         self.calc_mode_controls = None
         self.lbl_calc_mode = None
         self.toggle_calc_mode = None
@@ -2900,6 +2902,14 @@ class CentroidFinderWindow(QMainWindow):
             prev_mode = str(getattr(self, 'calc_mode', 'auto'))
         except Exception:
             prev_mode = 'auto'
+
+        # Save current UI params into previous mode bucket before switching
+        try:
+            if str(prev_mode) in ('auto', 'manual'):
+                self._calc_params_by_mode[str(prev_mode)] = self._snapshot_calc_params()
+        except Exception:
+            pass
+
         try:
             if int(idx) == 1:
                 self.calc_mode = 'manual'
@@ -2912,6 +2922,33 @@ class CentroidFinderWindow(QMainWindow):
             self.auto_update_mode = (str(getattr(self, 'calc_mode', 'auto')) == 'auto')
         except Exception:
             self.auto_update_mode = True
+
+        # Restore params for the new mode (if previously saved)
+        try:
+            new_mode = str(getattr(self, 'calc_mode', 'auto'))
+        except Exception:
+            new_mode = 'auto'
+        try:
+            snap = getattr(self, '_calc_params_by_mode', {}).get(str(new_mode))
+            if isinstance(snap, dict) and snap:
+                self._apply_calc_params_snapshot(snap)
+        except Exception:
+            pass
+
+        # Optional trace: confirm mode switch actually applied
+        try:
+            trace = bool(str(os.environ.get('PIXY_UPDATE_TRACE', '')).strip())
+        except Exception:
+            trace = False
+        if trace:
+            try:
+                import sys
+                print(
+                    f"[TRACE][calc_mode] idx={int(idx)} calc_mode={str(getattr(self, 'calc_mode', 'auto'))} auto_update_mode={bool(getattr(self, 'auto_update_mode', False))}",
+                    file=sys.stderr,
+                )
+            except Exception:
+                pass
 
         # Swap label on the Manual segment
         try:
@@ -2941,6 +2978,149 @@ class CentroidFinderWindow(QMainWindow):
                 self.schedule_update(force=True)
         except Exception:
             pass
+
+    def _snapshot_calc_params(self):
+        """Capture current grain-identification calc parameters from UI.
+
+        This snapshot is used to keep separate parameter sets for Auto/Manual.
+        """
+        try:
+            if hasattr(self, 'slider_num_groups') and getattr(self, 'slider_num_groups', None) is not None:
+                levels = int(self.slider_num_groups.value())
+            else:
+                levels = int(getattr(self, 'slider_levels', None).value() if hasattr(self, 'slider_levels') else 2)
+        except Exception:
+            levels = 2
+
+        try:
+            trim_px = int(self.slider_trim.value()) if getattr(self, 'slider_trim', None) is not None else 0
+        except Exception:
+            trim_px = 0
+        try:
+            neck = int(getattr(self, 'slider_neck_sep', None).value() if hasattr(self, 'slider_neck_sep') else 0)
+        except Exception:
+            neck = 0
+        try:
+            shape = int(getattr(self, 'slider_shape_complex', None).value() if hasattr(self, 'slider_shape_complex') else 10)
+        except Exception:
+            shape = 10
+
+        try:
+            if getattr(self, 'area_hist', None) is not None:
+                sel_min, sel_max = self.area_hist.selection()
+            else:
+                sel_min, sel_max = (None, None)
+        except Exception:
+            sel_min, sel_max = (None, None)
+
+        return {
+            'levels': int(levels),
+            'trim_px': int(trim_px),
+            'neck_separation': int(neck),
+            'shape_complexity': int(shape),
+            'area_sel_min': sel_min,
+            'area_sel_max': sel_max,
+        }
+
+    def _apply_calc_params_snapshot(self, snap: dict):
+        """Apply a previously captured calc-param snapshot to the UI widgets."""
+        # Block signals to avoid triggering recomputation while restoring
+        widgets = []
+        try:
+            for nm in ('slider_num_groups', 'slider_trim', 'slider_neck_sep', 'slider_shape_complex', 'slider_min_area'):
+                w = getattr(self, nm, None)
+                if w is not None:
+                    widgets.append(w)
+        except Exception:
+            pass
+        try:
+            ah = getattr(self, 'area_hist', None)
+            if ah is not None:
+                widgets.append(ah)
+        except Exception:
+            ah = None
+
+        try:
+            for w in widgets:
+                try:
+                    w.blockSignals(True)
+                except Exception:
+                    pass
+
+            # levels / groups
+            try:
+                lv = int(snap.get('levels', 2))
+                if getattr(self, 'slider_num_groups', None) is not None:
+                    self.slider_num_groups.setValue(lv)
+                    try:
+                        self.edit_num_groups.setText(str(int(lv)))
+                    except Exception:
+                        pass
+            except Exception:
+                pass
+
+            # trim
+            try:
+                tv = int(snap.get('trim_px', 0))
+                if getattr(self, 'slider_trim', None) is not None:
+                    self.slider_trim.setValue(tv)
+                    try:
+                        self.edit_trim.setText(str(int(tv)))
+                    except Exception:
+                        pass
+            except Exception:
+                pass
+
+            # neck
+            try:
+                nv = int(snap.get('neck_separation', 0))
+                if getattr(self, 'slider_neck_sep', None) is not None:
+                    self.slider_neck_sep.setValue(nv)
+                    try:
+                        self.edit_neck_sep.setText(str(int(nv)))
+                    except Exception:
+                        pass
+            except Exception:
+                pass
+
+            # shape complexity
+            try:
+                sv = int(snap.get('shape_complexity', 10))
+                if getattr(self, 'slider_shape_complex', None) is not None:
+                    self.slider_shape_complex.setValue(sv)
+                    try:
+                        self.edit_shape_complex.setText(str(int(sv)))
+                    except Exception:
+                        pass
+            except Exception:
+                pass
+
+            # histogram selection (min/max area)
+            try:
+                sel_min = snap.get('area_sel_min', None)
+                sel_max = snap.get('area_sel_max', None)
+                if ah is not None:
+                    ah.set_selection(sel_min, sel_max)
+            except Exception:
+                pass
+            # Keep hidden min-area widget in sync (best-effort)
+            try:
+                if sel_min is not None and getattr(self, 'slider_min_area', None) is not None:
+                    v = int(round(float(sel_min)))
+                    v = max(self.slider_min_area.minimum(), min(self.slider_min_area.maximum(), v))
+                    self.slider_min_area.setValue(v)
+                    try:
+                        self.edit_min_area.setText(str(int(v)))
+                    except Exception:
+                        pass
+            except Exception:
+                pass
+        finally:
+            for w in widgets:
+                try:
+                    w.blockSignals(False)
+                except Exception:
+                    pass
 
     def _on_manual_recalculate_clicked(self):
         # Only act if Manual is active; otherwise ignore
@@ -3271,7 +3451,16 @@ class CentroidFinderWindow(QMainWindow):
         slider.setValue(init)
         slider.setTickInterval(tick)
         slider.setTickPosition(QSlider.TicksBelow)
-        slider.valueChanged.connect(lambda v, e=edit: self._sync_from_slider(e, v))
+        # Store key for diagnostics and for Auto/Manual parameter snapshots
+        try:
+            setattr(edit, '_pixy_key', str(name))
+        except Exception:
+            pass
+        try:
+            setattr(slider, '_pixy_key', str(name))
+        except Exception:
+            pass
+        slider.valueChanged.connect(lambda v, e=edit, k=str(name): self._sync_from_slider(e, v, key=k))
         # name is expected to be a code-safe key (e.g. 'poster_level', 'min_area')
         try:
             if name == 'poster_level':
@@ -3632,8 +3821,31 @@ class CentroidFinderWindow(QMainWindow):
                 pass
 
     # スライダーから編集ボックスへ同期
-    def _sync_from_slider(self, edit, val):
-        edit.setText(str(val))
+    def _sync_from_slider(self, edit, val, key=None):
+        try:
+            edit.setText(str(val))
+        except Exception:
+            pass
+
+        # Param-level trace: helps identify which control triggered updates.
+        try:
+            trace = bool(str(os.environ.get('PIXY_UPDATE_TRACE', '')).strip())
+        except Exception:
+            trace = False
+        if trace:
+            try:
+                if key is None:
+                    key = getattr(edit, '_pixy_key', None)
+                self._last_update_reason = f"param:{key}" if key is not None else "param:?"
+            except Exception:
+                pass
+            try:
+                import sys
+                mode = str(getattr(self, 'calc_mode', 'auto'))
+                print(f"[TRACE][param] key={key} val={val} mode={mode}", file=sys.stderr)
+            except Exception:
+                pass
+
         self.schedule_update()
 
     # 編集ボックスからスライダーへ同期 (Enter確定)
@@ -3645,6 +3857,32 @@ class CentroidFinderWindow(QMainWindow):
         v = max(slider.minimum(), min(slider.maximum(), v))
         slider.setValue(v)
         edit.setText(str(v))
+
+        try:
+            trace = bool(str(os.environ.get('PIXY_UPDATE_TRACE', '')).strip())
+        except Exception:
+            trace = False
+        if trace:
+            try:
+                key = getattr(slider, '_pixy_key', None)
+            except Exception:
+                key = None
+            try:
+                if key is None:
+                    key = getattr(edit, '_pixy_key', None)
+            except Exception:
+                pass
+            try:
+                self._last_update_reason = f"edit:{key}" if key is not None else "edit:?"
+            except Exception:
+                pass
+            try:
+                import sys
+                mode = str(getattr(self, 'calc_mode', 'auto'))
+                print(f"[TRACE][param] key={key} val={v} mode={mode} (enter)", file=sys.stderr)
+            except Exception:
+                pass
+
         self.schedule_update()
 
     def _nudge_min_area(self, delta):
@@ -3885,27 +4123,23 @@ class CentroidFinderWindow(QMainWindow):
             recompute_centroids (bool): if True allow heavy centroid recomputation;
                 if False, reuse cached centroids when possible.
         """
-        # Optional debug: trace unexpected heavy recomputation triggers.
+        # Optional debug: trace heavy recomputation triggers.
         # Enable by setting environment variable PIXY_UPDATE_TRACE=1.
         try:
             trace = bool(str(os.environ.get('PIXY_UPDATE_TRACE', '')).strip())
         except Exception:
             trace = False
-        if trace and bool(recompute_centroids):
-            try:
-                from time import perf_counter as _perf_counter
-                now = float(_perf_counter())
-                last = float(getattr(self, '_update_trace_last_t', 0.0) or 0.0)
-                if (now - last) >= 0.5:
-                    self._update_trace_last_t = now
-                    try:
-                        import traceback
-                        st = ''.join(traceback.format_stack(limit=8))
-                    except Exception:
-                        st = ''
-                    print(f"[TRACE][schedule_update] force={bool(force)} recompute_centroids={bool(recompute_centroids)} auto_update_mode={bool(getattr(self, 'auto_update_mode', False))}\n{st}")
-            except Exception:
-                pass
+
+        # Keep original caller intent for diagnostics.
+        try:
+            _requested_recompute = bool(recompute_centroids)
+        except Exception:
+            _requested_recompute = True
+
+        try:
+            _reason = str(getattr(self, '_last_update_reason', '') or '')
+        except Exception:
+            _reason = ''
         try:
             # In manual mode, skip heavy recompute unless forced explicitly
             if str(getattr(self, 'calc_mode', 'auto')) == 'manual' and recompute_centroids:
@@ -3919,6 +4153,46 @@ class CentroidFinderWindow(QMainWindow):
             self._next_recompute_centroids = bool(recompute_centroids)
         except Exception:
             pass
+
+        # If recompute was requested but gated off (manual mode), emit a short trace line.
+        if trace and bool(_requested_recompute) and not bool(recompute_centroids):
+            try:
+                from time import perf_counter as _perf_counter
+                now = float(_perf_counter())
+                last = float(getattr(self, '_update_trace_last_t_gated', 0.0) or 0.0)
+                if (now - last) >= 0.5:
+                    self._update_trace_last_t_gated = now
+                    try:
+                        import sys
+                        msg = f"[TRACE][schedule_update] force={bool(force)} requested=True effective=False (gated) calc_mode={str(getattr(self, 'calc_mode', 'auto'))}"
+                        if _reason:
+                            msg += f" reason={_reason}"
+                        print(msg, file=sys.stderr)
+                    except Exception:
+                        pass
+            except Exception:
+                pass
+
+        # Only print stack trace when heavy recompute is effectively allowed.
+        if trace and bool(_requested_recompute) and bool(recompute_centroids):
+            try:
+                from time import perf_counter as _perf_counter
+                now = float(_perf_counter())
+                last = float(getattr(self, '_update_trace_last_t', 0.0) or 0.0)
+                if (now - last) >= 0.5:
+                    self._update_trace_last_t = now
+                    try:
+                        import traceback
+                        st = ''.join(traceback.format_stack(limit=10))
+                    except Exception:
+                        st = ''
+                    print(
+                        (f"[TRACE][schedule_update] force={bool(force)} requested={bool(_requested_recompute)} effective={bool(recompute_centroids)} auto_update_mode={bool(getattr(self, 'auto_update_mode', False))}"
+                         + (f" reason={_reason}" if _reason else "")
+                         + f"\n{st}")
+                    )
+            except Exception:
+                pass
         if force:
             self.update_timer.stop()
             self._update_image_actual(recompute_centroids=recompute_centroids)
@@ -4080,6 +4354,18 @@ class CentroidFinderWindow(QMainWindow):
                 pass
 
     def _update_image_actual(self, recompute_centroids=None):
+        try:
+            perf_enabled = bool(str(os.environ.get('PIXY_PERF', '')).strip())
+        except Exception:
+            perf_enabled = False
+        t_update0 = None
+        if perf_enabled:
+            try:
+                from time import perf_counter as _perf_counter
+                t_update0 = float(_perf_counter())
+            except Exception:
+                t_update0 = None
+
         if recompute_centroids is None:
             try:
                 recompute_centroids = bool(getattr(self, '_next_recompute_centroids', True))
@@ -4104,12 +4390,20 @@ class CentroidFinderWindow(QMainWindow):
             params = self._get_params()
             if self.proc_img is None:
                 self._build_processing_image()
-            overlay_full = self.img_full.copy()
+            # Avoid copying the full image unless we actually need to mutate it.
+            # Downstream boundary overlay uses astype(), which creates a new array.
+            overlay_full = self.img_full
             centroids = []
             # Ensure poster is always defined before use in downstream rendering.
             poster = None
+            poster_dt = None
+            did_centroid_recompute = False
             if self.centroid_processor:
                 # 判定: 自動更新モードか手動モードかで重い処理の実行を切り替える
+                try:
+                    is_manual_mode = (str(getattr(self, 'calc_mode', 'auto')) == 'manual')
+                except Exception:
+                    is_manual_mode = False
                 cache_img_id = self._cache.get("img_id")
                 cache_levels = self._cache.get("levels")
                 cache_min_area = self._cache.get("min_area")
@@ -4131,11 +4425,26 @@ class CentroidFinderWindow(QMainWindow):
                     or cache_shape != params.get("shape_complexity")
                 )
 
-                # Posterization is relatively cheap; even in manual (no centroid recompute)
-                # we refresh the poster for immediate visual feedback when parameters change.
+                # Manualモードでは、トリガーされていない更新では poster も再計算しない。
+                # (Autoでは随時計算、ManualではReCalculate等で recompute_centroids=True の時だけ再計算)
+                if bool(is_manual_mode) and (not bool(recompute_centroids)):
+                    need_poster_recalc = False
+
                 if need_poster_recalc:
                     try:
+                        if perf_enabled:
+                            try:
+                                from time import perf_counter as _perf_counter
+                                t_p0 = float(_perf_counter())
+                            except Exception:
+                                t_p0 = None
                         poster = kmeans_posterize(self.proc_img, params["levels"])
+                        if perf_enabled:
+                            try:
+                                if t_p0 is not None:
+                                    poster_dt = float(_perf_counter()) - float(t_p0)
+                            except Exception:
+                                poster_dt = None
                         self._cache.update({
                             "img_id": id(self.proc_img),
                             "levels": params["levels"],
@@ -4163,6 +4472,7 @@ class CentroidFinderWindow(QMainWindow):
                 elif self.auto_update_mode:
                     if poster is None:
                         poster = kmeans_posterize(self.proc_img, params["levels"])
+                    did_centroid_recompute = True
                     centroids = self.centroid_processor.get_centroids(params, poster=poster)
                     areas_now = getattr(self.centroid_processor, 'last_component_areas', [])
                     boundary_mask_now = getattr(self.centroid_processor, 'last_boundary_mask', None)
@@ -4205,6 +4515,7 @@ class CentroidFinderWindow(QMainWindow):
                     # 手動モードで再計算を許可したケース（force/manual recompute）
                     if poster is None:
                         poster = kmeans_posterize(self.proc_img, params["levels"])
+                    did_centroid_recompute = True
                     centroids = self.centroid_processor.get_centroids(params, poster=poster)
                     areas_now = getattr(self.centroid_processor, 'last_component_areas', [])
                     boundary_mask_now = getattr(self.centroid_processor, 'last_boundary_mask', None)
@@ -4226,16 +4537,42 @@ class CentroidFinderWindow(QMainWindow):
                 poster_edges_full = None
                 try:
                     if poster is not None:
-                        scale = 1.0 / self.scale_proc_to_full
-                        if scale != 1.0:
-                            new_w = self.img_full.shape[1]
-                            new_h = self.img_full.shape[0]
-                            poster_full = cv2.resize(poster, (new_w, new_h), interpolation=cv2.INTER_LINEAR)
-                            # Boundary のエッジ検出は最近傍で拡大したポスターを使う（線が太くなる原因を避ける）
-                            poster_edges_full = cv2.resize(poster, (new_w, new_h), interpolation=cv2.INTER_NEAREST)
+                        # Manual モードで heavy recompute が許可されていない (スライダー移動中など) 場合、
+                        # フル解像度への cv2.resize をスキップして UI を軽くする。
+                        is_manual_mode = (str(getattr(self, 'calc_mode', 'auto')) == 'manual')
+                        try:
+                            trace = bool(str(os.environ.get('PIXY_UPDATE_TRACE', '')).strip())
+                        except Exception:
+                            trace = False
+
+                        if is_manual_mode and (not bool(recompute_centroids)):
+                            # Skip the expensive full resize; prefer using cached full-size poster if available
+                            poster_full = self._cache.get('poster_full') if isinstance(self._cache, dict) else None
+                            poster_edges_full = self._cache.get('poster_edges_full') if isinstance(self._cache, dict) else None
+                            if trace:
+                                try:
+                                    import sys
+                                    print(f"[TRACE][resize] skipped poster_full resize (manual mode, recompute=False) cached_full={'yes' if poster_full is not None else 'no'}", file=sys.stderr)
+                                except Exception:
+                                    pass
                         else:
-                            poster_full = poster.copy()
-                            poster_edges_full = poster_full
+                            scale = 1.0 / self.scale_proc_to_full
+                            if scale != 1.0:
+                                new_w = self.img_full.shape[1]
+                                new_h = self.img_full.shape[0]
+                                poster_full = cv2.resize(poster, (new_w, new_h), interpolation=cv2.INTER_LINEAR)
+                                # Boundary のエッジ検出は最近傍で拡大したポスターを使う（線が太くなる原因を避ける）
+                                poster_edges_full = cv2.resize(poster, (new_w, new_h), interpolation=cv2.INTER_NEAREST)
+                            else:
+                                poster_full = poster.copy()
+                                poster_edges_full = poster_full
+                            # Cache the full-size poster for future skipped-resize renders
+                            try:
+                                if isinstance(self._cache, dict):
+                                    self._cache['poster_full'] = poster_full
+                                    self._cache['poster_edges_full'] = poster_edges_full
+                            except Exception:
+                                pass
                 except Exception:
                     poster_full = None
                     poster_edges_full = None
@@ -4245,18 +4582,91 @@ class CentroidFinderWindow(QMainWindow):
                     overlay_mode = str(getattr(self, 'overlay_mode', 'Mixed')).lower()
                 except Exception:
                     overlay_mode = 'original'
-                if overlay_mode == 'posterized' and poster_full is not None:
-                    overlay_full = poster_full.copy()
+                # In Manual mode without recompute, prefer keeping the last rendered overlay
+                # to avoid expensive full-frame composition during slider moves.
+                reuse_last_overlay = False
+                try:
+                    is_manual_mode = (str(getattr(self, 'calc_mode', 'auto')) == 'manual')
+                except Exception:
+                    is_manual_mode = False
+                try:
+                    last_mode = str(getattr(self, '_last_overlay_mode', ''))
+                    last_b = bool(getattr(self, '_last_show_boundaries', False))
+                except Exception:
+                    last_mode = ''
+                    last_b = False
+                try:
+                    cur_b = bool(getattr(self, 'show_boundaries', True))
+                except Exception:
+                    cur_b = True
+                try:
+                    last_overlay = getattr(self, '_last_overlay_full', None)
+                except Exception:
+                    last_overlay = None
+                if is_manual_mode and (not bool(recompute_centroids)) and last_overlay is not None:
+                    if (str(overlay_mode) == str(last_mode)) and (bool(cur_b) == bool(last_b)):
+                        reuse_last_overlay = True
+
+                if reuse_last_overlay:
+                    overlay_full = last_overlay
+                elif overlay_mode == 'posterized':
+                    if poster_full is not None:
+                        # Use reference (no copy) to avoid full-frame memcpy.
+                        overlay_full = poster_full
+                        try:
+                            self._last_overlay_full_poster = poster_full
+                        except Exception:
+                            pass
+                    else:
+                        # Reuse cached full poster if available, else reuse last poster overlay
+                        prev = None
+                        try:
+                            if isinstance(self._cache, dict):
+                                prev = self._cache.get('poster_full')
+                        except Exception:
+                            prev = None
+                        if prev is None:
+                            prev = getattr(self, '_last_overlay_full_poster', None)
+                        overlay_full = prev if prev is not None else self.img_full
                 else:
-                    overlay_full = self.img_full.copy()
+                    overlay_full = self.img_full
 
                 try:
                     self._update_area_histogram(areas_now or [])
                 except Exception:
                     pass
+
+                # Optional perf log (only when PIXY_PERF=1)
+                if perf_enabled and t_update0 is not None:
+                    try:
+                        from time import perf_counter as _perf_counter
+                        dt_total = float(_perf_counter()) - float(t_update0)
+                        # Avoid spamming: rate-limit to ~3 logs/sec and only show slow frames.
+                        last = float(getattr(self, '_perf_last_log_t', 0.0) or 0.0)
+                        nowt = float(_perf_counter())
+                        if dt_total >= 0.15 and (nowt - last) >= 0.33:
+                            self._perf_last_log_t = nowt
+                            try:
+                                import sys
+                                mode = str(getattr(self, 'calc_mode', 'auto'))
+                                auto = bool(getattr(self, 'auto_update_mode', False))
+                                pdt = (f"{poster_dt:.3f}s" if isinstance(poster_dt, (int, float)) else "-")
+                                print(
+                                    "[PERF][update] "
+                                    + f"total={dt_total:.3f}s mode={mode} auto_update={auto} "
+                                    + f"recompute_centroids={bool(recompute_centroids)} did_centroid={did_centroid_recompute} "
+                                    + f"poster_dt={pdt} params={{levels:{params.get('levels')}, trim:{params.get('trim_px')}, neck:{params.get('neck_separation')}, shape:{params.get('shape_complexity')}}}",
+                                    file=sys.stderr,
+                                )
+                            except Exception:
+                                pass
+                    except Exception:
+                        pass
                 # ポスタリゼーション境界に白線を描画（オプション）
                 try:
-                    if self.show_boundaries and poster_edges_full is not None:
+                    # If we decided to reuse the last overlay (manual slider moves),
+                    # skip boundary composition entirely to keep the UI responsive.
+                    if (not bool(reuse_last_overlay)) and self.show_boundaries and poster_edges_full is not None:
                         # エッジ検出は最近傍補間（ギザ）版を使って細い境界を得る
                         # Build poster_for_edges at full resolution and apply trim in full-pixel units
                         try:
@@ -4343,6 +4753,16 @@ class CentroidFinderWindow(QMainWindow):
                     # 万一の失敗時は何もしない（オーバーレイはそのまま）
                     pass
                 # マーカーは等倍時の画像に焼き込まず、ズーム後にQPainterで上描きする
+
+                # Remember the last-rendered visual state so manual slider moves can reuse it.
+                try:
+                    self._last_overlay_mode = str(overlay_mode)
+                except Exception:
+                    pass
+                try:
+                    self._last_show_boundaries = bool(getattr(self, 'show_boundaries', True))
+                except Exception:
+                    pass
             # 右画像のベースサイズを保存（フル画像サイズ)
             self._img_base_size = (overlay_full.shape[1], overlay_full.shape[0])
 

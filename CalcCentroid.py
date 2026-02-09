@@ -117,7 +117,7 @@ class CentroidProcessor:
                 print(f"[DEBUG] _split_by_neck_separation failed: {e}")
             return [comp_mask]
 
-    def get_centroids(self, params, poster=None):
+    def get_centroids(self, params, poster=None, *, collect_timings=False, emit_timing=True, compute_boundary_mask=True):
         """
         重心を計算する。
 
@@ -129,14 +129,40 @@ class CentroidProcessor:
             重心リスト [[group_no, cx, cy], ...]
         """
         # posterが渡されなければここで生成（後方互換）
-        t0 = time.monotonic()
+        now = time.perf_counter
+        t0 = now()
         poster_time = 0.0
+        timings = None
+        if collect_timings:
+            timings = {
+                "poster_time": 0.0,
+                "unique_colors_time": 0.0,
+                "mask_time": 0.0,
+                "cc_time": 0.0,
+                "comp_mask_time": 0.0,
+                "split_time": 0.0,
+                "split_cc_time": 0.0,
+                "centroid_time": 0.0,
+                "boundary_time": 0.0,
+                "total_time": 0.0,
+                "levels": params.get("levels"),
+                "min_area": params.get("min_area"),
+                "max_area": params.get("max_area"),
+                "trim_px_full": params.get("trim_px"),
+                "neck_separation": params.get("neck_separation"),
+                "groups": 0,
+                "components": 0,
+                "split_components": 0,
+                "centroids": 0,
+            }
         if DEBUG:
             print(f"[DEBUG][CentroidProcessor] get_centroids start levels={params.get('levels')} min_area={params.get('min_area')} trim={params.get('trim_px')}")
         if poster is None:
-            t_p_start = time.monotonic()
+            t_p_start = now()
             poster = kmeans_posterize(self.proc_img, params["levels"])
-            poster_time = time.monotonic() - t_p_start
+            poster_time = now() - t_p_start
+        if timings is not None:
+            timings["poster_time"] = float(poster_time)
         min_area = params["min_area"]
         max_area = params.get("max_area", None)
         neck_separation = int(params.get("neck_separation", 0) or 0)
@@ -148,7 +174,11 @@ class CentroidProcessor:
             trim_px_proc = int(round(float(trim_px_full) / max(1.0, float(self.scale_proc_to_full))))
         except Exception:
             trim_px_proc = int(trim_px_full)
+        t_uc0 = now() if timings is not None else None
         unique_colors = np.unique(poster.reshape(-1, 3), axis=0)
+        if timings is not None:
+            timings["unique_colors_time"] += float(now() - t_uc0)
+            timings["groups"] = int(len(unique_colors))
         results = []
         # For histogram: store component areas BEFORE applying min/max filters.
         self.last_component_areas = []
@@ -158,6 +188,7 @@ class CentroidProcessor:
         for group_no, color in enumerate(unique_colors, 1):
             if DEBUG and group_no % 5 == 0:
                 print(f"[DEBUG][CentroidProcessor] processing color group {group_no}/{len(unique_colors)}")
+            t_mask0 = now() if timings is not None else None
             mask = cv2.inRange(poster, color, color)
             # トリム（収縮）: UIで指定されたフル画像ピクセル単位を proc 解像度へ変換した
             # `trim_px_proc` を iterations に使って形態学的収縮を行う。
@@ -165,15 +196,27 @@ class CentroidProcessor:
                 k = int(trim_px_proc)
                 kernel = np.ones((3, 3), np.uint8)
                 mask = cv2.erode(mask, kernel, iterations=k)
+            if timings is not None:
+                timings["mask_time"] += float(now() - t_mask0)
             
             # Simple connected components analysis (4-connectivity)
+            t_cc0 = now() if timings is not None else None
             num_labels, labels, stats, centroids = cv2.connectedComponentsWithStats(mask, connectivity=4)
+            if timings is not None:
+                timings["cc_time"] += float(now() - t_cc0)
+                timings["components"] += int(max(0, int(num_labels) - 1))
             for lab in range(1, num_labels):
                 area = int(stats[lab, cv2.CC_STAT_AREA])
 
                 # Optional neck separation: detect and split pinched particles
+                t_cm0 = now() if timings is not None else None
                 comp_mask = (labels == lab).astype(np.uint8) * 255
+                if timings is not None:
+                    timings["comp_mask_time"] += float(now() - t_cm0)
+                t_split0 = now() if timings is not None else None
                 split_masks = self._split_by_neck_separation(comp_mask, neck_separation)
+                if timings is not None:
+                    timings["split_time"] += float(now() - t_split0)
 
                 # If no split occurred (or single piece), use original area
                 if len(split_masks) <= 1:
@@ -187,20 +230,32 @@ class CentroidProcessor:
                                 continue
                         except Exception:
                             pass
+                    t_cent0 = now() if timings is not None else None
                     cx, cy = centroids[lab]
                     results.append([group_no, cx, cy])
-                    try:
-                        contours, _ = cv2.findContours(comp_mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-                        if contours:
-                            cv2.drawContours(self.last_boundary_mask, contours, -1, 255, 1)
-                    except Exception:
-                        pass
+                    if timings is not None:
+                        timings["centroid_time"] += float(now() - t_cent0)
+                    if compute_boundary_mask:
+                        t_b0 = now() if timings is not None else None
+                        try:
+                            contours, _ = cv2.findContours(comp_mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+                            if contours:
+                                cv2.drawContours(self.last_boundary_mask, contours, -1, 255, 1)
+                        except Exception:
+                            pass
+                        if timings is not None and t_b0 is not None:
+                            timings["boundary_time"] += float(now() - t_b0)
                     continue
 
                 # Process each split component (only split areas counted)
+                if timings is not None:
+                    timings["split_components"] += int(len(split_masks))
                 for split_mask in split_masks:
                     # Re-calculate centroid for this component
+                    t_scc0 = now() if timings is not None else None
                     split_num_labels, split_labels, split_stats, split_centroids = cv2.connectedComponentsWithStats(split_mask, connectivity=4)
+                    if timings is not None:
+                        timings["split_cc_time"] += float(now() - t_scc0)
                     # Add all non-background components from this split
                     for split_lab in range(1, int(split_num_labels)):
                         split_area = int(split_stats[split_lab, cv2.CC_STAT_AREA])
@@ -214,26 +269,64 @@ class CentroidProcessor:
                                     continue
                             except Exception:
                                 pass
+                        t_cent0 = now() if timings is not None else None
                         cx, cy = split_centroids[split_lab]
                         results.append([group_no, cx, cy])
-                        try:
-                            comp_split = (split_labels == split_lab).astype(np.uint8) * 255
-                            contours, _ = cv2.findContours(comp_split, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-                            if contours:
-                                cv2.drawContours(self.last_boundary_mask, contours, -1, 255, 1)
-                        except Exception as e:
-                            if DEBUG:
-                                print(f"[DEBUG] Failed to draw contours for split mask: {e}")
-                            pass
-        total_time = time.monotonic() - t0
-        # Always emit a timing summary line so user can measure performance
-        try:
-            print(f"[TIMING][CentroidProcessor] levels={params.get('levels')} min_area={params.get('min_area')} centroids={len(results)} poster_time={poster_time:.3f}s total_time={total_time:.3f}s")
-        except Exception:
+                        if timings is not None:
+                            timings["centroid_time"] += float(now() - t_cent0)
+                        if compute_boundary_mask:
+                            t_b0 = now() if timings is not None else None
+                            try:
+                                comp_split = (split_labels == split_lab).astype(np.uint8) * 255
+                                contours, _ = cv2.findContours(comp_split, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+                                if contours:
+                                    cv2.drawContours(self.last_boundary_mask, contours, -1, 255, 1)
+                            except Exception as e:
+                                if DEBUG:
+                                    print(f"[DEBUG] Failed to draw contours for split mask: {e}")
+                                pass
+                            if timings is not None and t_b0 is not None:
+                                timings["boundary_time"] += float(now() - t_b0)
+        total_time = now() - t0
+
+        # Save last timings (even if not collecting detailed breakdown)
+        if timings is not None:
+            timings["centroids"] = int(len(results))
+            timings["total_time"] = float(total_time)
+            # Derived buckets for easy comparison
+            detection_time = (
+                float(timings.get("unique_colors_time", 0.0))
+                + float(timings.get("mask_time", 0.0))
+                + float(timings.get("cc_time", 0.0))
+                + float(timings.get("comp_mask_time", 0.0))
+                + float(timings.get("split_time", 0.0))
+                + float(timings.get("split_cc_time", 0.0))
+            )
+            timings["particle_detection_time"] = detection_time
+            timings["centroid_calc_time"] = float(timings.get("centroid_time", 0.0))
+            timings["boundary_time"] = float(timings.get("boundary_time", 0.0))
+            timings["poster_time"] = float(poster_time)
+            self.last_timings = timings
+        else:
+            # Keep attribute available for callers, but don't overwrite with partials.
             try:
-                print(f"[TIMING][CentroidProcessor] centroids={len(results)} total_time={total_time:.3f}s")
+                self.last_timings = {
+                    "poster_time": float(poster_time),
+                    "total_time": float(total_time),
+                    "centroids": int(len(results)),
+                }
             except Exception:
                 pass
+
+        # Always emit a timing summary line so user can measure performance
+        if emit_timing:
+            try:
+                print(f"[TIMING][CentroidProcessor] levels={params.get('levels')} min_area={params.get('min_area')} centroids={len(results)} poster_time={poster_time:.3f}s total_time={total_time:.3f}s")
+            except Exception:
+                try:
+                    print(f"[TIMING][CentroidProcessor] centroids={len(results)} total_time={total_time:.3f}s")
+                except Exception:
+                    pass
         if DEBUG:
             print(f"[DEBUG][CentroidProcessor] get_centroids done: found {len(results)} centroids in {total_time:.2f}s")
         return results

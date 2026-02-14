@@ -11,6 +11,16 @@ Typical use cases:
 
 **Recommended screen size**: 1200×900 or larger (the UI is more comfortable at this size).
 
+## Screenshots
+
+Overview (pixels view):
+
+![Pixels view](Screenshot_Pix.png)
+
+Stage/XY view:
+
+![Stage XY view](Screenshot_XY.png)
+
 ## What’s Included
 
 - Standalone Windows executable: `PiXY.exe` (built locally)

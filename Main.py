@@ -15,6 +15,8 @@ Centroid Finder アプリケーションのメインエントリーポイント�
 import sys
 import os
 import base64
+import json
+import time
 from qt_compat.QtWidgets import QApplication, QSplashScreen
 from qt_compat.QtGui import QPixmap, QIcon
 from qt_compat.QtCore import Qt, QTimer
@@ -264,15 +266,9 @@ if __name__ == "__main__":
         win.run_auto_and_exit()
     else:
         # Load default image in background while splash is showing
-        # Priority: last opened image -> demo image(s)
+        # Priority: demo image(s) -> last opened image
         default_candidates = []
-        try:
-            from Config import load_last_image_path
-            last_path = load_last_image_path()
-            if last_path:
-                default_candidates.append(last_path)
-        except Exception:
-            pass
+        startup_last_path = ""
         try:
             # Look for demo images next to this script (worktree) and also in the repo root.
             # This helps when running from a git worktree that does not carry the demo assets.
@@ -296,22 +292,135 @@ if __name__ == "__main__":
                     default_candidates.append(os.path.join(repo_root, name))
         except Exception:
             pass
+        try:
+            from Config import load_last_image_path
+            startup_last_path = load_last_image_path()
+            if startup_last_path:
+                default_candidates.append(startup_last_path)
+        except Exception:
+            pass
 
-        default_image = None
-        for p in default_candidates:
+        try:
+            # Deduplicate while preserving order
+            _seen = set()
+            default_candidates = [p for p in default_candidates if p and not (p in _seen or _seen.add(p))]
+        except Exception:
+            pass
+
+        # Startup safety guard for auto-loading last image
+        STARTUP_MAX_LAST_IMAGE_MB = 120
+        STARTUP_MAX_LAST_IMAGE_LOAD_SEC = 3.0
+        STARTUP_BLOCK_HOURS = 24
+
+        if getattr(sys, 'frozen', False) and hasattr(sys, '_MEIPASS'):
+            guard_dir = os.path.dirname(sys.executable)
+        else:
+            guard_dir = os.path.dirname(__file__)
+        startup_guard_file = os.path.join(guard_dir, "startup_image_guard.json")
+
+        def _norm_path(p):
             try:
-                if p and os.path.isfile(p):
-                    default_image = p
-                    break
+                return os.path.normcase(os.path.abspath(str(p)))
             except Exception:
-                continue
+                return str(p)
 
-        if default_image:
+        def _load_startup_guard():
             try:
-                # Start loading image immediately (in background during splash)
-                QTimer.singleShot(0, lambda: win._open_image_from_path(default_image))
+                if not os.path.isfile(startup_guard_file):
+                    return {}
+                with open(startup_guard_file, 'r', encoding='utf-8') as f:
+                    data = json.load(f)
+                return data if isinstance(data, dict) else {}
+            except Exception:
+                return {}
+
+        def _save_startup_guard(data):
+            try:
+                with open(startup_guard_file, 'w', encoding='utf-8') as f:
+                    json.dump(data, f, ensure_ascii=False, indent=2)
             except Exception:
                 pass
+
+        def _load_startup_default_or_prompt():
+            loaded = False
+            guard = _load_startup_guard()
+            now_ts = float(time.time())
+            changed_guard = False
+            last_norm = _norm_path(startup_last_path) if startup_last_path else ""
+
+            # cleanup expired guard entries
+            try:
+                stale = []
+                for gp, meta in guard.items():
+                    try:
+                        until_ts = float((meta or {}).get('blocked_until', 0))
+                    except Exception:
+                        until_ts = 0.0
+                    if until_ts <= now_ts:
+                        stale.append(gp)
+                for gp in stale:
+                    guard.pop(gp, None)
+                    changed_guard = True
+            except Exception:
+                pass
+
+            for p in default_candidates:
+                try:
+                    if p and os.path.isfile(p):
+                        p_norm = _norm_path(p)
+                        is_last_candidate = bool(last_norm and p_norm == last_norm)
+
+                        # Safety conditions for auto-loading the last opened image
+                        if is_last_candidate:
+                            meta = guard.get(p_norm, {}) if isinstance(guard, dict) else {}
+                            try:
+                                blocked_until = float((meta or {}).get('blocked_until', 0))
+                            except Exception:
+                                blocked_until = 0.0
+                            if blocked_until > now_ts:
+                                continue
+
+                            try:
+                                sz = int(os.path.getsize(p))
+                            except Exception:
+                                sz = 0
+                            if sz > int(STARTUP_MAX_LAST_IMAGE_MB * 1024 * 1024):
+                                guard[p_norm] = {
+                                    'blocked_until': now_ts + float(STARTUP_BLOCK_HOURS * 3600),
+                                    'reason': f'too_large>{STARTUP_MAX_LAST_IMAGE_MB}MB',
+                                }
+                                changed_guard = True
+                                continue
+
+                        t0 = time.perf_counter()
+                        ok = win._open_image_from_path(p, show_startup_prompt_on_fail=False)
+                        dt = float(time.perf_counter() - t0)
+
+                        if is_last_candidate and (not bool(ok) or dt > float(STARTUP_MAX_LAST_IMAGE_LOAD_SEC)):
+                            guard[p_norm] = {
+                                'blocked_until': now_ts + float(STARTUP_BLOCK_HOURS * 3600),
+                                'reason': 'load_failed' if not bool(ok) else f'slow_startup>{STARTUP_MAX_LAST_IMAGE_LOAD_SEC:.1f}s ({dt:.2f}s)',
+                            }
+                            changed_guard = True
+
+                        if bool(ok):
+                            loaded = True
+                            break
+                except Exception:
+                    continue
+            if changed_guard:
+                _save_startup_guard(guard)
+            if not loaded:
+                try:
+                    win._show_open_image_prompt_message()
+                except Exception:
+                    pass
+
+        try:
+            # Start loading image immediately (in background during splash)
+            QTimer.singleShot(0, _load_startup_default_or_prompt)
+        except Exception:
+            pass
         
         # Close splash after 2 seconds
         if splash is not None:

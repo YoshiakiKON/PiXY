@@ -78,6 +78,12 @@ class ImageViewController(QObject):
         self._wheel_zoom_anchor_vp = None
         self._wheel_zoom_pick_mode = None
         self._wheel_zoom_last_event_t = None
+        self._wheel_fast_render_applied = False
+        self._wheel_fast_max_pixels = 3072 * 3072
+        self._wheel_settle_timer = QTimer(self)
+        self._wheel_settle_timer.setSingleShot(True)
+        self._wheel_settle_timer.setInterval(140)
+        self._wheel_settle_timer.timeout.connect(self._on_wheel_zoom_settled)
 
         # Optional performance logging
         self._wheel_profile = bool(str(os.environ.get('PIXY_WHEEL_PROFILE', '')).strip())
@@ -156,6 +162,10 @@ class ImageViewController(QObject):
             elif et == QEvent.MouseMove:
                 pos_vp = _evt_point(event) if obj is self.ui.proc_scroll.viewport() else self.ui._label_pos_to_viewport_pos(_evt_point(event))
                 pos_label = _evt_point(event) if obj is self.ui.img_label_proc else self.ui._viewport_pos_to_label_pos(_evt_point(event))
+                try:
+                    self.ui._update_cursor_info_overlay(pos_label)
+                except Exception:
+                    pass
                 # 近傍の点があればカーソルを矢印に、それ以外は手のひら（ピックモード中は十字）
                 if self.ui.pick_mode in ('add', 'update'):
                     # ピックモードはカーソル固定（Ui側で設定）
@@ -260,20 +270,35 @@ class ImageViewController(QObject):
                 if speed > 200:
                     self._start_kinetic(vx, vy)
                 return True
+            elif et == QEvent.Leave:
+                try:
+                    self.ui._update_cursor_info_overlay(None)
+                except Exception:
+                    pass
+                return False
             elif et == QEvent.Wheel:
-                # Google Maps-like zoom:
-                # Keep the content under the cursor (anchor) fixed while changing zoom.
-                # (Buttons/double-click often use center; wheel uses cursor anchor.)
-                # Always anchor to cursor position within the viewport.
-                # If the wheel event was delivered to a different widget, event.pos()
-                # is not meaningful for the image view.
-                if pos_vp_from_cursor is not None:
-                    pos_vp = QPoint(pos_vp_from_cursor)
-                else:
-                    pos_vp = _evt_point(event) if obj is self.ui.proc_scroll.viewport() else self.ui._label_pos_to_viewport_pos(_evt_point(event))
+                # Center-anchored zoom:
+                # keep viewport center fixed while changing zoom to avoid jumpy behavior
+                # near limits and make zoom in/out predictable.
+                try:
+                    vp0 = self.ui.proc_scroll.viewport()
+                    pos_vp = QPoint(int(vp0.width() // 2), int(vp0.height() // 2))
+                except Exception:
+                    if pos_vp_from_cursor is not None:
+                        pos_vp = QPoint(pos_vp_from_cursor)
+                    else:
+                        pos_vp = _evt_point(event) if obj is self.ui.proc_scroll.viewport() else self.ui._label_pos_to_viewport_pos(_evt_point(event))
 
                 pos_label_before = self.ui._viewport_pos_to_label_pos(pos_vp)
                 xf_yf = self.ui._display_to_full(pos_label_before)
+                if xf_yf is None:
+                    try:
+                        # Fallback: use full-image center when current center maps outside image area.
+                        img_sz = getattr(self.ui, '_img_base_size', None)
+                        if img_sz is not None and len(img_sz) >= 2:
+                            xf_yf = (float(img_sz[0]) / 2.0, float(img_sz[1]) / 2.0)
+                    except Exception:
+                        xf_yf = None
 
                 if self._wheel_profile:
                     try:
@@ -320,8 +345,20 @@ class ImageViewController(QObject):
                     base_zoom = self.ui.proc_zoom
 
                 new_zoom = float(base_zoom) * float(factor)
-                # Allow much larger zoom; rendering will downsample for display safety
-                new_zoom = max(0.01, min(1024.0, new_zoom))
+                # Max zoom endpoint: roughly target visible full-image pixels in viewport
+                # (longer viewport side). Falls back to legacy cap when unavailable.
+                max_zoom = 1024.0
+                try:
+                    target_px = float(getattr(self.ui, 'max_zoom_target_visible_px', 300) or 300)
+                    if target_px > 0:
+                        vp = self.ui.proc_scroll.viewport()
+                        vw = max(1.0, float(vp.width()))
+                        vh = max(1.0, float(vp.height()))
+                        z_target = max(vw, vh) / target_px
+                        max_zoom = min(max_zoom, max(0.01, float(z_target)))
+                except Exception:
+                    pass
+                new_zoom = max(0.01, min(float(max_zoom), new_zoom))
 
                 if abs(new_zoom - float(base_zoom)) > 1e-9:
                     # Coalesce redraws to reduce stutter during continuous wheel input.
@@ -330,6 +367,15 @@ class ImageViewController(QObject):
                     self._wheel_zoom_anchor_vp = QPoint(pos_vp)
                     self._wheel_zoom_pick_mode = self.ui.pick_mode
                     self._wheel_zoom_pending = True
+                    try:
+                        # During active wheel input, lower display pixel cap for responsiveness.
+                        self.ui._max_render_pixels_override = int(self._wheel_fast_max_pixels)
+                    except Exception:
+                        pass
+                    try:
+                        self._wheel_settle_timer.start()
+                    except Exception:
+                        pass
                     if self._wheel_profile:
                         try:
                             self._wheel_zoom_last_event_t = perf_counter()
@@ -340,6 +386,18 @@ class ImageViewController(QObject):
                 return True
             elif et == QEvent.Resize:
                 # ラベル/ビューポートのサイズ変更時に、ピックモードなら十字線を現在のカーソル位置で再描画
+                try:
+                    self.ui._reposition_viewport_overlays()
+                except Exception:
+                    pass
+                try:
+                    global_pt = QCursor.pos()
+                    vp = self.ui.proc_scroll.viewport()
+                    pos_vp = vp.mapFromGlobal(global_pt)
+                    pos_label = self.ui._viewport_pos_to_label_pos(pos_vp)
+                    self.ui._update_cursor_info_overlay(pos_label)
+                except Exception:
+                    pass
                 if self.ui.pick_mode in ('add', 'update'):
                     try:
                         global_pt = QCursor.pos()
@@ -516,23 +574,55 @@ class ImageViewController(QObject):
             t0 = perf_counter() if self._wheel_profile else None
             if abs(float(getattr(self.ui, 'proc_zoom', 1.0)) - target_zoom) > 1e-6:
                 self.ui.proc_zoom = target_zoom
+                try:
+                    self._wheel_fast_render_applied = bool(getattr(self.ui, '_max_render_pixels_override', None) is not None)
+                except Exception:
+                    self._wheel_fast_render_applied = False
                 self.ui._apply_proc_zoom()
 
-                # Keep anchor under cursor.
-                if anchor_full is not None and anchor_vp is not None:
+                # Keep anchor at viewport center.
+                if anchor_full is not None:
+                    def _recenter_once():
+                        try:
+                            try:
+                                vp_now = self.ui.proc_scroll.viewport()
+                                anchor_vp_live = QPoint(int(vp_now.width() // 2), int(vp_now.height() // 2))
+                            except Exception:
+                                anchor_vp_live = anchor_vp
+
+                            if anchor_vp_live is None:
+                                return
+
+                            x_full, y_full = anchor_full
+                            dxy = self.ui._full_to_display(x_full, y_full)
+                            if dxy is None:
+                                return
+                            lx, ly = dxy
+                            sx = float(lx) - float(anchor_vp_live.x())
+                            sy = float(ly) - float(anchor_vp_live.y())
+                            self.ui._set_scroll(sx, sy)
+                        except Exception:
+                            pass
+
                     try:
-                        x_full, y_full = anchor_full
-                        lx, ly = self.ui._full_to_display(x_full, y_full)
-                        sx = lx - anchor_vp.x()
-                        sy = ly - anchor_vp.y()
-                        self.ui._set_scroll(sx, sy)
+                        # Immediate correction
+                        _recenter_once()
+                        # Deferred correction after layout/scroll range settles
+                        QTimer.singleShot(0, _recenter_once)
                     except Exception:
                         pass
 
                 # ピックモード中は十字線を再描画
                 try:
-                    if pick_mode in ('add', 'update') and anchor_vp is not None:
-                        pos_label = self.ui._viewport_pos_to_label_pos(anchor_vp)
+                    if pick_mode in ('add', 'update'):
+                        try:
+                            vp_now = self.ui.proc_scroll.viewport()
+                            anchor_vp_live = QPoint(int(vp_now.width() // 2), int(vp_now.height() // 2))
+                        except Exception:
+                            anchor_vp_live = anchor_vp
+                        if anchor_vp_live is None:
+                            raise ValueError('anchor viewport unavailable')
+                        pos_label = self.ui._viewport_pos_to_label_pos(anchor_vp_live)
                         self.ui._draw_crosshair(pos_label)
                 except Exception:
                     pass
@@ -577,3 +667,35 @@ class ImageViewController(QObject):
                 traceback.print_exc()
             except Exception:
                 pass
+
+    def _on_wheel_zoom_settled(self):
+        """Restore full-quality render after wheel input pause."""
+        try:
+            if getattr(self, '_wheel_zoom_pending', False):
+                return
+            try:
+                self.ui._max_render_pixels_override = None
+            except Exception:
+                pass
+
+            # If we used fast rendering while wheeling, refresh once at full quality
+            # -- but only when the full-quality cap is actually higher than what
+            # the fast path already delivered.  This avoids an expensive no-op
+            # re-render when the image is small or the zoom level is low.
+            if bool(getattr(self, '_wheel_fast_render_applied', False)):
+                need_redraw = True
+                try:
+                    full_cap = self.ui._get_render_max_pixels()
+                    fast_cap = int(getattr(self, '_wheel_fast_max_pixels', 0) or 0)
+                    if fast_cap > 0 and fast_cap >= full_cap:
+                        need_redraw = False          # fast render was already at full quality
+                except Exception:
+                    pass
+                if need_redraw:
+                    try:
+                        self.ui._apply_proc_zoom()
+                    except Exception:
+                        pass
+            self._wheel_fast_render_applied = False
+        except Exception:
+            pass

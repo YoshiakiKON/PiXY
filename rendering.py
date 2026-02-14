@@ -7,7 +7,8 @@ import cv2
 def build_zoomed_canvas(overlay_full_img, proc_zoom, view_padding,
                         centroids, selected_index, ref_points, scale_proc_to_full,
                         ref_selected_index=None,
-                        colors=None, interp_mode='auto', debug_ref_coords=False):
+                        colors=None, interp_mode='auto', debug_ref_coords=False,
+                        max_pixels=None):
     """
     入力: 
       - overlay_full_img: numpy (H,W,3) BGR
@@ -35,7 +36,13 @@ def build_zoomed_canvas(overlay_full_img, proc_zoom, view_padding,
     # Display safety cap for rendered pixel count.
     # Higher cap => higher effective zoom but heavier CPU/RAM.
     # 6144^2 is a compromise: noticeably higher than the original 4096^2 without the large slowdown of 8192^2.
-    MAX_PIXELS = 6144 * 6144
+    try:
+        if max_pixels is not None and int(max_pixels) > 0:
+            MAX_PIXELS = int(max_pixels)
+        else:
+            MAX_PIXELS = 6144 * 6144
+    except Exception:
+        MAX_PIXELS = 6144 * 6144
     desired_pixels = float(w) * float(h) * (z * z)
     # decide interpolation method
     # interp_mode: 'auto'|'nearest'|'linear'

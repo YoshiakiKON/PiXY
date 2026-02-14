@@ -21,7 +21,7 @@ bibliography: paper.bib
 repository: https://github.com/YoshiakiKON/PiXY
 archive_doi: 10.5281/zenodo.18174474
 license: MIT
-version: 1.2.2
+version: 1.2.3
 ---
 
 # Summary
@@ -79,7 +79,7 @@ PiXY is distributed both as Python source code and as a standalone executable so
 
 To automatically extract particle image coordinates $(u, v)$ from electron microscopy images, PiXY applies the following pipeline:
 
-1. The image is clustered by K-means to facilitate separation of particles and background (the number of clusters is configurable in the GUI) [@lloyd1982].
+1. The image is clustered by K-means to facilitate separation of particles and background (the number of clusters is configurable in the GUI) [@macqueen1967].
 2. Candidate particle regions are extracted by connected-component analysis, and noise or matrix regions are excluded using area thresholds.
 3. The centroid of each remaining region is computed and output as $(u, v)$.
 

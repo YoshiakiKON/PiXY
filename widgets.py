@@ -16,6 +16,9 @@ class ClickableSlider(QSlider):
         super().__init__(*args, **kwargs)
         self._wheel_accum = 0.0
         self._wheel_scale = 1.0
+        self._wheel_wrap = False
+        # Optional custom tick overlay (disabled by default).
+        self._use_custom_ticks = False
 
     def mousePressEvent(self, event):
         if event.button() == QT_LEFT_BUTTON:
@@ -38,10 +41,104 @@ class ClickableSlider(QSlider):
             step_int = int(self._wheel_accum)
             self._wheel_accum -= step_int
             new_val = self.value() + step_int * self.singleStep()
-            new_val = max(self.minimum(), min(self.maximum(), new_val))
+            mn = self.minimum()
+            mx = self.maximum()
+            if bool(getattr(self, "_wheel_wrap", False)) and mx > mn:
+                span = int(mx - mn + 1)
+                try:
+                    new_val = int(mn + ((int(new_val) - int(mn)) % span))
+                except Exception:
+                    new_val = max(mn, min(mx, int(new_val)))
+            else:
+                new_val = max(mn, min(mx, new_val))
             if new_val != self.value():
                 self.setValue(new_val)
         event.accept()
+
+    def paintEvent(self, event):
+        # Draw default slider first. Optional custom tick overlay can be enabled per instance.
+        try:
+            super().paintEvent(event)
+        except Exception:
+            try:
+                QSlider.paintEvent(self, event)
+            except Exception:
+                pass
+
+        if not bool(getattr(self, '_use_custom_ticks', False)):
+            return
+
+        try:
+            from qt_compat.QtGui import QPainter, QPen, QColor
+            from qt_compat.QtWidgets import QStyleOptionSlider, QStyle
+
+            painter = QPainter(self)
+            tick_color = QColor(68, 68, 68)
+
+            mn = int(self.minimum())
+            mx = int(self.maximum())
+            if mx <= mn:
+                painter.end()
+                return
+
+            # Use style metrics to find the groove area for accurate tick placement
+            opt = QStyleOptionSlider()
+            try:
+                opt.initFrom(self)
+            except Exception:
+                pass
+            opt.orientation = self.orientation()
+            opt.minimum = mn
+            opt.maximum = mx
+            opt.sliderPosition = int(self.value())
+
+            groove = self.style().subControlRect(QStyle.CC_Slider, opt, QStyle.SC_SliderGroove, self)
+
+            usable_left = groove.left()
+            usable_right = groove.right()
+            usable_w = max(1, usable_right - usable_left)
+
+            # Reduce tick mark lengths to roughly one-third of the previous size
+            major_len = 7
+            minor_len = 5
+
+            # Draw ticks fully inside the widget: prefer below groove, otherwise above.
+            h = max(1, int(self.height()))
+            # give slightly more padding below the groove to allow long ticks
+            space_below = int(h - 1 - (groove.bottom() + 6))
+            if space_below >= major_len:
+                y_base = int(groove.bottom() + 6)
+                direction = 1
+            else:
+                y_base = int(groove.top() - 6)
+                direction = -1
+
+            # Draw only major ticks every 90 degrees (-180, -90, 0, 90, 180).
+            step = 90
+            for v in range(mn, mx + 1, step):
+                x = int(usable_left + QStyle.sliderPositionFromValue(mn, mx, v, groove.width()))
+                # Optionally skip drawing the tick exactly under the handle to avoid overlap
+                try:
+                    curv = int(self.value())
+                except Exception:
+                    curv = None
+
+                if curv is not None and v == curv:
+                    continue
+
+                length = major_len
+                penw = 1
+
+                pen = QPen(tick_color, penw)
+                painter.setPen(pen)
+                y2 = y_base + direction * int(length)
+                y1c = max(0, min(h - 1, y_base))
+                y2c = max(0, min(h - 1, y2))
+                painter.drawLine(x, y1c, x, y2c)
+
+            painter.end()
+        except Exception:
+            pass
 
 
 class RefTableDelegate(QStyledItemDelegate):

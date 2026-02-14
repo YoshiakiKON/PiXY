@@ -1118,6 +1118,52 @@ class CentroidFinderWindow(QMainWindow):
         self.proc_scroll.setWidget(self.img_label_proc)
         self.proc_scroll.viewport().setMouseTracking(True)
 
+        # Stage情報オーバーレイ（左上固定）
+        self.stage_info_overlay = QLabel(self.proc_scroll.viewport())
+        self.stage_info_overlay.setWordWrap(False)
+        self.stage_info_overlay.setAttribute(Qt.WA_TransparentForMouseEvents, True)
+        self.stage_info_overlay.setStyleSheet(
+            "QLabel {"
+            "color: rgb(235, 235, 235);"
+            "background-color: rgba(20, 20, 20, 140);"
+            "padding: 3px 6px;"
+            "border-radius: 4px;"
+            "}"
+        )
+        try:
+            f_ov = self.stage_info_overlay.font()
+            f_ov.setPointSize(10)
+            f_ov.setBold(True)
+            self.stage_info_overlay.setFont(f_ov)
+        except Exception:
+            pass
+        self.stage_info_overlay.hide()
+
+        # カーソル座標オーバーレイ（右下固定）
+        self.cursor_info_overlay = QLabel(self.proc_scroll.viewport())
+        self.cursor_info_overlay.setWordWrap(False)
+        self.cursor_info_overlay.setAttribute(Qt.WA_TransparentForMouseEvents, True)
+        self.cursor_info_overlay.setStyleSheet(
+            "QLabel {"
+            "color: rgb(235, 235, 235);"
+            "background-color: rgba(20, 20, 20, 140);"
+            "padding: 3px 6px;"
+            "border-radius: 4px;"
+            "}"
+        )
+        try:
+            f_cv = self.cursor_info_overlay.font()
+            f_cv.setPointSize(10)
+            f_cv.setBold(True)
+            self.cursor_info_overlay.setFont(f_cv)
+        except Exception:
+            pass
+        self.cursor_info_overlay.hide()
+        try:
+            self._reposition_viewport_overlays()
+        except Exception:
+            pass
+
 
         # マウス/キーボード操作コントローラ
         self.interactions = ImageViewController(self)
@@ -1408,6 +1454,10 @@ class CentroidFinderWindow(QMainWindow):
         self._display_offset = (0, 0)   # 画像がキャンバス内で開始するラベル座標
         self._display_img_size = (0, 0) # キャンバス内の画像サイズ（ズーム後）
         self._display_pm_base = None    # クロスヘア等を描く前のベースPixmap
+        self._max_render_pixels_override = None  # ホイール中の軽量描画用（Noneで通常）
+        self.max_zoom_target_visible_px = 300    # 最大拡大時に長辺方向で見える元画像pxの目標
+        self._normal_max_render_pixels = 6144 * 6144
+        self._hard_max_render_pixels = 8192 * 8192
         # 初回表示は画像中心から開始するためのフラグ
         self._initial_center_done = False
         # 通常時は手のカーソル
@@ -1718,17 +1768,26 @@ class CentroidFinderWindow(QMainWindow):
                 except Exception:
                     pass
 
-                self.slider_img_rotate = QSlider(Qt.Horizontal)
+                self.slider_img_rotate = ClickableSlider(Qt.Horizontal)
                 try:
                     self.slider_img_rotate.setMinimum(-180)
                     self.slider_img_rotate.setMaximum(180)
                     self.slider_img_rotate.setSingleStep(10)
                     # Clicking on the groove uses pageStep in many styles; keep it 10 deg.
                     self.slider_img_rotate.setPageStep(10)
-                    self.slider_img_rotate.setTickInterval(10)
+                    # Use only Qt standard ticks at 30-degree intervals.
+                    self.slider_img_rotate.setTickInterval(30)
                     self.slider_img_rotate.setTickPosition(QSlider.TicksBelow)
-                    # Shorten to about 2/3 of the previous length
-                    self.slider_img_rotate.setFixedWidth(190)
+                    # Allow continuous wheel rotation by wrapping at ±180.
+                    self.slider_img_rotate._wheel_wrap = True
+                    # Disable custom tick overlay for this slider (Qt standard ticks only).
+                    self.slider_img_rotate._use_custom_ticks = False
+                    # Make slider wider and taller so tick marks can be drawn below it
+                    self.slider_img_rotate.setFixedWidth(260)
+                    try:
+                        self.slider_img_rotate.setFixedHeight(44)
+                    except Exception:
+                        pass
                     self.slider_img_rotate.setValue(int(self.manual_image_rotation_deg))
                 except Exception:
                     pass
@@ -1742,7 +1801,28 @@ class CentroidFinderWindow(QMainWindow):
                     pass
 
                 rhl.addWidget(lbl_rot)
-                rhl.addWidget(self.slider_img_rotate)
+                # Wrap slider in a small vertical container so we can nudge it downward
+                slider_container = QWidget()
+                try:
+                    svl = QVBoxLayout(slider_container)
+                    svl.setContentsMargins(0, 0, 0, 0)
+                    svl.setSpacing(0)
+                    # vertically center the slider so its groove aligns with the label
+                    svl.setAlignment(self.slider_img_rotate, Qt.AlignVCenter)
+                    svl.addWidget(self.slider_img_rotate)
+                except Exception:
+                    # fallback: add slider directly if layout creation fails
+                    try:
+                        rhl.addWidget(self.slider_img_rotate)
+                    except Exception:
+                        pass
+                try:
+                    rhl.addWidget(slider_container, 0, Qt.AlignVCenter)
+                except Exception:
+                    try:
+                        rhl.addWidget(self.slider_img_rotate)
+                    except Exception:
+                        pass
                 rhl.addWidget(self.lbl_rot_val)
             except Exception:
                 pass
@@ -3235,6 +3315,16 @@ class CentroidFinderWindow(QMainWindow):
 
     # Coordinate トグルハンドラ
     def _on_toggle_coordinate(self, idx):
+        center_full = None
+        try:
+            if getattr(self, 'proc_scroll', None) is not None:
+                vp = self.proc_scroll.viewport()
+                pos_vp = QPoint(int(vp.width() // 2), int(vp.height() // 2))
+                pos_label = self._viewport_pos_to_label_pos(pos_vp)
+                center_full = self._display_to_full(pos_label)
+        except Exception:
+            center_full = None
+
         try:
             if int(idx) == 0:
                 self.coordinate = 'Image'
@@ -3305,12 +3395,30 @@ class CentroidFinderWindow(QMainWindow):
             pass
         # 更新をスケジュール（必要なら表示を更新するため）
         try:
-            self.schedule_update(force=True)
+            self._apply_proc_zoom()
+            if center_full is not None:
+                try:
+                    self._ensure_full_pos_visible(float(center_full[0]), float(center_full[1]))
+                except Exception:
+                    pass
         except Exception:
-            pass
+            try:
+                self.schedule_update(force=True)
+            except Exception:
+                pass
 
     def _on_stage_axis_changed(self, axis, idx):
         """Stage座標表示の符号（X/Y）を切り替える。0:+, 1:-"""
+        center_full = None
+        try:
+            if str(getattr(self, 'view_orientation', 'Image')) == 'Stage' and getattr(self, 'proc_scroll', None) is not None:
+                vp = self.proc_scroll.viewport()
+                pos_vp = QPoint(int(vp.width() // 2), int(vp.height() // 2))
+                pos_label = self._viewport_pos_to_label_pos(pos_vp)
+                center_full = self._display_to_full(pos_label)
+        except Exception:
+            center_full = None
+
         try:
             sign = 1 if int(idx) == 0 else -1
         except Exception:
@@ -3325,6 +3433,11 @@ class CentroidFinderWindow(QMainWindow):
         try:
             # display-only; repaint is enough
             self._apply_proc_zoom()
+            if center_full is not None and str(getattr(self, 'view_orientation', 'Image')) == 'Stage':
+                try:
+                    self._ensure_full_pos_visible(float(center_full[0]), float(center_full[1]))
+                except Exception:
+                    pass
         except Exception:
             try:
                 self.schedule_update(force=True)
@@ -3332,6 +3445,16 @@ class CentroidFinderWindow(QMainWindow):
                 pass
 
     def _on_manual_image_rotation_changed(self, val):
+        center_full = None
+        try:
+            if str(getattr(self, 'view_orientation', 'Image')) == 'Image' and getattr(self, 'proc_scroll', None) is not None:
+                vp = self.proc_scroll.viewport()
+                pos_vp = QPoint(int(vp.width() // 2), int(vp.height() // 2))
+                pos_label = self._viewport_pos_to_label_pos(pos_vp)
+                center_full = self._display_to_full(pos_label)
+        except Exception:
+            center_full = None
+
         try:
             # Snap to 10-degree increments even when clicking the slider groove.
             try:
@@ -3368,16 +3491,37 @@ class CentroidFinderWindow(QMainWindow):
                     pass
         except Exception:
             self.manual_image_rotation_deg = 0
-        # 表示のみ更新
+        # 表示のみ更新（Imageモード回転では表示中心を維持）
         try:
-            self.schedule_update(force=True, recompute_centroids=False)
+            self._apply_proc_zoom()
+            if center_full is not None and str(getattr(self, 'view_orientation', 'Image')) == 'Image':
+                try:
+                    self._ensure_full_pos_visible(float(center_full[0]), float(center_full[1]))
+                except Exception:
+                    pass
         except Exception:
             try:
-                self._apply_proc_zoom()
+                self.schedule_update(force=True, recompute_centroids=False)
             except Exception:
                 pass
 
     def _on_flip_changed(self, mode, idx):
+        center_full = None
+        try:
+            view_orient = str(getattr(self, 'view_orientation', 'Image'))
+            mode_s = str(mode)
+            should_lock_center = (
+                (mode_s == 'image' and view_orient == 'Image')
+                or (mode_s == 'stage' and view_orient == 'Stage')
+            )
+            if should_lock_center and getattr(self, 'proc_scroll', None) is not None:
+                vp = self.proc_scroll.viewport()
+                pos_vp = QPoint(int(vp.width() // 2), int(vp.height() // 2))
+                pos_label = self._viewport_pos_to_label_pos(pos_vp)
+                center_full = self._display_to_full(pos_label)
+        except Exception:
+            center_full = None
+
         try:
             if str(mode) == 'image':
                 self.flip_mode_image = 'normal' if int(idx) == 0 else 'flip'
@@ -3388,6 +3532,20 @@ class CentroidFinderWindow(QMainWindow):
         # 表示のみ更新
         try:
             self._apply_proc_zoom()
+            try:
+                view_orient = str(getattr(self, 'view_orientation', 'Image'))
+                mode_s = str(mode)
+                should_lock_center = (
+                    (mode_s == 'image' and view_orient == 'Image')
+                    or (mode_s == 'stage' and view_orient == 'Stage')
+                )
+            except Exception:
+                should_lock_center = False
+            if center_full is not None and should_lock_center:
+                try:
+                    self._ensure_full_pos_visible(float(center_full[0]), float(center_full[1]))
+                except Exception:
+                    pass
         except Exception:
             pass
 
@@ -3933,8 +4091,15 @@ class CentroidFinderWindow(QMainWindow):
             return
         self._open_image_from_path(fname)
 
+    def _show_open_image_prompt_message(self):
+        try:
+            msg = "Failed to load startup image. Please select an image using Open Image."
+            self.ui_footer.showMessage(msg)
+        except Exception:
+            pass
+
     # 指定パスから画像を読み込み、処理画像を構築
-    def _open_image_from_path(self, fname: str):
+    def _open_image_from_path(self, fname: str, show_startup_prompt_on_fail: bool = False):
         # 大きなファイルかどうかチェックして、必要なら軽負荷モードを有効化
         try:
             fsize = os.path.getsize(fname)
@@ -3971,7 +4136,12 @@ class CentroidFinderWindow(QMainWindow):
         except Exception as e:
             print("画像読み込みエラー:", e)
             self.img_full = None
-            return
+            try:
+                if bool(show_startup_prompt_on_fail):
+                    self._show_open_image_prompt_message()
+            except Exception:
+                pass
+            return False
         self._build_processing_image()
         try:
             if getattr(self, '_large_file_hint', False):
@@ -3983,6 +4153,7 @@ class CentroidFinderWindow(QMainWindow):
         # 次回更新時に画像中心へスクロール
         self._initial_center_done = False
         self.schedule_update(force=True)
+        return True
 
     # 自動デバッグ実行: 前回画像を読み込み、更新後に終了
     def run_auto_and_exit(self):
@@ -4872,6 +5043,14 @@ class CentroidFinderWindow(QMainWindow):
         source_img = self._last_overlay_full if self._last_overlay_full is not None else self.proc_img
         if source_img is None:
             self.img_label_proc.clear()
+            try:
+                self._update_stage_info_overlay(None, getattr(self, 'view_orientation', 'Image'))
+            except Exception:
+                pass
+            try:
+                self._update_cursor_info_overlay(None)
+            except Exception:
+                pass
             return
 
         try:
@@ -4887,6 +5066,7 @@ class CentroidFinderWindow(QMainWindow):
                 colors=None,
                 debug_ref_coords=True,
                 interp_mode=self.interp_mode,
+                max_pixels=self._get_render_max_pixels(),
             )
         except Exception:
             pm = None
@@ -4895,6 +5075,14 @@ class CentroidFinderWindow(QMainWindow):
 
         if pm is None:
             self.img_label_proc.clear()
+            try:
+                self._update_stage_info_overlay(None, getattr(self, 'view_orientation', 'Image'))
+            except Exception:
+                pass
+            try:
+                self._update_cursor_info_overlay(None)
+            except Exception:
+                pass
             return
 
         # Helper: compute similarity transform (scale, rotation, translation)
@@ -5118,6 +5306,7 @@ class CentroidFinderWindow(QMainWindow):
                             result = {}
                         result['pitch_deg'] = pitch_deg
                         result['roll_deg'] = roll_deg
+                        result['z_plane'] = (a, b, float(coeff[2]))
                 except Exception:
                     pass
                 return result
@@ -5155,27 +5344,32 @@ class CentroidFinderWindow(QMainWindow):
                 return None
 
         def _build_display_mapping(mode: str, draw_w: float, draw_h: float, pad: float, z: float, qt_transform=None):
-            """Qtで実際に使った QTransform をそのまま座標変換にも使う。
+            """QPixmap.trueMatrix() を使い、transformed() と完全一致する変換行列を取得する。
 
-            これにより、反転/回転後のバウンディングボックスの取り扱い（Qt内部の丸め含む）と
-            クリック判定/グリッド描画が完全に一致し、Flip後のズレを防ぐ。
+            Qt の transformed() は内部で toAlignedRect() により整数丸めしたシフトを使う。
+            mapRect().topLeft() の浮動小数とは最大1px ズレるため、trueMatrix で統一する。
             """
             try:
                 from qt_compat.QtCore import QRectF
-                from qt_compat.QtGui import QTransform
+                from qt_compat.QtGui import QTransform, QPixmap as _QPixmap
 
                 if qt_transform is None:
                     qt_transform = QTransform()
 
-                # Qt's QPixmap.transformed() effectively shifts by -mappedRect.topLeft()
-                rect = QRectF(0.0, 0.0, float(draw_w), float(draw_h))
-                mapped = qt_transform.mapRect(rect)
-                shift_x = -float(mapped.left())
-                shift_y = -float(mapped.top())
+                # trueMatrix incorporates the integer-pixel shift that Qt's
+                # transformed() applies internally.  Using it guarantees that
+                # our forward / inverse mapping matches the actual pixmap layout.
+                true_qt = _QPixmap.trueMatrix(qt_transform, int(round(draw_w)), int(round(draw_h)))
 
-                inv, invertible = qt_transform.inverted()
+                inv, invertible = true_qt.inverted()
                 if not invertible:
                     inv = QTransform()
+
+                # Compute rotated bounding box size for informational purposes
+                rect = QRectF(0.0, 0.0, float(draw_w), float(draw_h))
+                mapped = true_qt.mapRect(rect)
+                rot_w = float(abs(mapped.width()))
+                rot_h = float(abs(mapped.height()))
 
                 return {
                     'type': 'qt',
@@ -5184,10 +5378,12 @@ class CentroidFinderWindow(QMainWindow):
                     'z': float(z),
                     'draw_w': float(draw_w),
                     'draw_h': float(draw_h),
-                    'qt': qt_transform,
+                    'qt': true_qt,
                     'qt_inv': inv,
-                    'shift_x': float(shift_x),
-                    'shift_y': float(shift_y),
+                    'shift_x': 0.0,
+                    'shift_y': 0.0,
+                    'rot_w': float(rot_w),
+                    'rot_h': float(rot_h),
                 }
             except Exception:
                 return None
@@ -5204,6 +5400,7 @@ class CentroidFinderWindow(QMainWindow):
             ref_selected_index=getattr(self, 'ref_selected_index', None),
             colors=None,
             interp_mode=self.interp_mode,
+            max_pixels=self._get_render_max_pixels(),
         )
         try:
             # Compute display_scale from actual drawn pixels so full<->display mapping stays consistent
@@ -5441,16 +5638,28 @@ class CentroidFinderWindow(QMainWindow):
                         s_val = float(info.get('s', 1.0))
                         px_per_stage = float(display_scale) / max(1e-12, s_val)
 
-                        # Choose nice spacing in stage units so spacing in px is in [50,220]
+                        # Choose nice spacing in stage units (1-2-5 series).
+                        # Keep display spacing around ~120 px while clamping to [50,220].
                         candidates = []
-                        for e in range(-3, 6):
+                        for e in range(-6, 9):
                             for b in (1, 2, 5):
-                                candidates.append(b * (10 ** e))
+                                candidates.append(float(b) * (10.0 ** e))
+                        target_px = 120.0
                         spacing = candidates[0]
+                        best_score = float('inf')
                         for c in candidates:
-                            if 50 <= (c * px_per_stage) <= 220:
+                            s_px = c * px_per_stage
+                            if s_px <= 0:
+                                continue
+                            penalty = 0.0
+                            if s_px < 50.0:
+                                penalty += (50.0 - s_px) * 10.0
+                            elif s_px > 220.0:
+                                penalty += (s_px - 220.0) * 10.0
+                            score = abs(s_px - target_px) + penalty
+                            if score < best_score:
+                                best_score = score
                                 spacing = c
-                                break
 
                         # Bounds: map image corners into stage coords using the fitted forward model.
                         w_full = int(self._img_base_size[0]) if getattr(self, '_img_base_size', None) else draw_w
@@ -5510,6 +5719,18 @@ class CentroidFinderWindow(QMainWindow):
                             except Exception:
                                 return None
 
+                        def _fmt_grid_label(v):
+                            try:
+                                fv = float(v)
+                                if abs(fv - round(fv)) < 1e-9:
+                                    return f"{int(round(fv))}"
+                                afv = abs(fv)
+                                if afv >= 1000.0 or (afv > 0.0 and afv < 1e-2):
+                                    return f"{fv:.3g}"
+                                return f"{fv:.4f}".rstrip('0').rstrip('.')
+                            except Exception:
+                                return f"{v}"
+
                         # Vertical grid lines: X = const, Y varies
                         x = start_x
                         while x <= end_x + 1e-9:
@@ -5518,7 +5739,7 @@ class CentroidFinderWindow(QMainWindow):
                             if p1 is not None and p2 is not None:
                                 p.drawLine(p1[0], p1[1], p2[0], p2[1])
                                 try:
-                                    lbl = f"{x:.3g}"
+                                    lbl = _fmt_grid_label(x)
                                     p.drawText(int(p1[0]) + 4, int(min(p1[1], p2[1])) + 14, lbl)
                                 except Exception:
                                     pass
@@ -5532,7 +5753,7 @@ class CentroidFinderWindow(QMainWindow):
                             if p1 is not None and p2 is not None:
                                 p.drawLine(p1[0], p1[1], p2[0], p2[1])
                                 try:
-                                    lbl = f"{y:.3g}"
+                                    lbl = _fmt_grid_label(y)
                                     p.drawText(int(min(p1[0], p2[0])) + 4, int(p1[1]) - 4, lbl)
                                 except Exception:
                                     pass
@@ -5540,49 +5761,6 @@ class CentroidFinderWindow(QMainWindow):
                     except Exception:
                         pass
 
-                    # Overlay alignment stats at the top of the image (inside pixmap)
-                    try:
-                        from qt_compat.QtGui import QPen, QColor
-                        txt_color = QColor(235, 235, 235, 235)
-                        p.setPen(QPen(txt_color, 1))
-                        f = p.font()
-                        try:
-                            f.setPointSize(10)
-                            f.setBold(True)
-                        except Exception:
-                            pass
-                        p.setFont(f)
-
-                        def _fmt(v, fmt):
-                            try:
-                                return format(float(v), fmt)
-                            except Exception:
-                                return "-"
-
-                        mag = _fmt(info.get('s_proc', info.get('s', None)), '.4g')
-                        ang = _fmt(info.get('angle_deg', None), '.2f')
-                        try:
-                            rf = bool(info.get('reflect', False))  # Use computed reflect, not flip_mode_stage
-                            flip_txt = "On" if rf else "Off"
-                        except Exception:
-                            flip_txt = "-"
-                        try:
-                            t_xy = info.get('t', None)
-                            tx = _fmt(t_xy[0] if t_xy is not None else None, '.3g')
-                            ty = _fmt(t_xy[1] if t_xy is not None else None, '.3g')
-                        except Exception:
-                            tx, ty = "-", "-"
-                        pitch = _fmt(info.get('pitch_deg', None), '.3g')
-                        roll = _fmt(info.get('roll_deg', None), '.3g')
-
-                        line1 = f"Magnification: {mag}   Rotation: {ang}   Flip: {flip_txt}"
-                        line2 = f"Shift X: {tx}   Shift Y: {ty}   Pitch: {pitch}   Roll: {roll}"
-                        x0 = int(pad + 8)
-                        y0 = int(pad + 18)
-                        p.drawText(x0, y0, line1)
-                        p.drawText(x0, y0 + 16, line2)
-                    except Exception:
-                        pass
                     try:
                         p.end()
                     except Exception:
@@ -5654,14 +5832,28 @@ class CentroidFinderWindow(QMainWindow):
                                 display_scale = 1.0
                         display_scale = max(1e-4, float(display_scale))
 
-                        # Choose spacing so that about ~8 lines appear across the visible area.
-                        # Compute spacing in DISPLAY pixels, then convert to image pixels.
+                        # Choose spacing from 1-2-5 series in image-pixel units.
+                        # Keep about ~8 lines across visible width while preserving "nice" values.
                         visible_w = max(20.0, pm2.width() - 2 * pad)
                         target_lines = 8.0
-                        spacing_display = max(30.0, min(180.0, visible_w / target_lines))
-                        pixel_spacing = spacing_display / display_scale
-                        # snap to nearest 10px in image coords for cleaner labels
-                        pixel_spacing = max(10.0, round(pixel_spacing / 10.0) * 10.0)
+                        spacing_display_target = max(30.0, min(180.0, visible_w / target_lines))
+                        pixel_spacing_target = spacing_display_target / display_scale
+
+                        # Build candidate spacings from powers of 10 with multipliers 1,2,5.
+                        nice_spacings = []
+                        for e in range(-2, 8):
+                            base = 10.0 ** e
+                            for m in (1.0, 2.0, 5.0):
+                                s = m * base
+                                if s >= 1.0:
+                                    nice_spacings.append(s)
+                        pixel_spacing = 10.0
+                        best_diff = float('inf')
+                        for s in nice_spacings:
+                            diff = abs(s - pixel_spacing_target)
+                            if diff < best_diff:
+                                best_diff = diff
+                                pixel_spacing = s
                         
                         w_full = int(self._img_base_size[0]) if getattr(self, '_img_base_size', None) else new_w
                         h_full = int(self._img_base_size[1]) if getattr(self, '_img_base_size', None) else new_h
@@ -5707,11 +5899,14 @@ class CentroidFinderWindow(QMainWindow):
                             x_px += pixel_spacing
 
                         # Horizontal lines (constant Y in image pixels)
-                        y_px = 0.0
+                        # v-axis origin is bottom-left: v=0 at y=(h_full-1), increasing upward.
                         y_max = max(0.0, float(h_full - 1))
                         x_left_px = 0.0
                         x_right_px = max(0.0, float(w_full - 1))
-                        while y_px <= y_max + 1e-6:
+                        v_px = 0.0
+                        v_max = y_max
+                        while v_px <= v_max + 1e-6:
+                            y_px = y_max - v_px
                             # 線の始終点を計算（回転適用）
                             x_left, y_left = transform_grid_coords(x_left_px, y_px)
                             x_right, y_right = transform_grid_coords(x_right_px, y_px)
@@ -5721,12 +5916,11 @@ class CentroidFinderWindow(QMainWindow):
                             x_lbl, y_lbl = transform_grid_coords(x_left_px, y_px)
                             if x_lbl is not None and y_lbl is not None:
                                 try:
-                                    # Display convention: origin at bottom-left pixel; v is positive upward.
-                                    lbl = f"{int(round((h_full - 1) - y_px))}"
+                                    lbl = f"{int(round(v_px))}"
                                     p.drawText(x_lbl + 4, y_lbl - 4, lbl)
                                 except Exception:
                                     pass
-                            y_px += pixel_spacing
+                            v_px += pixel_spacing
                         
                         # 参照点は build_zoomed_canvas 側で描画されており、画像回転と一緒に回転される。
                         # ここでの再描画は不要（重複するとズレに見える原因になる）。
@@ -5796,7 +5990,28 @@ class CentroidFinderWindow(QMainWindow):
                 pass
         except Exception:
             self.img_label_proc.clear()
+            try:
+                self._update_stage_info_overlay(None, getattr(self, 'view_orientation', 'Image'))
+            except Exception:
+                pass
+            try:
+                self._update_cursor_info_overlay(None)
+            except Exception:
+                pass
             return
+
+        try:
+            self._update_stage_info_overlay(info, getattr(self, 'view_orientation', 'Image'))
+        except Exception:
+            pass
+        try:
+            vp = self.proc_scroll.viewport() if getattr(self, 'proc_scroll', None) is not None else None
+            if vp is not None:
+                pos_vp = vp.mapFromGlobal(QCursor.pos())
+                pos_label = self._viewport_pos_to_label_pos(pos_vp)
+                self._update_cursor_info_overlay(pos_label)
+        except Exception:
+            pass
 
         # If pick mode active, redraw crosshair
         try:
@@ -5816,6 +6031,295 @@ class CentroidFinderWindow(QMainWindow):
             return pos
         label_pos_in_vp = self.img_label_proc.pos()  # QPoint (相対: viewport)
         return QPoint(pos.x() - label_pos_in_vp.x(), pos.y() - label_pos_in_vp.y())
+
+    def _reposition_viewport_overlays(self):
+        try:
+            vp = self.proc_scroll.viewport() if getattr(self, 'proc_scroll', None) is not None else None
+            if vp is None:
+                return
+            margin = 8
+
+            ov_tl = getattr(self, 'stage_info_overlay', None)
+            if ov_tl is not None:
+                try:
+                    x = int(max(margin, vp.width() - ov_tl.width() - margin))
+                    y = int(margin)
+                    ov_tl.move(x, y)
+                except Exception:
+                    ov_tl.move(int(max(margin, vp.width() - ov_tl.width() - margin)), int(margin))
+
+            ov_br = getattr(self, 'cursor_info_overlay', None)
+            if ov_br is not None:
+                try:
+                    x = int(margin)
+                    y = int(max(margin, vp.height() - ov_br.height() - margin))
+                    ov_br.move(x, y)
+                except Exception:
+                    ov_br.move(int(margin), int(max(margin, vp.height() - ov_br.height() - margin)))
+        except Exception:
+            pass
+
+    def _get_render_max_pixels(self):
+        try:
+            # Fast mode override during wheel interaction
+            ov = getattr(self, '_max_render_pixels_override', None)
+            if ov is not None:
+                try:
+                    iv = int(ov)
+                    if iv > 0:
+                        return iv
+                except Exception:
+                    pass
+
+            base = int(getattr(self, '_normal_max_render_pixels', 6144 * 6144) or (6144 * 6144))
+            hard = int(getattr(self, '_hard_max_render_pixels', 12288 * 12288) or (12288 * 12288))
+
+            img_sz = getattr(self, '_img_base_size', None)
+            if not img_sz or len(img_sz) < 2:
+                return max(1, min(base, hard))
+            w = int(img_sz[0])
+            h = int(img_sz[1])
+            if w <= 0 or h <= 0:
+                return max(1, min(base, hard))
+
+            vp = self.proc_scroll.viewport() if getattr(self, 'proc_scroll', None) is not None else None
+            if vp is None:
+                return max(1, min(base, hard))
+            vw = max(1, int(vp.width()))
+            vh = max(1, int(vp.height()))
+
+            target_px = float(getattr(self, 'max_zoom_target_visible_px', 300) or 300)
+            if target_px <= 0:
+                return max(1, min(base, hard))
+
+            # Desired display scale so that visible full-image span ~ target_px on viewport long side
+            req_scale = float(max(vw, vh)) / float(target_px)
+            req_scale = max(1.0, req_scale)
+            needed = int(round(float(w) * float(h) * (req_scale * req_scale)))
+
+            dyn = max(base, needed)
+            dyn = min(dyn, hard)
+            return max(1, int(dyn))
+        except Exception:
+            return int(6144 * 6144)
+
+    def _stage_input_decimal_digits(self):
+        try:
+            max_digits = 0
+            for ro in (getattr(self, 'ref_obs', None) or []):
+                if not ro:
+                    continue
+                for key in ('x', 'y', 'z'):
+                    try:
+                        raw = ro.get(key, '')
+                    except Exception:
+                        raw = ''
+                    if raw is None:
+                        continue
+                    s = str(raw).strip().replace(',', '')
+                    if not s:
+                        continue
+                    low = s.lower()
+                    if 'e' in low:
+                        try:
+                            from decimal import Decimal
+                            d = Decimal(s)
+                            digits = int(max(0, -int(d.as_tuple().exponent)))
+                        except Exception:
+                            digits = 0
+                    elif '.' in s:
+                        try:
+                            frac = s.split('.', 1)[1].rstrip('0')
+                            digits = max(0, len(frac))
+                        except Exception:
+                            digits = 0
+                    else:
+                        digits = 0
+                    if digits > max_digits:
+                        max_digits = digits
+            return int(max_digits)
+        except Exception:
+            return 0
+
+    def _format_stage_numeric(self, value, decimal_digits):
+        try:
+            fv = float(value)
+        except Exception:
+            return "-"
+        try:
+            if not np.isfinite(fv):
+                return "-"
+        except Exception:
+            pass
+        try:
+            d = int(decimal_digits)
+        except Exception:
+            d = 0
+        if d <= 0:
+            try:
+                return str(int(round(fv)))
+            except Exception:
+                return "-"
+        s = f"{fv:.{d}f}"
+        if '.' in s:
+            s = s.rstrip('0').rstrip('.')
+        if s in ('-0', '-0.0'):
+            s = '0'
+        return s
+
+    def _format_plain_decimal(self, value, max_digits=6):
+        try:
+            fv = float(value)
+        except Exception:
+            return "-"
+        try:
+            if not np.isfinite(fv):
+                return "-"
+        except Exception:
+            pass
+        try:
+            d = int(max(0, max_digits))
+        except Exception:
+            d = 6
+        s = f"{fv:.{d}f}"
+        if '.' in s:
+            s = s.rstrip('0').rstrip('.')
+        if s in ('-0', '-0.0'):
+            s = '0'
+        return s
+
+    def _update_stage_info_overlay(self, info, view_orient):
+        try:
+            overlay = getattr(self, 'stage_info_overlay', None)
+            if overlay is None:
+                return
+
+            if not (view_orient == 'Stage' and info is not None):
+                overlay.hide()
+                return
+
+            # Magnification: 3 significant figures + 'x'
+            try:
+                mag_v = float(info.get('s_proc', info.get('s', 1.0)))
+                mag = format(mag_v, '.3g') + 'x'
+            except Exception:
+                mag = '-'
+
+            # Rotation: one decimal place with degree symbol
+            try:
+                ang_v = float(info.get('angle_deg', 0.0))
+                ang = f"{ang_v:.1f}°"
+            except Exception:
+                ang = '-'
+
+            try:
+                rf = bool(info.get('reflect', False))
+                flip_txt = "On" if rf else "Off"
+            except Exception:
+                flip_txt = "-"
+
+            try:
+                t_xy = info.get('t', None)
+                dec_digits = int(self._stage_input_decimal_digits())
+                tx = self._format_stage_numeric(t_xy[0] if t_xy is not None else None, dec_digits)
+                ty = self._format_stage_numeric(t_xy[1] if t_xy is not None else None, dec_digits)
+            except Exception:
+                tx, ty = "-", "-"
+
+            pitch = self._format_plain_decimal(info.get('pitch_deg', None), max_digits=3)
+            roll = self._format_plain_decimal(info.get('roll_deg', None), max_digits=3)
+
+            line1 = f"Magnification: {mag}   Rotation: {ang}   Flip: {flip_txt}"
+            line2 = f"Shift X: {tx}   Shift Y: {ty}   Pitch: {pitch}   Roll: {roll}"
+            overlay.setText(f"{line1}\n{line2}")
+            try:
+                overlay.adjustSize()
+            except Exception:
+                pass
+            try:
+                self._reposition_viewport_overlays()
+            except Exception:
+                pass
+            overlay.raise_()
+            overlay.show()
+        except Exception:
+            pass
+
+    def _update_cursor_info_overlay(self, pos_label=None):
+        try:
+            overlay = getattr(self, 'cursor_info_overlay', None)
+            if overlay is None:
+                return
+
+            if pos_label is None:
+                overlay.hide()
+                return
+
+            xy = self._display_to_full(pos_label)
+            if xy is None:
+                overlay.hide()
+                return
+            x_full, y_full = xy
+
+            try:
+                h_full = int(self._img_base_size[1]) if getattr(self, '_img_base_size', None) else None
+            except Exception:
+                h_full = None
+
+            u_img = int(round(float(x_full)))
+            if h_full is not None and h_full > 0:
+                v_img = int(round(float(h_full - 1) - float(y_full)))
+                v_model = float(h_full - 1) - float(y_full)
+            else:
+                v_img = int(round(-float(y_full)))
+                v_model = -float(y_full)
+            u_model = float(x_full)
+
+            stage_x = None
+            stage_y = None
+            stage_z = None
+            info = getattr(self, '_last_stage_info', None)
+            try:
+                if info is not None and info.get('R', None) is not None and info.get('t', None) is not None:
+                    import numpy as _np
+                    s_val = float(info.get('s', 1.0))
+                    R = _np.asarray(info.get('R'), dtype=_np.float64)
+                    t = _np.asarray(info.get('t'), dtype=_np.float64)
+
+                    if bool(info.get('reflect', False)):
+                        u_model = -u_model
+
+                    uv = _np.asarray([float(u_model), float(v_model)], dtype=_np.float64)
+                    st_xy = (s_val * (R @ uv)) + t
+                    stage_x = float(st_xy[0])
+                    stage_y = float(st_xy[1])
+
+                    zp = info.get('z_plane', None)
+                    if zp is not None and len(zp) == 3:
+                        a, b, c = float(zp[0]), float(zp[1]), float(zp[2])
+                        stage_z = float(a * stage_x + b * stage_y + c)
+            except Exception:
+                pass
+
+            dec_digits = int(self._stage_input_decimal_digits())
+            def _fmt_stage(v):
+                return self._format_stage_numeric(v, dec_digits)
+
+            line1 = f"Image (u, v) = ({u_img}, {v_img})"
+            line2 = f"Stage (X, Y, Z) = ({_fmt_stage(stage_x)}, {_fmt_stage(stage_y)}, {_fmt_stage(stage_z)})"
+            overlay.setText(f"{line1}\n{line2}")
+            try:
+                overlay.adjustSize()
+            except Exception:
+                pass
+            try:
+                self._reposition_viewport_overlays()
+            except Exception:
+                pass
+            overlay.raise_()
+            overlay.show()
+        except Exception:
+            pass
 
     def _cleanup_threads(self):
         # Cancel and wait for any running patch worker to avoid QThread destroy errors
@@ -6484,9 +6988,10 @@ class CentroidFinderWindow(QMainWindow):
             view_orient = 'Image'
 
         if mapping is not None and mapping.get('mode') == view_orient:
+            map_type = str(mapping.get('type', '')).strip().lower()
             # Preferred: use Qt transform mapping (exactly matches rendered pixmap)
             try:
-                if str(mapping.get('type', '')) == 'qt' and mapping.get('qt') is not None and mapping.get('qt_inv') is not None:
+                if map_type == 'qt' and mapping.get('qt') is not None and mapping.get('qt_inv') is not None:
                     from qt_compat.QtCore import QPointF
                     pad = float(mapping.get('pad', 0.0))
                     z_map = float(mapping.get('z', z))
@@ -6496,66 +7001,90 @@ class CentroidFinderWindow(QMainWindow):
                     shift_y = float(mapping.get('shift_y', 0.0))
                     inv = mapping.get('qt_inv')
 
-                    x_rot = float(pos.x()) - pad - shift_x
-                    y_rot = float(pos.y()) - pad - shift_y
-                    if x_rot < 0 or y_rot < 0:
-                        raise ValueError('outside')
+                    # trueMatrix already incorporates the shift, so only subtract pad.
+                    x_rot = float(pos.x()) - pad
+                    y_rot = float(pos.y()) - pad
 
                     p0 = inv.map(QPointF(x_rot, y_rot))
                     x_pix = float(p0.x())
                     y_pix = float(p0.y())
-                    if not (0.0 <= x_pix <= draw_w and 0.0 <= y_pix <= draw_h):
-                        raise ValueError('outside')
 
+                    # Allow clicks up to ~6 display pixels outside the pre-rotation
+                    # image boundary.  Rotation preserves distances, so this is also
+                    # ~6 pixels in label space — enough for SmoothTransformation
+                    # anti-aliasing (1-2 px) and trueMatrix integer-rounding residual.
+                    # Clicks in dark bounding-box corners are typically 50+ px outside,
+                    # so they are still rejected.
+                    max_outside = 6.0
+                    dx_out = max(0.0, -x_pix, x_pix - draw_w)
+                    dy_out = max(0.0, -y_pix, y_pix - draw_h)
+                    if max(dx_out, dy_out) > max_outside:
+                        # Outside image — do NOT fall through to rotation-unaware fallback.
+                        return None
+
+                    x_pix = min(max(x_pix, 0.0), draw_w)
+                    y_pix = min(max(y_pix, 0.0), draw_h)
                     x_full = x_pix / max(1e-12, z_map)
                     y_full = y_pix / max(1e-12, z_map)
                     if 0 <= x_full <= img_w and 0 <= y_full <= img_h:
+                        mxy = (x_full, y_full)
+                    else:
+                        mxy = None
+                    if mxy is not None:
+                        return mxy
+
+                    # Qt mapping active but click is outside the rotated image area
+                    # (e.g. dark corner). Do NOT fall through to the rotation-unaware
+                    # fallback — that would place the point at a completely wrong position.
+                    return None
+            except Exception:
+                # Qt mapping failed unexpectedly. Still do not fall through.
+                if map_type == 'qt':
+                    return None
+
+            if map_type != 'qt':
+                try:
+                    import math
+                    pad = float(mapping.get('pad', 0.0))
+                    min_x = float(mapping.get('min_x', 0.0))
+                    min_y = float(mapping.get('min_y', 0.0))
+                    cx = float(mapping.get('cx', 0.0))
+                    cy = float(mapping.get('cy', 0.0))
+                    theta = float(mapping.get('theta', 0.0))
+                    flip = bool(mapping.get('flip', False))
+                    draw_w = float(mapping.get('draw_w', 0.0))
+                    draw_h = float(mapping.get('draw_h', 0.0))
+
+                    # label -> rotated canvas coords (inside image area)
+                    x_rot = float(pos.x()) - pad
+                    y_rot = float(pos.y()) - pad
+                    if x_rot < 0 or y_rot < 0:
+                        raise ValueError('outside')
+
+                    # rotated bbox origin -> center-relative coords
+                    xr = x_rot + min_x
+                    yr = y_rot + min_y
+
+                    c = math.cos(theta)
+                    s = math.sin(theta)
+                    # inverse rotate
+                    x_rel = xr * c + yr * s
+                    y_rel = -xr * s + yr * c
+                    # inverse flip (horizontal)
+                    if flip:
+                        x_rel = -x_rel
+
+                    x_pix = x_rel + cx
+                    y_pix = y_rel + cy
+                    if not (0.0 <= x_pix <= draw_w and 0.0 <= y_pix <= draw_h):
+                        raise ValueError('outside')
+
+                    x_full = x_pix / z
+                    y_full = y_pix / z
+                    if 0 <= x_full <= img_w and 0 <= y_full <= img_h:
                         return x_full, y_full
-            except Exception:
-                pass
-
-            try:
-                import math
-                pad = float(mapping.get('pad', 0.0))
-                min_x = float(mapping.get('min_x', 0.0))
-                min_y = float(mapping.get('min_y', 0.0))
-                cx = float(mapping.get('cx', 0.0))
-                cy = float(mapping.get('cy', 0.0))
-                theta = float(mapping.get('theta', 0.0))
-                flip = bool(mapping.get('flip', False))
-                draw_w = float(mapping.get('draw_w', 0.0))
-                draw_h = float(mapping.get('draw_h', 0.0))
-
-                # label -> rotated canvas coords (inside image area)
-                x_rot = float(pos.x()) - pad
-                y_rot = float(pos.y()) - pad
-                if x_rot < 0 or y_rot < 0:
-                    raise ValueError('outside')
-
-                # rotated bbox origin -> center-relative coords
-                xr = x_rot + min_x
-                yr = y_rot + min_y
-
-                c = math.cos(theta)
-                s = math.sin(theta)
-                # inverse rotate
-                x_rel = xr * c + yr * s
-                y_rel = -xr * s + yr * c
-                # inverse flip (horizontal)
-                if flip:
-                    x_rel = -x_rel
-
-                x_pix = x_rel + cx
-                y_pix = y_rel + cy
-                if not (0.0 <= x_pix <= draw_w and 0.0 <= y_pix <= draw_h):
-                    raise ValueError('outside')
-
-                x_full = x_pix / z
-                y_full = y_pix / z
-                if 0 <= x_full <= img_w and 0 <= y_full <= img_h:
-                    return x_full, y_full
-            except Exception:
-                pass
+                except Exception:
+                    pass
 
         # fallback (no rotation mapping)
         x_full = (pos.x() - off_x) / z
@@ -6578,9 +7107,10 @@ class CentroidFinderWindow(QMainWindow):
             view_orient = 'Image'
 
         if mapping is not None and mapping.get('mode') == view_orient:
+            map_type = str(mapping.get('type', '')).strip().lower()
             # Preferred: use Qt transform mapping (exactly matches rendered pixmap)
             try:
-                if str(mapping.get('type', '')) == 'qt' and mapping.get('qt') is not None:
+                if map_type == 'qt' and mapping.get('qt') is not None:
                     from qt_compat.QtCore import QPointF
                     pad = float(mapping.get('pad', 0.0))
                     z_map = float(mapping.get('z', z))
@@ -6591,39 +7121,40 @@ class CentroidFinderWindow(QMainWindow):
                     x_pix = float(x_full) * max(1e-12, z_map)
                     y_pix = float(y_full) * max(1e-12, z_map)
                     p1 = tr.map(QPointF(x_pix, y_pix))
-                    x_rot = float(p1.x()) + shift_x
-                    y_rot = float(p1.y()) + shift_y
+                    # trueMatrix already incorporates the shift; just add pad.
+                    return float(p1.x()) + pad, float(p1.y()) + pad
+            except Exception:
+                if map_type == 'qt':
+                    return None
+
+            if map_type != 'qt':
+                try:
+                    import math
+                    pad = float(mapping.get('pad', 0.0))
+                    min_x = float(mapping.get('min_x', 0.0))
+                    min_y = float(mapping.get('min_y', 0.0))
+                    cx = float(mapping.get('cx', 0.0))
+                    cy = float(mapping.get('cy', 0.0))
+                    theta = float(mapping.get('theta', 0.0))
+                    flip = bool(mapping.get('flip', False))
+
+                    x_pix = float(x_full) * z
+                    y_pix = float(y_full) * z
+                    x_rel = x_pix - cx
+                    y_rel = y_pix - cy
+                    if flip:
+                        x_rel = -x_rel
+
+                    c = math.cos(theta)
+                    s = math.sin(theta)
+                    xr = x_rel * c - y_rel * s
+                    yr = x_rel * s + y_rel * c
+
+                    x_rot = xr - min_x
+                    y_rot = yr - min_y
                     return x_rot + pad, y_rot + pad
-            except Exception:
-                pass
-
-            try:
-                import math
-                pad = float(mapping.get('pad', 0.0))
-                min_x = float(mapping.get('min_x', 0.0))
-                min_y = float(mapping.get('min_y', 0.0))
-                cx = float(mapping.get('cx', 0.0))
-                cy = float(mapping.get('cy', 0.0))
-                theta = float(mapping.get('theta', 0.0))
-                flip = bool(mapping.get('flip', False))
-
-                x_pix = float(x_full) * z
-                y_pix = float(y_full) * z
-                x_rel = x_pix - cx
-                y_rel = y_pix - cy
-                if flip:
-                    x_rel = -x_rel
-
-                c = math.cos(theta)
-                s = math.sin(theta)
-                xr = x_rel * c - y_rel * s
-                yr = x_rel * s + y_rel * c
-
-                x_rot = xr - min_x
-                y_rot = yr - min_y
-                return x_rot + pad, y_rot + pad
-            except Exception:
-                pass
+                except Exception:
+                    pass
 
         # fallback
         return x_full * z + off_x, y_full * z + off_y

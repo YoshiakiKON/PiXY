@@ -1,84 +1,73 @@
-# PiXY: Pixel to stage-XY Coordinate Converter
-Yoshiaki KON (Geological Survey of JAPAN, National Institute of Advanced Industrial Science and Technology)
+# PiXY — Pixel to Stage Coordinate Converter
 
-PiXY is a desktop GUI tool that detects centroids of particle-like regions in images and converts pixel coordinates to real-world stage coordinates using user-defined fiducial points (naturally occurring specimen features such as scratches or particle tips; not pre-made markers).
+PiXY is a small desktop application that detects particle centroids in microscopy images and converts image (pixel) coordinates to instrument stage coordinates using user-provided fiducial pairs. It is designed to speed offline target selection and prepare instrument-ready stage coordinates for microanalysis workflows.
 
-[![Quick Manual preview](README.png)](README.png)
+Key features
+- Detect particle centroids from segmented/processed images using a lightweight K-means + connected-component pipeline.
+- Interactive GUI (PySide6) for placing and editing fiducial points and inspecting residuals.
+- Estimate a 2D→3D affine transform from fiducial pairs and export instrument-ready coordinates (CSV / clipboard).
+- Manual rotation and flip controls to help match image orientation during fiducial identification.
 
+Quick links
+- Repository: https://github.com/YoshiakiKON/PiXY
+- Zenodo archive DOI: 10.5281/zenodo.18174474
 
-## Features
+Requirements
+- Python 3.8+
+- PySide6, NumPy, OpenCV (see `requirements.txt`)
 
-- Detect centroids from segmented image regions (posterization/clustering).
-- Add and edit fiducial points to estimate an affine/similarity transform.
-- Interactive, transposed fiducial table view for quick editing and verification.
-- Export coordinates and fiducial data (CSV supported).
+Installation (development)
+1. Clone the repository:
 
-## Requirements
+```bash
+git clone https://github.com/YoshiakiKON/PiXY.git
+cd PiXY
+```
 
-- Python 3.10+ (adjust as needed for your environment).
-- See `requirements.txt` for Python package dependencies.
-- Recommended window size: 1200×900 or larger.
+2. Create and activate a Python virtual environment, then install dependencies:
 
-## Documentation
-
-User manuals and quick-start guides (English and Japanese) are in `documentation/`:
-
-- `documentation/QuickManual_EN.md` — Quick Manual
-- `documentation/Manual_EN.md` — Manual
-- `documentation/SCREENSHOT_GUIDE.md` — Screenshot capture guide
-
-Screenshots for the quick manuals should be placed under `documentation/images/`.
-
-## Installation (development)
-
-PowerShell example:
-
-```powershell
-cd C:\Python\Px2XY
+```bash
 python -m venv .venv
-\.\.venv\Scripts\Activate.ps1
-pip install --upgrade pip
+# Windows
+.\.venv\Scripts\Activate.ps1
 pip install -r requirements.txt
 ```
 
-## Run
+Run
+-----
+- From source:
 
-From the repository root (Python source):
-
-```powershell
+```bash
 python Main.py
 ```
 
-Or run the provided Windows executable: `PiXY_ver122.exe`.
+- A Windows executable is also provided in the `dist/` or `build/` folders for convenience.
 
-## Basic usage
+Basic usage
+- Open an image with the `Open Image` / `Export Image` controls.
+- Add fiducial points using `Add Fiducial Point` and enter corresponding stage coordinates in the table.
+- Inspect residuals, adjust fiducials if necessary, and export coordinates via CSV or clipboard.
 
-- Open an image with `Open Image`.
-- Use `Add Fiducial Point` to enter fiducial-point mode, then click image points to add fiducial observations.
-- Edit fiducial `u`/`v` (image coordinates) and `Stage X`/`Stage Y` (and `Stage Z` if applicable) in the fiducial table to refine the transform.
-- The left transposed table shows residuals and transformed coordinates for quick inspection.
+Developer notes
+- The GUI is implemented in `Ui.py`. Centroid extraction is in `CalcCentroid.py`. Rendering helpers are in `rendering.py` and utilities in `Util.py`.
+- The `SegmentControl` helper lives inside `Ui.py` and implements compact segmented buttons used throughout the UI.
 
-## Development & Contribution
+Versioning & citation
+- Current release: 1.2.4
+- Please cite the software when used in published research (see `CITATION.cff`).
 
-- Report bugs and feature requests via GitHub Issues.
-- Pull requests are welcome — please include tests or reproduction steps when possible.
+License
+- MIT — see `LICENSE`.
 
-## Citation
+Contributing
+- Issues and pull requests are welcome. For larger changes, open an issue first to discuss the proposed design.
 
-If you publish results generated with this software, please cite this repository.
-
-- Zenodo DOI: https://doi.org/10.5281/zenodo.18174474
-- See `CITATION.cff` for the recommended citation metadata.
-
-## License
-
-See the `LICENSE` file in the repository for license terms (e.g. MIT).
+Contact
+- Yoshiaki KON — Geological Survey of Japan (GSJ), AIST
 
 ---
 
-If you'd like, I can also:
-
-- Commit this change and push a branch/PR.
-- Produce a shorter `README-short.md` for display on PyPI/GitHub release pages.
-- Draft a `paper.md` for JOSS submission using the repository metadata and release DOI (once available).
-
+If you want, I can also:
+- Update `README.md` with screenshots or a short animated GIF.
+- Add a concise `README-short.md` for PyPI.
+- Create a `CHANGELOG.md` entry for the `1.2.4` release.

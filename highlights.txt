@@ -1,0 +1,4 @@
+Reduce on-instrument targeting time by enabling offline coordinate preparation.
+Open-source GUI that converts image pixel positions to instrument stage coordinates.
+Automatic centroid extraction with interactive parameter tuning and export.
+Residual inspection using multiple fiducials improves targeting robustness.

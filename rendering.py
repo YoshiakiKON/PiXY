@@ -1,5 +1,5 @@
 from qt_compat.QtCore import QPoint
-from qt_compat.QtGui import QPixmap, QPainter, QPen, QColor
+from qt_compat.QtGui import QPixmap, QPainter, QPen, QColor, QFont
 from Util import cvimg_to_qpixmap
 import cv2
 
@@ -7,6 +7,9 @@ import cv2
 def build_zoomed_canvas(overlay_full_img, proc_zoom, view_padding,
                         centroids, selected_index, ref_points, scale_proc_to_full,
                         ref_selected_index=None,
+                        manual_indices=None,
+                        excluded_indices=None,
+                        visible_groups=None,
                         colors=None, interp_mode='auto', debug_ref_coords=False,
                         max_pixels=None):
     """
@@ -99,6 +102,7 @@ def build_zoomed_canvas(overlay_full_img, proc_zoom, view_padding,
     cfg = {
         'pen_width': 2,
         'centroid_fill': QColor(64, 64, 64),
+        'manual_fill': QColor(0, 170, 0),
         'centroid_radius': 4,
         'selected_fill': QColor(0, 102, 255),
         'selected_radius': 6,
@@ -108,9 +112,24 @@ def build_zoomed_canvas(overlay_full_img, proc_zoom, view_padding,
     if colors:
         cfg.update(colors)
 
+    # 小さめの番号ラベル（参照点用）
+    try:
+        label_font = QFont()
+        label_font.setPointSize(8)
+    except Exception:
+        label_font = None
+
     # 1) 通常重心
+    manual_set = set(manual_indices or [])
+    excluded_set = set(excluded_indices or [])
+    visible_group_set = None if visible_groups is None else {int(g) for g in (visible_groups or set())}
     if centroids:
-        for idx, (_, xp, yp) in enumerate(centroids):
+        for idx, (grp, xp, yp) in enumerate(centroids):
+            # Skip excluded centroids entirely
+            if idx in excluded_set:
+                continue
+            if visible_group_set is not None and int(grp) not in visible_group_set:
+                continue
             xf = xp * scale_proc_to_full
             yf = yp * scale_proc_to_full
             # use display_scale for mapping full-image coords to physical pixels
@@ -119,8 +138,17 @@ def build_zoomed_canvas(overlay_full_img, proc_zoom, view_padding,
             if selected_index is not None and idx == selected_index:
                 continue
             painter.setPen(QPen(QColor(255, 255, 255), cfg['pen_width']))
-            painter.setBrush(cfg['centroid_fill'])
+            painter.setBrush(cfg['manual_fill'] if idx in manual_set else cfg['centroid_fill'])
             painter.drawEllipse(QPoint(xd, yd), cfg['centroid_radius'], cfg['centroid_radius'])
+            # 重心番号（1始まり）を控えめに表示
+            try:
+                if label_font is not None:
+                    painter.setFont(label_font)
+                painter.setPen(QPen(QColor(235, 235, 235, 180), 1))
+                rtxt = int(cfg['centroid_radius'])
+                painter.drawText(xd + rtxt + 2, yd - rtxt - 2, str(int(idx) + 1))
+            except Exception:
+                pass
 
     # 2) Ref
     for ridx, pt in enumerate(ref_points or []):
@@ -143,6 +171,14 @@ def build_zoomed_canvas(overlay_full_img, proc_zoom, view_padding,
         except Exception:
             pass
         painter.drawEllipse(QPoint(xd, yd), int(r), int(r))
+        # 参照点番号（1始まり）を控えめに表示
+        try:
+            if label_font is not None:
+                painter.setFont(label_font)
+            painter.setPen(QPen(QColor(245, 245, 245, 210), 1))
+            painter.drawText(xd + int(r) + 3, yd - int(r) - 2, str(int(ridx) + 1))
+        except Exception:
+            pass
         # Debug: draw full-image coordinates (u,v) near ref points if requested
         try:
             if debug_ref_coords:
@@ -159,16 +195,26 @@ def build_zoomed_canvas(overlay_full_img, proc_zoom, view_padding,
         except Exception:
             pass
 
-    # 3) 選択
-    if centroids and selected_index is not None and 0 <= selected_index < len(centroids):
-        _, xp, yp = centroids[selected_index]
-        xf = xp * scale_proc_to_full
-        yf = yp * scale_proc_to_full
-        xd = int(round(xf * display_scale)) + off_x
-        yd = int(round(yf * display_scale)) + off_y
-        painter.setPen(QPen(QColor(255, 255, 255), cfg['pen_width']))
-        painter.setBrush(cfg['selected_fill'])
-        painter.drawEllipse(QPoint(xd, yd), cfg['selected_radius'], cfg['selected_radius'])
+    # 3) 選択 (skip if excluded)
+    if centroids and selected_index is not None and 0 <= selected_index < len(centroids) and selected_index not in excluded_set:
+        grp, xp, yp = centroids[selected_index]
+        if visible_group_set is None or int(grp) in visible_group_set:
+            xf = xp * scale_proc_to_full
+            yf = yp * scale_proc_to_full
+            xd = int(round(xf * display_scale)) + off_x
+            yd = int(round(yf * display_scale)) + off_y
+            painter.setPen(QPen(QColor(255, 255, 255), cfg['pen_width']))
+            painter.setBrush(cfg['selected_fill'])
+            painter.drawEllipse(QPoint(xd, yd), cfg['selected_radius'], cfg['selected_radius'])
+            # 選択重心は少しだけ見やすく番号表示
+            try:
+                if label_font is not None:
+                    painter.setFont(label_font)
+                painter.setPen(QPen(QColor(255, 255, 255, 230), 1))
+                rs = int(cfg['selected_radius'])
+                painter.drawText(xd + rs + 3, yd - rs - 3, str(int(selected_index) + 1))
+            except Exception:
+                pass
 
     painter.end()
     # return actual drawn image physical size (img_resized) and logical display size (width,height)

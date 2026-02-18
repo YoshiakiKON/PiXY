@@ -48,6 +48,8 @@ $addDataLocalCandidates = @(
     "last_image_path.txt;.",
     "PiXY_splash.png;.",
     "PiXY_icon.ico;.",
+    "PiXY_Pix.png;.",
+    "PiXY_XY.png;.",
     "PiXY.png;.",
     "px2XY2.png;.",
     "px2XY.png;.",
@@ -61,6 +63,10 @@ foreach ($entry in $addDataLocalCandidates) {
     } else {
         Write-Host "Skipping missing asset: $src" -ForegroundColor Yellow
     }
+}
+
+if (-not ($addData | Where-Object { $_ -like 'PiXY_Pix.png;*' })) {
+    Write-Host "Warning: Preferred UI header image is missing from bundle data: PiXY_Pix.png" -ForegroundColor Yellow
 }
 
 # If DemoBSE.png is not in the worktree, try the repo root (C:\Python\Px2XY\DemoBSE.png)

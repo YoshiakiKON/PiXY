@@ -1,15 +1,15 @@
 [project]
 name = "pixy"
-version = "1.2.4"
+version = "1.2.5"
 description = "PiXY: Centroid Finder GUI for image-based centroid extraction"
-authors = [{name = "YourFirstName YourLastName", email = "you@example.com"}]
+authors = [{name = "Yoshiaki KON"}]
 licenses = [{file = "LICENSE"}]
 readme = "README.md"
 requires-python = ">=3.8"
 dependencies = [
     "numpy",
     "opencv-python",
-    "PyQt5"
+    "PySide6"
 ]
 
 [build-system]

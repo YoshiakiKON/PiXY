@@ -166,6 +166,42 @@ class CentroidProcessor:
         min_area = params["min_area"]
         max_area = params.get("max_area", None)
         neck_separation = int(params.get("neck_separation", 0) or 0)
+        # Shape complexity filter (0-10). 10 means "no filtering".
+        try:
+            shape_complexity = int(params.get("shape_complexity", 10) if params is not None else 10)
+        except Exception:
+            shape_complexity = 10
+
+        def _passes_shape_complexity(binary_mask_255: np.ndarray) -> bool:
+            """Return True if the component shape is acceptable.
+
+            We use a compactness metric based on perimeter and area:
+              ratio = P^2 / (4*pi*A)
+            ratio == 1 for a circle and increases for elongated/irregular shapes.
+
+            The UI parameter is 0-10; 10 disables this filter.
+            """
+            if shape_complexity >= 10:
+                return True
+            try:
+                if binary_mask_255 is None or binary_mask_255.sum() == 0:
+                    return False
+                contours, _ = cv2.findContours(binary_mask_255, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+                if not contours:
+                    return True
+                # Use the largest contour by area for stability
+                cnt = max(contours, key=cv2.contourArea)
+                area_c = float(cv2.contourArea(cnt))
+                if area_c <= 0.0:
+                    return False
+                perim = float(cv2.arcLength(cnt, True))
+                ratio = (perim * perim) / (4.0 * float(np.pi) * area_c)
+                # Map slider (0..9) to permissive threshold (1..5.5)
+                thr = 1.0 + 0.5 * float(shape_complexity)
+                return bool(ratio <= thr)
+            except Exception:
+                # Best-effort: if metric fails, don't drop detections
+                return True
         # `params['trim_px']` is provided in full-image pixels (UI-visible units).
         # Convert to processing-image (proc_img) pixels for morphological operations
         # because `poster` and masks are at proc resolution.
@@ -230,6 +266,9 @@ class CentroidProcessor:
                                 continue
                         except Exception:
                             pass
+                    # Optional shape filter (run after size filter)
+                    if not _passes_shape_complexity(comp_mask):
+                        continue
                     t_cent0 = now() if timings is not None else None
                     cx, cy = centroids[lab]
                     results.append([group_no, cx, cy])
@@ -269,6 +308,14 @@ class CentroidProcessor:
                                     continue
                             except Exception:
                                 pass
+                        # Optional shape filter for split components
+                        if shape_complexity < 10:
+                            try:
+                                comp_split = (split_labels == split_lab).astype(np.uint8) * 255
+                            except Exception:
+                                comp_split = None
+                            if comp_split is not None and (not _passes_shape_complexity(comp_split)):
+                                continue
                         t_cent0 = now() if timings is not None else None
                         cx, cy = split_centroids[split_lab]
                         results.append([group_no, cx, cy])

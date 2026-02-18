@@ -13,13 +13,9 @@ Typical use cases:
 
 ## Screenshots
 
-Overview (pixels view):
+Overview:
 
-![Pixels view](Screenshot_Pix.png)
-
-Stage/XY view:
-
-![Stage XY view](Screenshot_XY.png)
+![Screen Shot](Screenshot_XY.png)
 
 ## What’s Included
 

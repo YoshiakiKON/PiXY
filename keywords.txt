@@ -1,0 +1,6 @@
+microscopy targeting
+image registration
+centroid extraction
+fiducial-based transform
+offline targeting
+open-source software

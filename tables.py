@@ -163,6 +163,7 @@ def populate_tables(
     visible_ref_cols=None,
     image_base_size=None,
     scale_proc_to_full=1.0,
+    excluded_ref_indices=None,
 ):
     table.blockSignals(True)
     table_ref.blockSignals(True)
@@ -338,6 +339,10 @@ def populate_tables(
             pt = ref_points[c] if 0 <= c < len(ref_points) else None
             obs = ref_obs[c] if 0 <= c < len(ref_obs) else None
             if pt is None or not obs:
+                continue
+            # Skip excluded ref points from transformation calculation
+            _excl_set = set(excluded_ref_indices or []) if excluded_ref_indices else set()
+            if c in _excl_set:
                 continue
             try:
                 u, v = float(pt[0]), float(pt[1])

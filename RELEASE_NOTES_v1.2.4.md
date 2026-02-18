@@ -1,4 +1,4 @@
-# PiXY v1.2.4 — Release Notes (2026-02-18)
+# PiXY v1.2.5 — Release Notes (2026-02-18)
 
 ## Overview
 
@@ -9,7 +9,7 @@ PiXY is a desktop GUI tool for image-based centroid extraction and pixel→stage
 Overview:
 
 ![GUI screenshot](Screenshot_XY.png)
-## What’s New in v1.2.4
+## What’s New in v1.2.5
 
 ### Reproducibility & Metadata
 - Ensured K-means clustering uses a fixed random seed for deterministic posterization results across runs.
@@ -40,4 +40,4 @@ or use the standalone Windows executable if available in `dist/`.
 
 If you want, I can also:
 - Copy the `Graphical_abstract.png` URL and insert a short HTML/Markdown snippet suitable for the Zenodo description; or
-- Update `RELEASE_NOTES_v1.2.4.md` to include more user-visible changes if you provide any code changes to list.
+- Update `RELEASE_NOTES_v1.2.5.md` to include more user-visible changes if you provide any code changes to list.

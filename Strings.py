@@ -44,6 +44,7 @@ TABLE_LEFT_ROW_LABELS = [
     "Res.\nY",
     "Res.\nZ",
     "Res.\n|R|",
+    "",
 ]
 
 TABLE_RIGHT_ROW_LABELS = [

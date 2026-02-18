@@ -5,7 +5,7 @@ a = Analysis(
     ['Main.py'],
     pathex=[],
     binaries=[],
-    datas=[('last_image_path.txt', '.'), ('PiXY_splash.png', '.'), ('PiXY_icon.ico', '.'), ('PiXY.png', '.')],
+    datas=[('DemoBSE.png', '.'), ('pyproject.toml', '.'), ('last_image_path.txt', '.'), ('PiXY_splash.png', '.'), ('PiXY_icon.ico', '.'), ('PiXY.png', '.')],
     hiddenimports=[],
     hookspath=[],
     hooksconfig={},
@@ -35,5 +35,5 @@ exe = EXE(
     target_arch=None,
     codesign_identity=None,
     entitlements_file=None,
-    icon='PiXY_icon.ico',
+    icon=['C:\\Python\\PiXY\\PiXY_icon.ico'],
 )

@@ -9,6 +9,7 @@ def build_zoomed_canvas(overlay_full_img, proc_zoom, view_padding,
                         ref_selected_index=None,
                         manual_indices=None,
                         excluded_indices=None,
+                        force_visible_indices=None,
                         visible_groups=None,
                         colors=None, interp_mode='auto', debug_ref_coords=False,
                         max_pixels=None):
@@ -122,14 +123,16 @@ def build_zoomed_canvas(overlay_full_img, proc_zoom, view_padding,
     # 1) 通常重心
     manual_set = set(manual_indices or [])
     excluded_set = set(excluded_indices or [])
+    force_visible_set = set(force_visible_indices or [])
     visible_group_set = None if visible_groups is None else {int(g) for g in (visible_groups or set())}
     if centroids:
         for idx, (grp, xp, yp) in enumerate(centroids):
-            # Skip excluded centroids entirely
-            if idx in excluded_set:
-                continue
-            if visible_group_set is not None and int(grp) not in visible_group_set:
-                continue
+            is_forced_visible = idx in force_visible_set
+            if not is_forced_visible:
+                if idx in excluded_set:
+                    continue
+                if visible_group_set is not None and int(grp) not in visible_group_set:
+                    continue
             xf = xp * scale_proc_to_full
             yf = yp * scale_proc_to_full
             # use display_scale for mapping full-image coords to physical pixels
@@ -196,9 +199,10 @@ def build_zoomed_canvas(overlay_full_img, proc_zoom, view_padding,
             pass
 
     # 3) 選択 (skip if excluded)
-    if centroids and selected_index is not None and 0 <= selected_index < len(centroids) and selected_index not in excluded_set:
+    if centroids and selected_index is not None and 0 <= selected_index < len(centroids):
         grp, xp, yp = centroids[selected_index]
-        if visible_group_set is None or int(grp) in visible_group_set:
+        is_forced_visible = selected_index in force_visible_set
+        if is_forced_visible or (selected_index not in excluded_set and (visible_group_set is None or int(grp) in visible_group_set)):
             xf = xp * scale_proc_to_full
             yf = yp * scale_proc_to_full
             xd = int(round(xf * display_scale)) + off_x

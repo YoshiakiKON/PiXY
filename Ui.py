@@ -1039,8 +1039,11 @@ class CentroidFinderWindow(QMainWindow):
         self.manual_target_mode = False  # True: 手動ターゲット(Group0)を優先
         self.manual_targets = []         # [(0, x_proc, y_proc), ...]
         self.excluded_centroid_indices = set()  # 出力除外する重心インデックス
+        self._explicit_excluded_centroid_indices = set()  # ユーザー操作/置換により明示的に除外された重心インデックス
+        self._force_visible_centroid_indices = set()  # フィルタ非表示中でも一時的に表示する重心インデックス
         self.visible_groups = None       # None=all visible, otherwise set[int]
         self._replace_target_source_index = None
+        self._replace_target_source_group = None
         self.selected_index = None     # 選択中の重心インデックス
         self.select_radius_display = 10.0  # 画像上の選択半径 (pix)
 
@@ -5176,6 +5179,7 @@ class CentroidFinderWindow(QMainWindow):
                 ref_selected_index=getattr(self, 'ref_selected_index', None),
                 manual_indices=self._manual_centroid_indices(),
                 excluded_indices=set(getattr(self, 'excluded_centroid_indices', set()) or set()),
+                force_visible_indices=set(getattr(self, '_force_visible_centroid_indices', set()) or set()),
                 visible_groups=self._get_visible_groups_set(),
                 colors=None,
                 debug_ref_coords=True,
@@ -5514,6 +5518,7 @@ class CentroidFinderWindow(QMainWindow):
             ref_selected_index=getattr(self, 'ref_selected_index', None),
             manual_indices=self._manual_centroid_indices(),
             excluded_indices=set(getattr(self, 'excluded_centroid_indices', set()) or set()),
+            force_visible_indices=set(getattr(self, '_force_visible_centroid_indices', set()) or set()),
             visible_groups=self._get_visible_groups_set(),
             colors=None,
             interp_mode=self.interp_mode,
@@ -6946,7 +6951,11 @@ class CentroidFinderWindow(QMainWindow):
         self._move_cursor_to_image_center()
 
     def _manual_target_base_index(self):
-        return 0
+        try:
+            auto_only = list(getattr(self, '_auto_centroids', []) or self._auto_centroids_from_current())
+            return sum(1 for c in auto_only if int(c[0]) == 0)
+        except Exception:
+            return 0
 
     def _selected_manual_target_index(self):
         try:
@@ -6968,7 +6977,8 @@ class CentroidFinderWindow(QMainWindow):
             mt_n = len(getattr(self, 'manual_targets', []) or [])
             if mt_n <= 0:
                 return set()
-            return set(range(0, mt_n))
+            base = self._manual_target_base_index()
+            return set(range(int(base), int(base) + mt_n))
         except Exception:
             return set()
 
@@ -6979,6 +6989,18 @@ class CentroidFinderWindow(QMainWindow):
             self.excluded_centroid_indices = {int(i) for i in old if 0 <= int(i) < n}
         except Exception:
             self.excluded_centroid_indices = set()
+        try:
+            n = len(getattr(self, 'centroids', []) or [])
+            old_exp = set(getattr(self, '_explicit_excluded_centroid_indices', set()) or set())
+            self._explicit_excluded_centroid_indices = {int(i) for i in old_exp if 0 <= int(i) < n}
+        except Exception:
+            self._explicit_excluded_centroid_indices = set()
+        try:
+            n = len(getattr(self, 'centroids', []) or [])
+            old_force = set(getattr(self, '_force_visible_centroid_indices', set()) or set())
+            self._force_visible_centroid_indices = {int(i) for i in old_force if 0 <= int(i) < n}
+        except Exception:
+            self._force_visible_centroid_indices = set()
 
     def _is_centroid_excluded(self, idx):
         try:
@@ -7037,25 +7059,41 @@ class CentroidFinderWindow(QMainWindow):
             pass
 
     def _sync_show_from_filter(self):
-        """Update excluded_centroid_indices so centroids in hidden groups are excluded
-        and centroids in visible groups are included (Show toggle follows Filter)."""
+        """Sync excluded_centroid_indices with current Filter state.
+
+        IMPORTANT:
+        - Filter-driven exclusions are temporary.
+        - Explicit exclusions (per-point Show/Hide toggle, or Replace via Update u,v)
+          must persist even when the group becomes visible again.
+        """
         try:
             vis = self._get_visible_groups_set()
             centroids = getattr(self, 'centroids', None) or []
             s = set(getattr(self, 'excluded_centroid_indices', set()) or set())
+            explicit = set(getattr(self, '_explicit_excluded_centroid_indices', set()) or set())
+            fv = set(getattr(self, '_force_visible_centroid_indices', set()) or set())
             for i, c in enumerate(centroids):
                 try:
                     g = int(c[0])
                 except Exception:
                     continue
                 if vis is None:
-                    # All visible → un-exclude
-                    s.discard(i)
+                    # All visible → un-exclude (except explicit)
+                    if int(i) not in explicit:
+                        s.discard(i)
+                    # Group now visible, force_visible override no longer needed
+                    fv.discard(i)
                 elif g in vis:
-                    s.discard(i)
+                    if int(i) not in explicit:
+                        s.discard(i)
+                    # Group now visible, force_visible override no longer needed
+                    fv.discard(i)
                 else:
-                    s.add(i)
+                    # Group is hidden — only add to excluded if NOT force_visible
+                    if int(i) not in fv:
+                        s.add(i)
             self.excluded_centroid_indices = s
+            self._force_visible_centroid_indices = fv
             self._sanitize_excluded_indices()
         except Exception:
             pass
@@ -7121,18 +7159,32 @@ class CentroidFinderWindow(QMainWindow):
                 mt.append((0, float(x), float(y)))
             except Exception:
                 pass
-        return mt + auto_list
+        auto_g0 = []
+        auto_other = []
+        for c in auto_list:
+            try:
+                if int(c[0]) == 0:
+                    auto_g0.append(c)
+                else:
+                    auto_other.append(c)
+            except Exception:
+                auto_other.append(c)
+        return auto_g0 + mt + auto_other
 
     def _auto_centroids_from_current(self):
         cur = list(getattr(self, 'centroids', []) or [])
         mt = list(getattr(self, 'manual_targets', []) or [])
         if not mt:
             return cur
-        if len(cur) < len(mt):
+        mt_n = len(mt)
+        if len(cur) < mt_n:
             return cur
-        head = cur[:len(mt)]
+        base = self._manual_target_base_index()
+        if base < 0 or (base + mt_n) > len(cur):
+            return cur
+        blk = cur[base:base + mt_n]
         same = True
-        for a, b in zip(head, mt):
+        for a, b in zip(blk, mt):
             try:
                 if int(a[0]) != int(b[0]) or abs(float(a[1]) - float(b[1])) > 1e-9 or abs(float(a[2]) - float(b[2])) > 1e-9:
                     same = False
@@ -7140,7 +7192,9 @@ class CentroidFinderWindow(QMainWindow):
             except Exception:
                 same = False
                 break
-        return cur[len(mt):] if same else cur
+        if not same:
+            return cur
+        return cur[:base] + cur[base + mt_n:]
 
     def _on_update_target_uv(self):
         # Toggle pick-mode（Update u,v）
@@ -7155,6 +7209,7 @@ class CentroidFinderWindow(QMainWindow):
         m_idx = self._selected_manual_target_index()
         if m_idx is not None:
             self._replace_target_source_index = None
+            self._replace_target_source_group = None
             self._start_pick_mode('target_update', ref_index=int(m_idx))
             self._move_cursor_to_image_center()
             return
@@ -7170,6 +7225,10 @@ class CentroidFinderWindow(QMainWindow):
             if not (0 <= idx < len(cents)):
                 return
             self._replace_target_source_index = idx
+            try:
+                self._replace_target_source_group = int(cents[idx][0])
+            except Exception:
+                self._replace_target_source_group = None
             self._start_pick_mode('target_add')
         except Exception:
             return
@@ -7185,6 +7244,8 @@ class CentroidFinderWindow(QMainWindow):
         if m_idx is None:
             return
         rem = int(m_idx)
+        base = self._manual_target_base_index()
+        rem_centroid_idx = int(base + rem)
         try:
             self.manual_targets.pop(rem)
         except Exception:
@@ -7195,12 +7256,38 @@ class CentroidFinderWindow(QMainWindow):
             new_excl = set()
             for i in old_excl:
                 ii = int(i)
-                if ii == rem:
+                if ii == rem_centroid_idx:
                     continue
-                if ii > rem:
+                if ii > rem_centroid_idx:
                     ii -= 1
                 new_excl.add(ii)
             self.excluded_centroid_indices = new_excl
+        except Exception:
+            pass
+        try:
+            old_exp = set(getattr(self, '_explicit_excluded_centroid_indices', set()) or set())
+            new_exp = set()
+            for i in old_exp:
+                ii = int(i)
+                if ii == rem_centroid_idx:
+                    continue
+                if ii > rem_centroid_idx:
+                    ii -= 1
+                new_exp.add(ii)
+            self._explicit_excluded_centroid_indices = new_exp
+        except Exception:
+            pass
+        try:
+            old_force = set(getattr(self, '_force_visible_centroid_indices', set()) or set())
+            new_force = set()
+            for i in old_force:
+                ii = int(i)
+                if ii == rem_centroid_idx:
+                    continue
+                if ii > rem_centroid_idx:
+                    ii -= 1
+                new_force.add(ii)
+            self._force_visible_centroid_indices = new_force
         except Exception:
             pass
 
@@ -7656,7 +7743,11 @@ class CentroidFinderWindow(QMainWindow):
                 pass
         data["manual_targets"] = mt_list
         try:
-            data["excluded_centroid_indices"] = sorted([int(i) for i in (getattr(self, 'excluded_centroid_indices', set()) or set())])
+            # Persist only explicit exclusions (not temporary Filter-driven group hiding)
+            src = getattr(self, '_explicit_excluded_centroid_indices', None)
+            if src is None:
+                src = getattr(self, 'excluded_centroid_indices', set())
+            data["excluded_centroid_indices"] = sorted([int(i) for i in (src or set())])
         except Exception:
             data["excluded_centroid_indices"] = []
         try:
@@ -7892,6 +7983,11 @@ class CentroidFinderWindow(QMainWindow):
             self.excluded_centroid_indices = set(int(i) for i in (data.get("excluded_centroid_indices", []) or []))
         except Exception:
             self.excluded_centroid_indices = set()
+        try:
+            # Treat loaded exclusions as explicit (Filter state is not persisted)
+            self._explicit_excluded_centroid_indices = set(self.excluded_centroid_indices)
+        except Exception:
+            self._explicit_excluded_centroid_indices = set()
         try:
             self.excluded_ref_indices = set(int(i) for i in (data.get("excluded_ref_indices", []) or []))
         except Exception:
@@ -8329,21 +8425,60 @@ class CentroidFinderWindow(QMainWindow):
                 auto_only = list(getattr(self, '_auto_centroids', []) or self._auto_centroids_from_current())
 
                 if self.pick_mode == 'target_add':
-                    self.manual_targets.insert(0, (0, float(x_proc), float(y_proc)))
+                    base = self._manual_target_base_index()
+                    mt_old_n = len(self.manual_targets)
+                    insert_idx = int(base + mt_old_n)
+                    self.manual_targets.append((0, float(x_proc), float(y_proc)))
                     try:
                         old_excl = set(getattr(self, 'excluded_centroid_indices', set()) or set())
-                        new_excl = {int(i) + 1 for i in old_excl}
+                        old_exp = set(getattr(self, '_explicit_excluded_centroid_indices', set()) or set())
+                        new_excl = set()
+                        new_exp = set()
+                        for i in old_excl:
+                            ii = int(i)
+                            if ii >= insert_idx:
+                                ii += 1
+                            new_excl.add(ii)
+                        for i in old_exp:
+                            ii = int(i)
+                            if ii >= insert_idx:
+                                ii += 1
+                            new_exp.add(ii)
                         src_idx = getattr(self, '_replace_target_source_index', None)
                         if src_idx is not None:
                             try:
-                                new_excl.add(int(src_idx) + 1)
+                                src_new = int(src_idx)
+                                if src_new >= insert_idx:
+                                    src_new += 1
+                                new_excl.add(src_new)
+                                new_exp.add(src_new)
                             except Exception:
                                 pass
                         self.excluded_centroid_indices = new_excl
+                        self._explicit_excluded_centroid_indices = new_exp
+                    except Exception:
+                        pass
+                    try:
+                        old_force = set(getattr(self, '_force_visible_centroid_indices', set()) or set())
+                        new_force = set()
+                        for i in old_force:
+                            ii = int(i)
+                            if ii >= insert_idx:
+                                ii += 1
+                            new_force.add(ii)
+
+                        src_idx = getattr(self, '_replace_target_source_index', None)
+                        src_grp = getattr(self, '_replace_target_source_group', None)
+                        vis = self._get_visible_groups_set()
+                        hide_g0 = (vis is not None and 0 not in vis)
+                        if src_idx is not None and src_grp is not None and int(src_grp) != 0 and hide_g0:
+                            new_force.add(insert_idx)
+
+                        self._force_visible_centroid_indices = new_force
                     except Exception:
                         pass
                     self.centroids = self._compose_centroids_with_manual(auto_only)
-                    self.selected_index = 0
+                    self.selected_index = insert_idx
                 else:
                     idx_t = self.pick_ref_index if self.pick_ref_index is not None else self._selected_manual_target_index()
                     if idx_t is None:
@@ -8373,6 +8508,8 @@ class CentroidFinderWindow(QMainWindow):
                         self._end_pick_mode(redraw=False)
                 except Exception:
                     pass
+                self._replace_target_source_index = None
+                self._replace_target_source_group = None
                 try:
                     self._apply_proc_zoom()
                 except Exception:
@@ -10105,11 +10242,21 @@ class CentroidFinderWindow(QMainWindow):
             def _apply(is_excluded, ci=centroid_idx):
                 try:
                     s = set(getattr(self, 'excluded_centroid_indices', set()) or set())
+                    exp = set(getattr(self, '_explicit_excluded_centroid_indices', set()) or set())
+                    fv = set(getattr(self, '_force_visible_centroid_indices', set()) or set())
                     if is_excluded:
                         s.add(ci)
+                        exp.add(ci)
+                        fv.discard(ci)
                     else:
                         s.discard(ci)
+                        exp.discard(ci)
+                        # Manual toggle ON should always make the point visible,
+                        # even if hidden by Filter or previously hidden by Update Target replace.
+                        fv.add(ci)
                     self.excluded_centroid_indices = s
+                    self._explicit_excluded_centroid_indices = exp
+                    self._force_visible_centroid_indices = fv
                     self._sanitize_excluded_indices()
                     try:
                         self._refresh_transposed_views()

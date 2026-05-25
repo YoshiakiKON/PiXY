@@ -182,15 +182,15 @@ python Main.py
 ## ライセンスと引用方法
 
 - ライセンス: MIT
-- 引用例: Y. KON, PiXY v1.3.0. Zenodo:10.5281/zenodo.18174474
+- 引用例: Y. KON, PiXY v1.3.1. Zenodo:10.5281/zenodo.18174474
 
 ---
 
 ## 変更履歴（抜粋）
 
-- v1.3.0 (2026-02-18): `Add Target` / `Update u, v` と `Filter`（Group 0 非表示）併用時の表示・並び順の挙動を整理
+- v1.3.1 (2026-02-18): `Add Target` / `Update u, v` と `Filter`（Group 0 非表示）併用時の表示・並び順の挙動を整理
 
-- v1.2.5 (2026-02-18): Windows EXE 配布、UI フリップ処理改善、README 追加
+- v1.3.1 (2026-02-18): Windows EXE 配布、UI フリップ処理改善、README 追加
 - v1.2.3: 内部のバグ修正、参照点残差表示改善
 
 ---

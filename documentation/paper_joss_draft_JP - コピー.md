@@ -872,7 +872,7 @@ keywords:
   - electron microscopy
   - open-source software
 license: MIT
-version: 1.1.7
+version: 1.3.1
 ```
 
 ---

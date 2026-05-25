@@ -1,4 +1,4 @@
-# PiXY v1.2.5 — Release Notes (2026-02-18)
+# PiXY v1.3.1 — Release Notes (2026-02-18)
 
 ## Summary
 
@@ -11,18 +11,18 @@ This patch release fixes project save/load and UI asset issues and updates packa
 - Fix: Improved Save Project logic to embed images (when available) and warn for large images.
 - Fix: EXE packaging: include `PiXY_XY.png` in the PyInstaller `--add-data` assets and add runtime fallback to a generic `PiXY.png` if the mode-specific logo is missing.
 - Build: Rebuilt Windows EXE (output: `dist/PiXY_ver124.exe`) including updated assets.
-- Docs: Update `InstructionManual_JP.md` and manuscript metadata to v1.2.5.
+- Docs: Update `InstructionManual_JP.md` and manuscript metadata to v1.3.1.
 
 ## Notes for users
 
 - Projects saved with this version will include the embedded input image where possible; copying only the `.pixy` file to another PC is sufficient to reproduce the session without the original image file.
 - Older `.pixy` files saved by prior versions may still reference the original image path if the image was not embedded.
 
-## Upcoming 1.3.0 packaging (paper-submission build)
+## Upcoming 1.3.1 packaging (paper-submission build)
 
-Planned: a forthcoming release `v1.3.0` will contain the exact same code as `v1.2.5` but will be packaged as a minimal archive intended for manuscript submission. That distribution will include only the files required for reproducible execution and review (paper/manuscript-related auxiliary files will be excluded). The purpose is to provide a compact, submission-ready artifact while keeping the code identical to the release here.
+Planned: a forthcoming release `v1.3.1` will contain the exact same code as `v1.3.1` but will be packaged as a minimal archive intended for manuscript submission. That distribution will include only the files required for reproducible execution and review (paper/manuscript-related auxiliary files will be excluded). The purpose is to provide a compact, submission-ready artifact while keeping the code identical to the release here.
 
-If you want me to produce the `v1.3.0` minimal package now (create the archive and a dedicated tag), say so and I will prepare it.
+If you want me to produce the `v1.3.1` minimal package now (create the archive and a dedicated tag), say so and I will prepare it.
 
 ---
 Generated: 2026-02-18

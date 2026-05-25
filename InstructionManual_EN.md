@@ -181,15 +181,15 @@ python Main.py
 ## License and How to Cite
 
 - License: MIT
-- Citation example: Y. KON, PiXY v1.3.0. Zenodo:10.5281/zenodo.18174474
+- Citation example: Y. KON, PiXY v1.3.1. Zenodo:10.5281/zenodo.18174474
 
 ---
 
 ## Change Log (Excerpt)
 
-- v1.3.0 (2026-02-18): Clarified behavior and ordering when using `Add Target` / `Update u, v` together with `Filter` (hiding Group 0)
+- v1.3.1 (2026-02-18): Clarified behavior and ordering when using `Add Target` / `Update u, v` together with `Filter` (hiding Group 0)
 
-- v1.2.5 (2026-02-18): Windows EXE distribution, improved UI flip processing, added README
+- v1.3.1 (2026-02-18): Windows EXE distribution, improved UI flip processing, added README
 - v1.2.3: Internal bug fixes, improved fiducial residual display
 
 ---

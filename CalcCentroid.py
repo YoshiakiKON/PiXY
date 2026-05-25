@@ -15,6 +15,10 @@ except Exception:
 import time
 
 
+class CalculationCancelled(Exception):
+    """Raised when centroid calculation is cancelled by user request."""
+
+
 class CentroidProcessor:
     """
     重心計算プロセッサクラス。
@@ -74,34 +78,26 @@ class CentroidProcessor:
                 return [comp_mask]
             
             # Use multiple cores as seeds for splitting original component
-            # by fast marker propagation with cv2.dilate
-            markers = np.zeros(comp_mask.shape, dtype=np.int32)
-            for core_id in range(1, num_cores):
-                markers[core_labels == core_id] = core_id
-            
-            # Ensure background is marked as -1 to distinguish from unmarked
-            markers[comp_mask == 0] = -1
-            
-            # Fast marker propagation using dilate (OpenCV optimized)
-            kernel_dilate = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (3, 3))
-            for iteration in range(max(comp_mask.shape)):  # enough iterations to fill
-                markers_old = markers.copy()
-                # Dilate each marker separately to propagate without conflicts
-                for core_id in range(1, num_cores):
-                    core_marker = (markers == core_id).astype(np.uint8) * 255
-                    dilated = cv2.dilate(core_marker, kernel_dilate, iterations=1)
-                    # Only expand into unmarked pixels (markers == 0)
-                    expand_mask = (dilated > 0) & (markers == 0) & (comp_mask > 0)
-                    markers[expand_mask] = core_id
-                
-                # Check if all pixels are assigned
-                if np.array_equal(markers, markers_old):
-                    break
+            # by nearest-seed assignment with OpenCV distance transform labels.
+            # This avoids iterative per-seed dilations in Python and is much faster.
+            seed_img = np.full(comp_mask.shape, 255, dtype=np.uint8)
+            seed_img[core_labels > 0] = 0
+            _, seed_labels = cv2.distanceTransformWithLabels(
+                seed_img,
+                cv2.DIST_L2,
+                3,
+                labelType=cv2.DIST_LABEL_CCOMP,
+            )
+            markers = seed_labels.astype(np.int32, copy=False)
+            markers[comp_mask == 0] = 0
             
             # Extract split masks
             split_masks = []
-            for core_id in range(1, num_cores):
-                split_mask = ((markers == core_id) & (comp_mask > 0)).astype(np.uint8) * 255
+            used_labels = np.unique(markers[comp_mask > 0]) if np.any(comp_mask > 0) else []
+            for core_id in used_labels:
+                if int(core_id) <= 0:
+                    continue
+                split_mask = ((markers == int(core_id)) & (comp_mask > 0)).astype(np.uint8) * 255
                 if split_mask.sum() > 0:
                     split_masks.append(split_mask)
             
@@ -117,7 +113,17 @@ class CentroidProcessor:
                 print(f"[DEBUG] _split_by_neck_separation failed: {e}")
             return [comp_mask]
 
-    def get_centroids(self, params, poster=None, *, collect_timings=False, emit_timing=True, compute_boundary_mask=True):
+    def get_centroids(
+        self,
+        params,
+        poster=None,
+        *,
+        collect_timings=False,
+        emit_timing=True,
+        compute_boundary_mask=True,
+        stop_requested=None,
+        stop_check_interval_sec=1.0,
+    ):
         """
         重心を計算する。
 
@@ -155,6 +161,27 @@ class CentroidProcessor:
                 "split_components": 0,
                 "centroids": 0,
             }
+        check_interval = max(0.1, float(stop_check_interval_sec or 1.0))
+        next_stop_check_t = time.monotonic() + check_interval
+
+        def _check_stop_if_needed():
+            nonlocal next_stop_check_t
+            if stop_requested is None:
+                return
+            now_mono = time.monotonic()
+            if now_mono < next_stop_check_t:
+                return
+            next_stop_check_t = now_mono + check_interval
+            should_stop = False
+            try:
+                should_stop = bool(stop_requested())
+            except TypeError:
+                should_stop = bool(stop_requested)
+            except Exception:
+                should_stop = False
+            if should_stop:
+                raise CalculationCancelled("Centroid calculation cancelled by user.")
+
         if DEBUG:
             print(f"[DEBUG][CentroidProcessor] get_centroids start levels={params.get('levels')} min_area={params.get('min_area')} trim={params.get('trim_px')}")
         if poster is None:
@@ -222,6 +249,7 @@ class CentroidProcessor:
         self.last_boundary_mask = np.zeros(poster.shape[:2], dtype=np.uint8)
 
         for group_no, color in enumerate(unique_colors, 1):
+            _check_stop_if_needed()
             if DEBUG and group_no % 5 == 0:
                 print(f"[DEBUG][CentroidProcessor] processing color group {group_no}/{len(unique_colors)}")
             t_mask0 = now() if timings is not None else None
@@ -242,11 +270,23 @@ class CentroidProcessor:
                 timings["cc_time"] += float(now() - t_cc0)
                 timings["components"] += int(max(0, int(num_labels) - 1))
             for lab in range(1, num_labels):
+                _check_stop_if_needed()
                 area = int(stats[lab, cv2.CC_STAT_AREA])
+                left = int(stats[lab, cv2.CC_STAT_LEFT])
+                top = int(stats[lab, cv2.CC_STAT_TOP])
+                width = int(stats[lab, cv2.CC_STAT_WIDTH])
+                height = int(stats[lab, cv2.CC_STAT_HEIGHT])
+
+                # Components smaller than min_area can never produce a valid split
+                # result, so skip the costly neck-separation path entirely.
+                if area > 0 and area < min_area:
+                    self.last_component_areas.append(area)
+                    continue
 
                 # Optional neck separation: detect and split pinched particles
                 t_cm0 = now() if timings is not None else None
-                comp_mask = (labels == lab).astype(np.uint8) * 255
+                comp_labels = labels[top:top + height, left:left + width]
+                comp_mask = (comp_labels == lab).astype(np.uint8) * 255
                 if timings is not None:
                     timings["comp_mask_time"] += float(now() - t_cm0)
                 t_split0 = now() if timings is not None else None
@@ -279,7 +319,9 @@ class CentroidProcessor:
                         try:
                             contours, _ = cv2.findContours(comp_mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
                             if contours:
-                                cv2.drawContours(self.last_boundary_mask, contours, -1, 255, 1)
+                                contour_offset = np.array([[[left, top]]], dtype=np.int32)
+                                shifted_contours = [cnt.astype(np.int32, copy=False) + contour_offset for cnt in contours]
+                                cv2.drawContours(self.last_boundary_mask, shifted_contours, -1, 255, 1)
                         except Exception:
                             pass
                         if timings is not None and t_b0 is not None:
@@ -290,6 +332,7 @@ class CentroidProcessor:
                 if timings is not None:
                     timings["split_components"] += int(len(split_masks))
                 for split_mask in split_masks:
+                    _check_stop_if_needed()
                     # Re-calculate centroid for this component
                     t_scc0 = now() if timings is not None else None
                     split_num_labels, split_labels, split_stats, split_centroids = cv2.connectedComponentsWithStats(split_mask, connectivity=4)
@@ -297,6 +340,7 @@ class CentroidProcessor:
                         timings["split_cc_time"] += float(now() - t_scc0)
                     # Add all non-background components from this split
                     for split_lab in range(1, int(split_num_labels)):
+                        _check_stop_if_needed()
                         split_area = int(split_stats[split_lab, cv2.CC_STAT_AREA])
                         if split_area > 0:
                             self.last_component_areas.append(split_area)
@@ -318,6 +362,8 @@ class CentroidProcessor:
                                 continue
                         t_cent0 = now() if timings is not None else None
                         cx, cy = split_centroids[split_lab]
+                        cx += left
+                        cy += top
                         results.append([group_no, cx, cy])
                         if timings is not None:
                             timings["centroid_time"] += float(now() - t_cent0)
@@ -327,7 +373,9 @@ class CentroidProcessor:
                                 comp_split = (split_labels == split_lab).astype(np.uint8) * 255
                                 contours, _ = cv2.findContours(comp_split, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
                                 if contours:
-                                    cv2.drawContours(self.last_boundary_mask, contours, -1, 255, 1)
+                                    contour_offset = np.array([[[left, top]]], dtype=np.int32)
+                                    shifted_contours = [cnt.astype(np.int32, copy=False) + contour_offset for cnt in contours]
+                                    cv2.drawContours(self.last_boundary_mask, shifted_contours, -1, 255, 1)
                             except Exception as e:
                                 if DEBUG:
                                     print(f"[DEBUG] Failed to draw contours for split mask: {e}")

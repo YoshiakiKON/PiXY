@@ -10,6 +10,16 @@ UI文字列とラベルを一元管理するモジュール。
 # App title
 APP_TITLE = "PiXY"
 
+# ── 2-step workflow labels ──────────────────────────────────────────────────
+STEP1_LABEL = "Step 1: Off-line Targeting"
+STEP1_SUBLABEL = "Load image & specify target points before using the instrument"
+STEP2_LABEL = "Step 2: On-line Alignment"
+STEP2_SUBLABEL = "Register fiducial points on the instrument, then export coordinates"
+
+# Auto-detect (centroid extraction) section — treated as an auxiliary tool
+SECTION_AUTO_DETECT = "Auto-detect (Auxiliary)"
+SECTION_AUTO_DETECT_HINT = "Optional: auto-extract target candidates from image"
+
 # Button labels
 BUTTON_OPEN_IMAGE = "Open Image"
 BUTTON_EXPORT_CENTROIDS = "Export Centroids"

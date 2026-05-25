@@ -53,7 +53,7 @@ Developer notes
 - The `SegmentControl` helper lives inside `Ui.py` and implements compact segmented buttons used throughout the UI.
 
 Versioning & citation
-- Current release: 1.3.2
+- Current release: 1.3.3
 - Please cite the software when used in published research (see `CITATION.cff`).
 
 License
@@ -70,4 +70,4 @@ Contact
 If you want, I can also:
 - Update `README.md` with screenshots or a short animated GIF.
 - Add a concise `README-short.md` for PyPI.
-- Create a `CHANGELOG.md` entry for the `1.3.2` release.
+- Create a `CHANGELOG.md` entry for the `1.3.3` release.

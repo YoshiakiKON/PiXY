@@ -5,7 +5,7 @@ a = Analysis(
     ['Main.py'],
     pathex=[],
     binaries=[],
-    datas=[('DemoBSE.png', '.'), ('pyproject.toml', '.'), ('last_image_path.txt', '.'), ('PiXY_splash.png', '.'), ('PiXY_icon.ico', '.'), ('PiXY.png', '.')],
+    datas=[('DemoBSE.png', '.'), ('pyproject.toml', '.'), ('last_image_path.txt', '.'), ('PiXY_splash.png', '.'), ('PiXY_icon.ico', '.'), ('PiXY_Pix.png', '.'), ('PiXY_XY.png', '.'), ('PiXY.png', '.')],
     hiddenimports=[],
     hookspath=[],
     hooksconfig={},

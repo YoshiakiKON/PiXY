@@ -319,6 +319,25 @@ def populate_tables(
                 it.setTextAlignment(ALIGN_CENTER)
             table.setItem(DATA_ROW_OFFSET + 0, c, item_x)
             table.setItem(DATA_ROW_OFFSET + 1, c, item_y)
+            # Always clear Calc X/Y/Z first.
+            # When transform inputs are incomplete (e.g., right after Add Target),
+            # model fitting can be skipped; without this reset, stale texts may remain.
+            empty_calc_x = QTableWidgetItem("")
+            empty_calc_y = QTableWidgetItem("")
+            empty_calc_z = QTableWidgetItem("")
+            for it in (empty_calc_x, empty_calc_y, empty_calc_z):
+                it.setTextAlignment(ALIGN_CENTER)
+                try:
+                    f = it.font(); f.setBold(True); it.setFont(f)
+                except Exception:
+                    pass
+                try:
+                    it.setFlags(it.flags() & ~ITEM_EDITABLE)
+                except Exception:
+                    pass
+            table.setItem(DATA_ROW_OFFSET + 2, c, empty_calc_x)
+            table.setItem(DATA_ROW_OFFSET + 3, c, empty_calc_y)
+            table.setItem(DATA_ROW_OFFSET + 4, c, empty_calc_z)
         # Calc.* を計算（回転角度+拡大縮小率ベース）
         # - XY: 2D similarity (need ≥2 point pairs with X/Y)
         # - Z : plane fit (need ≥3 point pairs with X/Y/Z)

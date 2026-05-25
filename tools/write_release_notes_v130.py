@@ -6,7 +6,7 @@ if not img.exists():
     print('Missing image', img)
     raise SystemExit(1)
 b = base64.b64encode(img.read_bytes()).decode()
-md = f'''# PiXY v1.3.2 — Release Notes (2026-02-18)
+md = f'''# PiXY v1.3.3 — Release Notes (2026-05-26)
 
 ## Software description
 
@@ -20,14 +20,14 @@ This release provides a minimal submission package (see below) that contains onl
 
 ## Notes
 
-- Change history is documented in `RELEASE_NOTES_v1.3.2.md` — no additional change log is included here.
-- This `v1.3.2` release is intended as a minimal archive for paper submission: it contains the same codebase as `v1.3.2` but is packaged with only the files necessary for reproducible execution and review (source files, minimal assets required at runtime, and a README). Non-essential documentation and large auxiliary files (full image sets, intermediate build artifacts, and editorial material) are omitted from the minimal package.
+- Change history is documented in `RELEASE_NOTES_v1.3.3.md` — no additional change log is included here.
+- This `v1.3.3` release is intended as a minimal archive for paper submission: it contains the same codebase as `v1.3.3` but is packaged with only the files necessary for reproducible execution and review (source files, minimal assets required at runtime, and a README). Non-essential documentation and large auxiliary files (full image sets, intermediate build artifacts, and editorial material) are omitted from the minimal package.
 
-If you want me to create the minimal archive now (tag `v1.3.2`, generate a zip of the selected files, and push the tag), confirm and I will proceed.
+If you want me to create the minimal archive now (tag `v1.3.3`, generate a zip of the selected files, and push the tag), confirm and I will proceed.
 
 ---
 Generated: 2026-02-18
 '''
-out = p.parent / 'RELEASE_NOTES_v1.3.2.md'
+out = p.parent / 'RELEASE_NOTES_v1.3.3.md'
 out.write_text(md, encoding='utf-8')
 print('WROTE', out)

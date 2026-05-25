@@ -393,7 +393,11 @@ if __name__ == "__main__":
                                 continue
 
                         t0 = time.perf_counter()
-                        ok = win._open_image_from_path(p, show_startup_prompt_on_fail=False)
+                        ok = win._open_image_from_path(
+                            p,
+                            show_startup_prompt_on_fail=False,
+                            reset_project_state=True,
+                        )
                         dt = float(time.perf_counter() - t0)
 
                         if is_last_candidate and (not bool(ok) or dt > float(STARTUP_MAX_LAST_IMAGE_LOAD_SEC)):

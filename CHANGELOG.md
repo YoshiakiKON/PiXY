@@ -2,6 +2,27 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.3.3] - 2026-05-26
+### Performance
+- Neck separation path was significantly accelerated by processing component masks in ROI space and replacing iterative marker propagation with OpenCV distance-transform label assignment.
+- Components smaller than `min_area` now skip neck-splitting work early to avoid unnecessary heavy processing.
+
+### UI behavior
+- Kept the active view center stable when adding targets/fiducial points under high zoom to reduce apparent jump after point insertion.
+- Harmonized add-point continuation behavior between target and fiducial workflows.
+
+## [Unreleased] - 2026-05-18
+### UI redesign: 2-step workflow
+- Left panel now shows two clearly labeled sections:
+  - **Step 1: Off-line Targeting** (blue header) — project management and target point selection
+  - **Step 2: On-line Alignment** (red header) — fiducial point input and coordinate export
+- Target point selection is now **manual-first**: `Add Target` is the primary method; auto-detect (centroid extraction) is demoted to an auxiliary collapsible panel.
+- Auto-detect panel (`▶ Auto-detect Targets (Auxiliary)`) is **collapsed by default**; click the label to expand.
+- New projects loaded via `New Project` no longer auto-run centroid extraction on image open.
+- `Strings.py`: added `STEP1_LABEL`, `STEP2_LABEL`, `SECTION_AUTO_DETECT`, `SECTION_AUTO_DETECT_HINT` constants.
+- `Ui.py`: `_open_image_from_path` accepts `auto_detect` kwarg (default `False`); pass `True` to restore previous auto-run behaviour.
+- `InstructionManual_JP.md`: Quick Start and Workflow sections rewritten to reflect 2-step design.
+
 ## [1.2.2] - 2026-02-05
 - UI: adjust SegmentControl button widths for better readability (Normal/Flip).
 - Docs: minor proofreading and formatting updates in the JOSS draft.

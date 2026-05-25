@@ -22,7 +22,7 @@ repository: https://github.com/YoshiakiKON/PiXY
 repository-code: https://github.com/YoshiakiKON/PiXY
 zenodo: https://doi.org/10.5281/zenodo.18174474
 license: MIT
-version: 1.3.2
+version: 1.3.3
 ---
 
 

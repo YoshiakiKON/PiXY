@@ -21,14 +21,14 @@ import qt_compat
 from qt_compat.QtWidgets import (
     QSlider, QMainWindow, QLabel, QVBoxLayout, QHBoxLayout, QPushButton, QLineEdit, QWidget,
     QFileDialog, QStyle, QSizePolicy, QTableWidget, QTableWidgetItem, QAbstractItemView,
-    QHeaderView, QScrollArea, QApplication, QMenu, QComboBox
+    QHeaderView, QScrollArea, QApplication, QMenu, QComboBox, QTabWidget
 )
 from qt_compat.QtWidgets import QButtonGroup
 from qt_compat.QtCore import Qt, QTimer, QObject, QEvent, QRect, QPoint, pyqtSignal, QThread
 from qt_compat.QtGui import QPixmap, QFont, QCursor, QPainter, QPen, QColor, QPalette
 
 from Util import cvimg_to_qpixmap, kmeans_posterize
-from CalcCentroid import CentroidProcessor
+from CalcCentroid import CentroidProcessor, CalculationCancelled
 from Config import (
     PROC_TARGET_WIDTH,
     save_last_image_path,
@@ -1244,7 +1244,8 @@ class CentroidFinderWindow(QMainWindow):
         except Exception:
             pass
 
-        # Setup pseudo-headers in table_ref and table for 2-row header appearance
+        # Setup pseudo-headers in table_ref for 2-row header appearance.
+        # Keep canonical self.table free from pseudo-header cell writes.
         try:
             # Ensure minimum rows for headers
             if self.table_ref.rowCount() < 2:
@@ -1254,7 +1255,6 @@ class CentroidFinderWindow(QMainWindow):
             
             # Apply pseudo-headers
             self._setup_pseudo_headers_ref(self.table_ref)
-            self._setup_pseudo_headers_between(self.table)
             
             # Enforce row heights for headers and data rows
             try:
@@ -1458,6 +1458,14 @@ class CentroidFinderWindow(QMainWindow):
         self.calc_mode_controls = None
         self.lbl_calc_mode = None
         self.toggle_calc_mode = None
+        self.btn_stop_calc = None
+        self._calc_in_progress = False
+        self._calc_stop_requested = False
+        self._calc_trace_seq = 0
+        self._calc_trace_last_reason = ""
+        # New Project 初期化用: Area閾値を下位/上位1/3で一度だけ自動設定
+        self._area_init_tercile_pending = False
+        self._pending_recompute_after_area_init = False
 
         # ピックモード（ルーペ制御）
         self.pick_mode = None  # None / 'add' / 'update'
@@ -1484,9 +1492,9 @@ class CentroidFinderWindow(QMainWindow):
         self._display_img_size = (0, 0) # キャンバス内の画像サイズ（ズーム後）
         self._display_pm_base = None    # クロスヘア等を描く前のベースPixmap
         self._max_render_pixels_override = None  # ホイール中の軽量描画用（Noneで通常）
-        self.max_zoom_target_visible_px = 300    # 最大拡大時に長辺方向で見える元画像pxの目標
-        self._normal_max_render_pixels = 6144 * 6144
-        self._hard_max_render_pixels = 8192 * 8192
+        self.max_zoom_target_visible_px = 220    # 最大拡大時に長辺方向で見える元画像pxの目標
+        self._normal_max_render_pixels = 8192 * 8192
+        self._hard_max_render_pixels = 12288 * 12288
         # 初回表示は画像中心から開始するためのフラグ
         self._initial_center_done = False
         # 通常時は手のカーソル
@@ -2258,7 +2266,7 @@ class CentroidFinderWindow(QMainWindow):
                 pass
             try:
                 # 固定幅にして左カラム内の表の横幅を左コンテナに合わせる
-                self.table_ref_view.setFixedWidth(490)
+                self.table_ref_view.setFixedWidth(500)
             except Exception:
                 pass
             try:
@@ -2386,7 +2394,7 @@ class CentroidFinderWindow(QMainWindow):
                 gil.setSpacing(6)
             except Exception:
                 pass
-            self.lbl_grain_ident = QLabel("Grain Identification")
+            self.lbl_grain_ident = QLabel(STR.SECTION_AUTO_DETECT)
             try:
                 from qt_compat.QtGui import QFont as _QFont
                 fgi = _QFont('Segoe UI', 12)
@@ -2434,7 +2442,20 @@ class CentroidFinderWindow(QMainWindow):
             gl.setContentsMargins(0, 0, 0, 0)
             gl.setSpacing(6)
             if getattr(self, 'grain_ident_controls', None) is not None:
+                # Keep Auto-detect section always expanded (manual-first workflow)
+                try:
+                    self.lbl_grain_ident.setText(STR.SECTION_AUTO_DETECT)
+                    self.lbl_grain_ident.setCursor(QCursor(Qt.ArrowCursor))
+                    self.lbl_grain_ident.setToolTip(STR.SECTION_AUTO_DETECT_HINT)
+                except Exception:
+                    pass
                 gl.addWidget(self.grain_ident_controls, 0)
+
+            # Body: wraps calc_mode_controls + sliders_layout
+            self.grain_body = QWidget()
+            gb_layout = QVBoxLayout(self.grain_body)
+            gb_layout.setContentsMargins(0, 0, 0, 0)
+            gb_layout.setSpacing(6)
 
             # Recalculation Trigger controls (v1.1.9-style): Auto/Manual with Manual -> ReCalculate
             try:
@@ -2472,20 +2493,103 @@ class CentroidFinderWindow(QMainWindow):
                     cml.addWidget(self.toggle_calc_mode)
                 except Exception:
                     self.toggle_calc_mode = None
-                gl.addWidget(self.calc_mode_controls, 0)
+                try:
+                    self.btn_stop_calc = QPushButton("Stop Calc.")
+                    self.btn_stop_calc.setFixedSize(108, 27)
+                    self.btn_stop_calc.setEnabled(False)
+                    self.btn_stop_calc.setVisible(False)
+                    self.btn_stop_calc.clicked.connect(lambda: self._request_calc_stop("button"))
+                    cml.addWidget(self.btn_stop_calc)
+                except Exception:
+                    self.btn_stop_calc = None
+                gb_layout.addWidget(self.calc_mode_controls, 0)
             except Exception:
                 self.calc_mode_controls = None
                 self.lbl_calc_mode = None
                 self.toggle_calc_mode = None
+                self.btn_stop_calc = None
 
-            gl.addLayout(sliders_layout)
+            gb_layout.addLayout(sliders_layout)
+            self.grain_body.setVisible(True)  # always expanded
+            gl.addWidget(self.grain_body, 0)
         except Exception:
             self.grain_section = None
+            self.grain_body = None
+
+        # Left tabs: Off-line Targeting / On-line Alignment
+        try:
+            self.left_tabs = QTabWidget()
+            self.left_tabs.setObjectName('leftWorkflowTabs')
+            self.left_tabs.setTabPosition(QTabWidget.North)
+            try:
+                # Improve readability: slightly wider tabs and stronger selected/inactive contrast.
+                self.left_tabs.tabBar().setExpanding(False)
+                self.left_tabs.tabBar().setElideMode(Qt.ElideNone)
+            except Exception:
+                pass
+            self.left_tabs.setStyleSheet(
+                """
+                QTabWidget#leftWorkflowTabs::pane {
+                    border: 1px solid #b8b8b8;
+                    top: -1px;
+                    background: #f4f4f4;
+                }
+                QTabWidget#leftWorkflowTabs QTabBar::tab {
+                    background: #dfdfdf;
+                    color: #3a3a3a;
+                    border: 1px solid #b8b8b8;
+                    border-bottom: none;
+                    border-top-left-radius: 4px;
+                    border-top-right-radius: 4px;
+                    min-width: 166px;
+                    padding: 5px 10px;
+                    margin-right: 2px;
+                    font-weight: 600;
+                }
+                QTabWidget#leftWorkflowTabs QTabBar::tab:selected {
+                    background: #ffffff;
+                    color: #121212;
+                    border-color: #8e8e8e;
+                }
+                QTabWidget#leftWorkflowTabs QTabBar::tab:!selected {
+                    margin-top: 2px;
+                }
+                """
+            )
+
+            # Off-line Targeting tab: Auto-detect (Auxiliary)
+            self.tab_offline = QWidget()
+            offline_col = QVBoxLayout(self.tab_offline)
+            offline_col.setContentsMargins(0, 5, 0, 0)
+            offline_col.setSpacing(6)
+            if getattr(self, 'grain_section', None) is not None:
+                offline_col.addWidget(self.grain_section, 0)
+            offline_col.addStretch(1)
+            self.left_tabs.addTab(self.tab_offline, 'Off-line Targeting')
+
+            # On-line Alignment tab: fiducial controls + table
+            self.tab_online = QWidget()
+            online_col = QVBoxLayout(self.tab_online)
+            online_col.setContentsMargins(0, 0, 0, 0)
+            online_col.setSpacing(6)
+            self.left_tabs.addTab(self.tab_online, 'On-line Alignment')
+            self.left_tabs.setCurrentIndex(0)
+        except Exception:
+            self.left_tabs = None
+            self.tab_offline = None
+            self.tab_online = None
+            offline_col = None
+            online_col = None
+
         # 左カラムの表の上に Add/Update/Clear ボタンを配置
         try:
             left_controls = QHBoxLayout()
             try:
-                left_controls.setContentsMargins(0, 0, 0, 0)
+                # Add a small top gap on On-line Alignment tab for better separation from tabs.
+                if online_col is not None:
+                    left_controls.setContentsMargins(0, 5, 0, 0)
+                else:
+                    left_controls.setContentsMargins(0, 0, 0, 0)
             except Exception:
                 pass
             try:
@@ -2504,7 +2608,10 @@ class CentroidFinderWindow(QMainWindow):
                 left_controls.addStretch(1)
             except Exception:
                 pass
-            left_col.addLayout(left_controls, 0)
+            if online_col is not None:
+                online_col.addLayout(left_controls, 0)
+            else:
+                left_col.addLayout(left_controls, 0)
         except Exception:
             pass
 
@@ -2556,7 +2663,7 @@ class CentroidFinderWindow(QMainWindow):
             except Exception:
                 pass
             try:
-                hdr.setFixedWidth(490)
+                hdr.setFixedWidth(500)
             except Exception:
                 pass
             try:
@@ -2576,26 +2683,29 @@ class CentroidFinderWindow(QMainWindow):
                     pass
             except Exception:
                 pass
-            left_col.addWidget(hdr, 0)
+            if online_col is not None:
+                online_col.addWidget(hdr, 0)
+            else:
+                left_col.addWidget(hdr, 0)
         except Exception:
             self.table_ref_view_header = None
 
-        left_col.addWidget(self.table_ref_view, 1)
-        # Place Grain Identification block below the RefPoint table
-        try:
-            if getattr(self, 'grain_section', None) is not None:
-                left_col.addWidget(self.grain_section, 0)
-        except Exception:
-            pass
+        if online_col is not None:
+            online_col.addWidget(self.table_ref_view, 1)
+        else:
+            left_col.addWidget(self.table_ref_view, 1)
+
+        if self.left_tabs is not None:
+            left_col.addWidget(self.left_tabs, 1)
         # Wrap left column layout in a QWidget and cap its maximum width so it doesn't grow too wide
         self.left_container = QWidget()
         self.left_container.setLayout(left_col)
         try:
             # 初期幅 (動的に再計算される)
-            self.left_container.setFixedWidth(490)
+            self.left_container.setFixedWidth(500)
         except Exception:
             try:
-                self.left_container.setMaximumWidth(490)
+                self.left_container.setMaximumWidth(500)
             except Exception:
                 pass
         main_row.addWidget(self.left_container, 0)
@@ -3041,7 +3151,7 @@ class CentroidFinderWindow(QMainWindow):
         except Exception:
             pass
 
-        self.open_image()
+        self._open_startup_image()
 
     # オーバーレイ表示モード（Original/Posterized）変更ハンドラ
     def _on_overlay_mode_changed(self, idx):
@@ -3060,6 +3170,14 @@ class CentroidFinderWindow(QMainWindow):
 
     # Recalculation Trigger toggle handler (Auto/Manual)
     def _on_toggle_calc_mode(self, idx):
+        # 計算中はモード切り替えではなく緊急停止として扱う
+        try:
+            if bool(getattr(self, '_calc_in_progress', False)):
+                self._request_calc_stop("mode-toggle")
+                return
+        except Exception:
+            pass
+
         try:
             prev_mode = str(getattr(self, 'calc_mode', 'auto'))
         except Exception:
@@ -3285,6 +3403,14 @@ class CentroidFinderWindow(QMainWindow):
                     pass
 
     def _on_manual_recalculate_clicked(self):
+        # 計算中に同ボタンが押された場合は緊急停止として扱う
+        try:
+            if bool(getattr(self, '_calc_in_progress', False)):
+                self._request_calc_stop("manual-segment")
+                return
+        except Exception:
+            pass
+
         # Only act if Manual is active; otherwise ignore
         try:
             if str(getattr(self, 'calc_mode', 'auto')) != 'manual':
@@ -3299,37 +3425,6 @@ class CentroidFinderWindow(QMainWindow):
 
         try:
             self._manual_recalc_in_progress = True
-        except Exception:
-            pass
-
-        # Provide immediate visual feedback and let the event loop paint before heavy work.
-        try:
-            btns = getattr(getattr(self, 'toggle_calc_mode', None), '_buttons', [])
-            btn0 = btns[0] if len(btns) > 0 else None
-            btn1 = btns[1] if len(btns) > 1 else None
-        except Exception:
-            btn0 = None
-            btn1 = None
-
-        try:
-            if btn0 is not None:
-                btn0.setEnabled(False)
-            if btn1 is not None:
-                btn1.setEnabled(False)
-                try:
-                    btn1.setProperty('pixy_calc_in_progress', True)
-                    try:
-                        btn1.style().unpolish(btn1)
-                        btn1.style().polish(btn1)
-                    except Exception:
-                        pass
-                    try:
-                        btn1.update()
-                    except Exception:
-                        pass
-                except Exception:
-                    pass
-                btn1.setText('Calculating')
         except Exception:
             pass
 
@@ -3353,32 +3448,149 @@ class CentroidFinderWindow(QMainWindow):
                     self._manual_recalc_in_progress = False
                 except Exception:
                     pass
-                try:
-                    if btn0 is not None:
-                        btn0.setEnabled(True)
-                    if btn1 is not None:
-                        btn1.setEnabled(True)
-                        try:
-                            btn1.setProperty('pixy_calc_in_progress', False)
-                            try:
-                                btn1.style().unpolish(btn1)
-                                btn1.style().polish(btn1)
-                            except Exception:
-                                pass
-                            try:
-                                btn1.update()
-                            except Exception:
-                                pass
-                        except Exception:
-                            pass
-                        btn1.setText('ReCalculate')
-                except Exception:
-                    pass
 
         try:
             QTimer.singleShot(0, _do_recalc)
         except Exception:
             _do_recalc()
+
+    def _request_calc_stop(self, source="ui"):
+        """Request cancellation of the currently running heavy calculation."""
+        try:
+            self._calc_stop_requested = True
+        except Exception:
+            pass
+        try:
+            if bool(getattr(self, '_calc_in_progress', False)) and getattr(self, 'ui_footer', None) is not None:
+                self.ui_footer.showMessage(f"Stopping calculation... ({source})")
+        except Exception:
+            pass
+
+    def _calc_stop_requested_callback(self):
+        """Process UI events and return True when a stop is requested."""
+        try:
+            QApplication.processEvents()
+        except Exception:
+            pass
+        try:
+            return bool(getattr(self, '_calc_stop_requested', False))
+        except Exception:
+            return False
+
+    def _set_calc_in_progress(self, running: bool):
+        try:
+            self._calc_in_progress = bool(running)
+        except Exception:
+            pass
+        try:
+            if not bool(running):
+                self._calc_stop_requested = False
+        except Exception:
+            pass
+        try:
+            if getattr(self, 'btn_stop_calc', None) is not None:
+                self.btn_stop_calc.setEnabled(bool(running))
+        except Exception:
+            pass
+
+        # 計算中は現在採用中モードのセグメントを「Stop Calc.」として使う
+        try:
+            tcm = getattr(self, 'toggle_calc_mode', None)
+            if tcm is not None:
+                buttons = getattr(tcm, '_buttons', [None, None])
+                btn_auto = buttons[0] if len(buttons) > 0 else None
+                btn_manual = buttons[1] if len(buttons) > 1 else None
+                mode_now = str(getattr(self, 'calc_mode', 'auto'))
+                active_idx = 1 if mode_now == 'manual' else 0
+
+                for i, b in enumerate((btn_auto, btn_manual)):
+                    if b is None:
+                        continue
+                    if bool(running):
+                        if i == active_idx:
+                            b.setText('Stop Calc.')
+                            b.setEnabled(True)
+                            try:
+                                b.setProperty('pixy_calc_in_progress', True)
+                            except Exception:
+                                pass
+                        else:
+                            b.setEnabled(False)
+                            b.setText('Auto' if i == 0 else ('ReCalculate' if mode_now == 'manual' else 'Manual'))
+                            try:
+                                b.setProperty('pixy_calc_in_progress', False)
+                            except Exception:
+                                pass
+                    else:
+                        b.setEnabled(True)
+                        b.setText('Auto' if i == 0 else ('ReCalculate' if mode_now == 'manual' else 'Manual'))
+                        try:
+                            b.setProperty('pixy_calc_in_progress', False)
+                        except Exception:
+                            pass
+                    try:
+                        b.style().unpolish(b)
+                        b.style().polish(b)
+                        b.update()
+                    except Exception:
+                        pass
+        except Exception:
+            pass
+
+    def _compute_centroids_cancellable(self, params, poster):
+        """Run centroid calculation with periodic cancellation checks."""
+        trace_id = None
+        t0 = monotonic()
+        status = 'ok'
+        try:
+            self._calc_trace_seq = int(getattr(self, '_calc_trace_seq', 0) or 0) + 1
+            trace_id = int(self._calc_trace_seq)
+        except Exception:
+            trace_id = None
+
+        try:
+            if hasattr(self, '_log_info'):
+                mode = str(getattr(self, 'calc_mode', 'auto'))
+                reason = str(getattr(self, '_calc_trace_last_reason', '') or '')
+                self._log_info(
+                    "CalcTrace START "
+                    + f"id={trace_id} mode={mode} reason={reason} "
+                    + f"levels={params.get('levels')} min={params.get('min_area')} max={params.get('max_area')} "
+                    + f"trim={params.get('trim_px')} neck={params.get('neck_separation')} shape={params.get('shape_complexity')}"
+                )
+        except Exception:
+            pass
+
+        self._calc_stop_requested = False
+        self._set_calc_in_progress(True)
+        try:
+            return self.centroid_processor.get_centroids(
+                params,
+                poster=poster,
+                stop_requested=self._calc_stop_requested_callback,
+                stop_check_interval_sec=1.0,
+            )
+        except CalculationCancelled:
+            status = 'cancelled'
+            raise
+        except Exception:
+            status = 'error'
+            raise
+        finally:
+            self._set_calc_in_progress(False)
+            try:
+                dt = float(monotonic() - t0)
+            except Exception:
+                dt = 0.0
+            try:
+                if hasattr(self, '_log_info'):
+                    self._log_info(
+                        "CalcTrace END "
+                        + f"id={trace_id} status={status} stop_requested={bool(getattr(self, '_calc_stop_requested', False))} "
+                        + f"elapsed={dt:.3f}s"
+                    )
+            except Exception:
+                pass
 
     # 境界線表示トグルハンドラ
     def _on_toggle_boundaries(self, checked):
@@ -3866,10 +4078,16 @@ class CentroidFinderWindow(QMainWindow):
         except Exception:
             pass
         try:
+            # Avoid duplicate schedule_update via slider callback; trigger once below.
+            self.slider_num_groups.blockSignals(True)
             self.slider_num_groups.setValue(v)
+            self.slider_num_groups.blockSignals(False)
         except Exception:
+            try:
+                self.slider_num_groups.blockSignals(False)
+            except Exception:
+                pass
             pass
-        self.schedule_update()
 
         # Keep internal value even if it exceeds slider maximum
         self.levels_value = int(v)
@@ -3890,6 +4108,7 @@ class CentroidFinderWindow(QMainWindow):
                 self.slider_levels.blockSignals(False)
             except Exception:
                 pass
+        # Single recompute trigger for num-groups adjustment.
         self.schedule_update(force=True)
 
     def _ensure_ref_view_delegate(self):
@@ -4191,7 +4410,84 @@ class CentroidFinderWindow(QMainWindow):
         fname, _ = QFileDialog.getOpenFileName(self, STR.OPEN_DIALOG_TITLE, last_path, STR.FILE_FILTER)
         if not fname:
             return
-        self._open_image_from_path(fname)
+        self._open_image_from_path(fname, reset_project_state=True)
+
+    def _open_startup_image(self):
+        """起動時はデモ画像を自動読み込みし、見つからない場合のみ手動選択へフォールバック。"""
+        try:
+            base_dirs = []
+            try:
+                if getattr(sys, 'frozen', False) and hasattr(sys, '_MEIPASS'):
+                    base_dirs.append(sys._MEIPASS)
+            except Exception:
+                pass
+            try:
+                here = os.path.dirname(__file__)
+                if here not in base_dirs:
+                    base_dirs.append(here)
+            except Exception:
+                pass
+
+            # Prefer explicit demo files first.
+            demo_names = [
+                'DemoBSE.png',
+                'DemoBMP.bmp',
+                'DemoBMP.png',
+            ]
+            demo_candidates = [os.path.join(root, name) for root in base_dirs for name in demo_names]
+
+            demo_path = None
+            for p in demo_candidates:
+                try:
+                    if p and os.path.isfile(p):
+                        demo_path = p
+                        break
+                except Exception:
+                    continue
+
+            if demo_path:
+                ok = self._open_image_from_path(demo_path, reset_project_state=True)
+                if ok:
+                    return
+
+            # Fallback: no demo available (or load failed), let user pick an image.
+            self.open_image()
+        except Exception:
+            try:
+                self.open_image()
+            except Exception:
+                pass
+
+    def _reset_project_coordinates(self):
+        """Reset coordinate-related project state for New Project."""
+        try:
+            self._end_pick_mode(redraw=False)
+        except Exception:
+            pass
+        try:
+            self.ref_points = [None] * 10
+            self.ref_selected_index = 0
+            self.ref_obs = [{"x": "", "y": "", "z": ""} for _ in range(10)]
+            self.excluded_ref_indices = set()
+        except Exception:
+            pass
+        try:
+            self.manual_targets = []
+            self.centroids = []
+            self._auto_centroids = []
+            self.selected_index = None
+            self.excluded_centroid_indices = set()
+            self._explicit_excluded_centroid_indices = set()
+            self._force_visible_centroid_indices = set()
+            self._replace_target_source_index = None
+            self._replace_target_source_group = None
+            self._target_add_has_added = False
+        except Exception:
+            pass
+        try:
+            self.visible_ref_cols = 3
+        except Exception:
+            pass
 
     def _show_open_image_prompt_message(self):
         try:
@@ -4201,7 +4497,7 @@ class CentroidFinderWindow(QMainWindow):
             pass
 
     # 指定パスから画像を読み込み、処理画像を構築
-    def _open_image_from_path(self, fname: str, show_startup_prompt_on_fail: bool = False):
+    def _open_image_from_path(self, fname: str, show_startup_prompt_on_fail: bool = False, auto_detect: bool = False, reset_project_state: bool = False):
         # 大きなファイルかどうかチェックして、必要なら軽負荷モードを有効化
         try:
             fsize = os.path.getsize(fname)
@@ -4254,11 +4550,69 @@ class CentroidFinderWindow(QMainWindow):
                 self._dbg(f"Processing image with proc_target_width={self.proc_target_width}")
         except Exception:
             pass
+        # New Project: discard previous coordinate state before next update.
+        try:
+            if bool(reset_project_state):
+                self._reset_project_coordinates()
+        except Exception:
+            pass
+        # New Project 読み込み時の初期条件:
+        # - Number of Groups を 2 に固定
+        # - Area Min/Max の初期化を「下位1/3・上位1/3」に設定
+        try:
+            if bool(reset_project_state):
+                # Keep current manual/auto mode untouched; only reset detection defaults.
+                lv = 2
+                try:
+                    if getattr(self, 'slider_num_groups', None) is not None:
+                        self.slider_num_groups.blockSignals(True)
+                        self.slider_num_groups.setValue(int(lv))
+                        self.slider_num_groups.blockSignals(False)
+                except Exception:
+                    try:
+                        if getattr(self, 'slider_num_groups', None) is not None:
+                            self.slider_num_groups.blockSignals(False)
+                    except Exception:
+                        pass
+                try:
+                    if getattr(self, 'edit_num_groups', None) is not None:
+                        self.edit_num_groups.setText(str(int(lv)))
+                except Exception:
+                    pass
+                try:
+                    self.levels_value = int(lv)
+                    if getattr(self, 'edit_levels', None) is not None:
+                        self.edit_levels.setText(str(int(lv)))
+                    if getattr(self, 'slider_levels', None) is not None:
+                        self.slider_levels.blockSignals(True)
+                        self.slider_levels.setValue(max(self.slider_levels.minimum(), min(self.slider_levels.maximum(), int(lv))))
+                        self.slider_levels.blockSignals(False)
+                except Exception:
+                    try:
+                        if getattr(self, 'slider_levels', None) is not None:
+                            self.slider_levels.blockSignals(False)
+                    except Exception:
+                        pass
+
+                try:
+                    ah = getattr(self, 'area_hist', None)
+                    if ah is not None:
+                        ah.clear()
+                        ah._user_set_selection = False
+                        ah._autoset_done = False
+                except Exception:
+                    pass
+                self._area_init_tercile_pending = True
+                self._pending_recompute_after_area_init = False
+        except Exception:
+            pass
         # 画像が変わったのでキャッシュ破棄
         self._cache = {"img_id": id(self.proc_img), "levels": None, "min_area": None, "trim_px": None, "poster": None, "centroids": None}
         # 次回更新時に画像中心へスクロール
         self._initial_center_done = False
-        self.schedule_update(force=True)
+        # New Project 時は最初から計算を実行（groups=2 で開始）
+        do_initial_detect = bool(auto_detect) or bool(reset_project_state)
+        self.schedule_update(force=True, recompute_centroids=bool(do_initial_detect))
         return True
 
     # 自動デバッグ実行: 前回画像を読み込み、更新後に終了
@@ -4418,6 +4772,18 @@ class CentroidFinderWindow(QMainWindow):
         except Exception:
             _reason = ''
         try:
+            if bool(recompute_centroids):
+                if _reason:
+                    self._calc_trace_last_reason = str(_reason)
+                elif bool(getattr(self, '_manual_recompute_request', False)):
+                    self._calc_trace_last_reason = 'manual-recompute'
+                elif bool(force):
+                    self._calc_trace_last_reason = 'force-update'
+                else:
+                    self._calc_trace_last_reason = 'update'
+        except Exception:
+            pass
+        try:
             # In manual mode, skip heavy recompute unless forced explicitly
             if str(getattr(self, 'calc_mode', 'auto')) == 'manual' and recompute_centroids:
                 if not bool(getattr(self, '_manual_recompute_request', False)):
@@ -4519,8 +4885,15 @@ class CentroidFinderWindow(QMainWindow):
             v = int(round(float(sel_min)))
             v = max(self.slider_min_area.minimum(), min(self.slider_min_area.maximum(), v))
             try:
+                # Avoid duplicate schedule_update via slider callback.
+                self.slider_min_area.blockSignals(True)
                 self.slider_min_area.setValue(v)
+                self.slider_min_area.blockSignals(False)
             except Exception:
+                try:
+                    self.slider_min_area.blockSignals(False)
+                except Exception:
+                    pass
                 pass
             try:
                 self.edit_min_area.setText(str(v))
@@ -4555,6 +4928,26 @@ class CentroidFinderWindow(QMainWindow):
             # 粒子数（灰色線）
             counts, _ = _np.histogram(arr, bins=bins)
             self.area_hist.set_data(edges.tolist(), vals.tolist(), counts.tolist())
+
+            # New Project 初回のみ: Min/Max を Log 変換後レンジの 1/3, 2/3 で初期化。
+            try:
+                if bool(getattr(self, '_area_init_tercile_pending', False)):
+                    log_mn = float(_np.log(float(mn)))
+                    log_mx = float(_np.log(float(mx)))
+                    log_rng = float(log_mx - log_mn)
+                    sel_min = float(_np.exp(log_mn + (log_rng / 3.0)))
+                    sel_max = float(_np.exp(log_mn + (2.0 * log_rng / 3.0)))
+                    sel_min = max(float(mn), min(float(mx), sel_min))
+                    sel_max = max(float(mn), min(float(mx), sel_max))
+                    if sel_min > sel_max:
+                        sel_min, sel_max = sel_max, sel_min
+                    self.area_hist.set_selection(sel_min, sel_max)
+                    self._area_init_tercile_pending = False
+                    # 初期閾値が確定したので、次フレームでその値を使って再計算する。
+                    self._pending_recompute_after_area_init = True
+                    return
+            except Exception:
+                pass
 
             # Auto-initialize Min/Max based on curve inflection points.
             # Min: left inflection of particle count peak
@@ -4675,6 +5068,12 @@ class CentroidFinderWindow(QMainWindow):
             poster = None
             poster_dt = None
             did_centroid_recompute = False
+            manual_visibility_before_recompute = None
+            try:
+                if bool(recompute_centroids):
+                    manual_visibility_before_recompute = self._capture_manual_target_visibility()
+            except Exception:
+                manual_visibility_before_recompute = None
             if self.centroid_processor:
                 # 判定: 自動更新モードか手動モードかで重い処理の実行を切り替える
                 try:
@@ -4750,65 +5149,89 @@ class CentroidFinderWindow(QMainWindow):
                     if poster is None:
                         poster = kmeans_posterize(self.proc_img, params["levels"])
                     did_centroid_recompute = True
-                    centroids = self.centroid_processor.get_centroids(params, poster=poster)
-                    areas_now = getattr(self.centroid_processor, 'last_component_areas', [])
-                    boundary_mask_now = getattr(self.centroid_processor, 'last_boundary_mask', None)
-                    # Also compute and cache full-image u,v coordinates for centroids
                     try:
-                        # centroids are returned in proc coords (group, x_proc, y_proc)
-                        img_base = getattr(self, '_img_base_size', None)
-                        spf = float(getattr(self, 'scale_proc_to_full', 1.0) or 1.0)
-                        uvs = []
-                        if img_base is not None:
-                            h_full0 = int(img_base[1])
-                        else:
-                            h_full0 = int(self.img_full.shape[0]) if getattr(self, 'img_full', None) is not None else None
-                        for g, xp, yp in centroids:
-                            x_full = float(xp) * spf
-                            y_full = float(yp) * spf
-                            u = int(round(x_full))
-                            if h_full0 is not None:
-                                v = int(round((h_full0 - 1) - y_full))
+                        centroids = self._compute_centroids_cancellable(params, poster)
+                    except CalculationCancelled:
+                        did_centroid_recompute = False
+                        centroids = cache_centroids if cache_centroids is not None else (getattr(self, 'centroids', []) or [])
+                        areas_now = cache_areas
+                        boundary_mask_now = self._cache.get("boundary_mask")
+                        try:
+                            if getattr(self, 'ui_footer', None) is not None:
+                                self.ui_footer.showMessage("Calculation stopped.")
+                        except Exception:
+                            pass
+                    if did_centroid_recompute:
+                        areas_now = getattr(self.centroid_processor, 'last_component_areas', [])
+                        boundary_mask_now = getattr(self.centroid_processor, 'last_boundary_mask', None)
+                        # Also compute and cache full-image u,v coordinates for centroids
+                        try:
+                            # centroids are returned in proc coords (group, x_proc, y_proc)
+                            img_base = getattr(self, '_img_base_size', None)
+                            spf = float(getattr(self, 'scale_proc_to_full', 1.0) or 1.0)
+                            uvs = []
+                            if img_base is not None:
+                                h_full0 = int(img_base[1])
                             else:
-                                v = int(round(-y_full))
-                            uvs.append((g, u, v))
-                        self._cache['centroids_full_uv'] = uvs
-                    except Exception:
-                        pass
-                    self._cache.update({
-                        "img_id": id(self.proc_img),
-                        "levels": params["levels"],
-                        "min_area": params["min_area"],
-                        "max_area": params.get("max_area"),
-                        "trim_px": params["trim_px"],
-                        "neck_separation": params.get("neck_separation"),
-                        "shape_complexity": params.get("shape_complexity"),
-                        "poster": poster,
-                        "centroids": centroids,
-                        "areas": areas_now,
-                        "boundary_mask": boundary_mask_now,
-                    })
+                                h_full0 = int(self.img_full.shape[0]) if getattr(self, 'img_full', None) is not None else None
+                            for g, xp, yp in centroids:
+                                x_full = float(xp) * spf
+                                y_full = float(yp) * spf
+                                u = int(round(x_full))
+                                if h_full0 is not None:
+                                    v = int(round((h_full0 - 1) - y_full))
+                                else:
+                                    v = int(round(-y_full))
+                                uvs.append((g, u, v))
+                            self._cache['centroids_full_uv'] = uvs
+                        except Exception:
+                            pass
+                        self._cache.update({
+                            "img_id": id(self.proc_img),
+                            "levels": params["levels"],
+                            "min_area": params["min_area"],
+                            "max_area": params.get("max_area"),
+                            "trim_px": params["trim_px"],
+                            "neck_separation": params.get("neck_separation"),
+                            "shape_complexity": params.get("shape_complexity"),
+                            "poster": poster,
+                            "centroids": centroids,
+                            "areas": areas_now,
+                            "boundary_mask": boundary_mask_now,
+                        })
                 else:
                     # 手動モードで再計算を許可したケース（force/manual recompute）
                     if poster is None:
                         poster = kmeans_posterize(self.proc_img, params["levels"])
                     did_centroid_recompute = True
-                    centroids = self.centroid_processor.get_centroids(params, poster=poster)
-                    areas_now = getattr(self.centroid_processor, 'last_component_areas', [])
-                    boundary_mask_now = getattr(self.centroid_processor, 'last_boundary_mask', None)
-                    self._cache.update({
-                        "img_id": id(self.proc_img),
-                        "levels": params["levels"],
-                        "min_area": params["min_area"],
-                        "max_area": params.get("max_area"),
-                        "trim_px": params["trim_px"],
-                        "neck_separation": params.get("neck_separation"),
-                        "shape_complexity": params.get("shape_complexity"),
-                        "poster": poster,
-                        "centroids": centroids,
-                        "areas": areas_now,
-                        "boundary_mask": boundary_mask_now,
-                    })
+                    try:
+                        centroids = self._compute_centroids_cancellable(params, poster)
+                    except CalculationCancelled:
+                        did_centroid_recompute = False
+                        centroids = cache_centroids if cache_centroids is not None else (getattr(self, 'centroids', []) or [])
+                        areas_now = cache_areas
+                        boundary_mask_now = self._cache.get("boundary_mask")
+                        try:
+                            if getattr(self, 'ui_footer', None) is not None:
+                                self.ui_footer.showMessage("Calculation stopped.")
+                        except Exception:
+                            pass
+                    if did_centroid_recompute:
+                        areas_now = getattr(self.centroid_processor, 'last_component_areas', [])
+                        boundary_mask_now = getattr(self.centroid_processor, 'last_boundary_mask', None)
+                        self._cache.update({
+                            "img_id": id(self.proc_img),
+                            "levels": params["levels"],
+                            "min_area": params["min_area"],
+                            "max_area": params.get("max_area"),
+                            "trim_px": params["trim_px"],
+                            "neck_separation": params.get("neck_separation"),
+                            "shape_complexity": params.get("shape_complexity"),
+                            "poster": poster,
+                            "centroids": centroids,
+                            "areas": areas_now,
+                            "boundary_mask": boundary_mask_now,
+                        })
                 # 表示用にポスター画像をフル解像度へ拡大
                 poster_full = None
                 poster_edges_full = None
@@ -5052,6 +5475,11 @@ class CentroidFinderWindow(QMainWindow):
             # データ反映を先に行い、描画前に最新の点群を反映させる（灰色丸を即表示）
             # 手動ターゲットは常に自動重心へ加算（+α）する。
             self.centroids = self._compose_centroids_with_manual(self._auto_centroids)
+            try:
+                if bool(did_centroid_recompute):
+                    self._reset_visibility_after_recompute(manual_visibility_before_recompute)
+            except Exception:
+                pass
             self._sanitize_excluded_indices()
 
             # 真ん中の転置表へ raw X/Y を即反映（populate/refresh が遅延しても見えるように）
@@ -5150,6 +5578,16 @@ class CentroidFinderWindow(QMainWindow):
                         QTimer.singleShot(0, app.quit)
                     except Exception:
                         app.quit()
+            # New Project 初期閾値（下位/上位1/3）適用後の再計算を1回だけ実行
+            try:
+                if bool(getattr(self, '_pending_recompute_after_area_init', False)):
+                    self._pending_recompute_after_area_init = False
+                    try:
+                        QTimer.singleShot(0, lambda: self.schedule_update(force=True, recompute_centroids=True))
+                    except Exception:
+                        self.schedule_update(force=True, recompute_centroids=True)
+            except Exception:
+                pass
 
     def _apply_proc_zoom(self):
         # Simplified rendering: do not use virtual canvas or PatchWorker.
@@ -5368,15 +5806,25 @@ class CentroidFinderWindow(QMainWindow):
                         pass
                 self._dbg(f"Stage alignment: found {len(pts_img)} valid point pairs")
                 try:
-                    if hasattr(self, '_log_info'):
-                        self._log_info(f"Stage alignment: pairs={len(pts_img)}")
+                    # Avoid high-frequency file I/O during redraw loops.
+                    _pairs = int(len(pts_img))
+                    _insuf = bool(_pairs < 2)
+                    _state = (_pairs, _insuf)
+                    if getattr(self, '_stage_align_log_state', None) != _state:
+                        self._stage_align_log_state = _state
+                        if hasattr(self, '_log_info'):
+                            self._log_info(f"Stage alignment: pairs={_pairs}")
                 except Exception:
                     pass
                 if len(pts_img) < 2:
                     self._dbg(f"Insufficient ref points for stage transform (need ≥2, have {len(pts_img)})")
                     try:
-                        if hasattr(self, '_log_info'):
-                            self._log_info(f"Stage alignment: insufficient (need>=2 have={len(pts_img)})")
+                        _pairs = int(len(pts_img))
+                        _state_ins = ("insufficient", _pairs)
+                        if getattr(self, '_stage_align_ins_log_state', None) != _state_ins:
+                            self._stage_align_ins_log_state = _state_ins
+                            if hasattr(self, '_log_info'):
+                                self._log_info(f"Stage alignment: insufficient (need>=2 have={_pairs})")
                     except Exception:
                         pass
                     return None
@@ -5389,12 +5837,18 @@ class CentroidFinderWindow(QMainWindow):
                 if result:
                     self._dbg(f"Transform computed: angle={result.get('angle_deg', 0):.2f}deg, scale={result.get('s', 1):.3f}")
                     try:
-                        if hasattr(self, '_log_info'):
-                            self._log_info(
-                                f"Stage transform: angle_deg={float(result.get('angle_deg', 0.0)):.4f} "
-                                f"scale={float(result.get('s', 1.0)):.6g} reflect={bool(result.get('reflect', False))} "
-                                f"rms={float(result.get('rms', 0.0)):.6g}"
-                            )
+                        _angle = round(float(result.get('angle_deg', 0.0)), 4)
+                        _scale = round(float(result.get('s', 1.0)), 6)
+                        _reflect = bool(result.get('reflect', False))
+                        _rms = round(float(result.get('rms', 0.0)), 6)
+                        _tf_state = (_angle, _scale, _reflect, _rms)
+                        if getattr(self, '_stage_transform_log_state', None) != _tf_state:
+                            self._stage_transform_log_state = _tf_state
+                            if hasattr(self, '_log_info'):
+                                self._log_info(
+                                    f"Stage transform: angle_deg={_angle:.4f} "
+                                    f"scale={_scale:.6g} reflect={_reflect} rms={_rms:.6g}"
+                                )
                     except Exception:
                         pass
 
@@ -6940,11 +7394,22 @@ class CentroidFinderWindow(QMainWindow):
     def _on_add_target_point(self):
         # Toggle pick-mode（Add Target）
         if self.pick_mode == 'target_add':
+            try:
+                if hasattr(self, '_log_info'):
+                    self._log_info("AddTarget: cancel requested by button")
+            except Exception:
+                pass
             self._end_pick_mode()
             return
         try:
             if getattr(self, 'manual_targets', None) is None:
                 self.manual_targets = []
+        except Exception:
+            pass
+        self._target_add_has_added = False  # reset: no point added yet this session
+        try:
+            if hasattr(self, '_log_info'):
+                self._log_info("AddTarget: mode start (waiting first click)")
         except Exception:
             pass
         self._start_pick_mode('target_add')
@@ -6981,6 +7446,59 @@ class CentroidFinderWindow(QMainWindow):
             return set(range(int(base), int(base) + mt_n))
         except Exception:
             return set()
+
+    def _capture_manual_target_visibility(self):
+        """Capture current show/hide state of manual Group 0 targets by manual-target order."""
+        try:
+            mt_n = len(getattr(self, 'manual_targets', []) or [])
+            if mt_n <= 0:
+                return []
+            base = int(self._manual_target_base_index())
+            excluded = set(getattr(self, 'excluded_centroid_indices', set()) or set())
+            vis = []
+            for j in range(mt_n):
+                idx = int(base + j)
+                vis.append(idx not in excluded)
+            return vis
+        except Exception:
+            return []
+
+    def _reset_visibility_after_recompute(self, manual_visibility_by_order=None):
+        """Reset per-particle visibility after recompute.
+
+        Rule:
+        - Recomputed particles are all set to visible by default.
+        - Manual Group 0 particles keep their previous show/hide state by order.
+        """
+        try:
+            n = len(getattr(self, 'centroids', []) or [])
+            if n <= 0:
+                self.excluded_centroid_indices = set()
+                self._explicit_excluded_centroid_indices = set()
+                self._force_visible_centroid_indices = set()
+                return
+
+            excluded = set()
+            explicit = set()
+            force_visible = set()
+
+            states = list(manual_visibility_by_order or [])
+            mt_n = len(getattr(self, 'manual_targets', []) or [])
+            base = int(self._manual_target_base_index())
+            for j in range(min(mt_n, len(states))):
+                idx = int(base + j)
+                if not (0 <= idx < n):
+                    continue
+                if not bool(states[j]):
+                    excluded.add(idx)
+                    explicit.add(idx)
+
+            self.excluded_centroid_indices = excluded
+            self._explicit_excluded_centroid_indices = explicit
+            self._force_visible_centroid_indices = force_visible
+            self._sanitize_excluded_indices()
+        except Exception:
+            pass
 
     def _sanitize_excluded_indices(self):
         try:
@@ -7548,8 +8066,48 @@ class CentroidFinderWindow(QMainWindow):
             with open(fpath, "r", encoding="utf-8") as f:
                 data = json.load(f)
             self._apply_project_data(data)
+            self._apply_load_project_defaults()
         except Exception as e:
             QMessageBox.critical(self, "Load Error", str(e))
+
+    def _apply_load_project_defaults(self):
+        """Apply UI defaults after Load Project.
+
+        - Show the On-line Alignment tab by default.
+        - Set recalculation trigger to Manual by default.
+        """
+        # Show On-line Alignment tab (if available)
+        try:
+            tabs = getattr(self, 'left_tabs', None)
+            if tabs is not None:
+                idx = -1
+                try:
+                    tab_online = getattr(self, 'tab_online', None)
+                    if tab_online is not None:
+                        idx = int(tabs.indexOf(tab_online))
+                except Exception:
+                    idx = -1
+                if idx < 0:
+                    try:
+                        if int(tabs.count()) > 1:
+                            idx = 1
+                    except Exception:
+                        idx = -1
+                if idx >= 0:
+                    tabs.setCurrentIndex(int(idx))
+        except Exception:
+            pass
+
+        # Force Manual recalculation mode after loading a project
+        try:
+            self._on_toggle_calc_mode(1)
+        except Exception:
+            try:
+                self.calc_mode = 'manual'
+                self.auto_update_mode = False
+                self._manual_recompute_request = False
+            except Exception:
+                pass
 
     def _on_export_image_clicked(self):
         """Export full-resolution image with centroid markers and index labels."""
@@ -8430,6 +8988,13 @@ class CentroidFinderWindow(QMainWindow):
                     insert_idx = int(base + mt_old_n)
                     self.manual_targets.append((0, float(x_proc), float(y_proc)))
                     try:
+                        if hasattr(self, '_log_info'):
+                            self._log_info(
+                                f"AddTarget: added idx={insert_idx} x_proc={float(x_proc):.3f} y_proc={float(y_proc):.3f}"
+                            )
+                    except Exception:
+                        pass
+                    try:
                         old_excl = set(getattr(self, 'excluded_centroid_indices', set()) or set())
                         old_exp = set(getattr(self, '_explicit_excluded_centroid_indices', set()) or set())
                         new_excl = set()
@@ -8504,8 +9069,11 @@ class CentroidFinderWindow(QMainWindow):
                 except Exception:
                     pass
                 try:
-                    if self.pick_mode in ('target_add', 'target_update'):
+                    if self.pick_mode == 'target_update':
                         self._end_pick_mode(redraw=False)
+                    elif self.pick_mode == 'target_add':
+                        # Stay in add mode; will end when cursor leaves the image.
+                        self._target_add_has_added = True
                 except Exception:
                     pass
                 self._replace_target_source_index = None
@@ -9141,7 +9709,6 @@ class CentroidFinderWindow(QMainWindow):
                     # Reinstall pseudo-headers after populate (data might overwrite them)
                     try:
                         self._setup_pseudo_headers_ref(self.table_ref)
-                        self._setup_pseudo_headers_between(self.table)
                     except Exception:
                         pass
                     # Sync frozen headers after populate completes
@@ -9152,7 +9719,6 @@ class CentroidFinderWindow(QMainWindow):
                     # Re-apply pseudo-headers after populate to ensure they're visible
                     try:
                         QTimer.singleShot(50, lambda: self._setup_pseudo_headers_ref(self.table_ref))
-                        QTimer.singleShot(100, lambda: self._setup_pseudo_headers_between(self.table))
                     except Exception:
                         pass
                     # If populate_tables was deferred, the caller may already have refreshed
@@ -9182,7 +9748,6 @@ class CentroidFinderWindow(QMainWindow):
             # Reinstall pseudo-headers after populate (data might overwrite them)
             try:
                 self._setup_pseudo_headers_ref(self.table_ref)
-                self._setup_pseudo_headers_between(self.table)
             except Exception:
                 pass
             # Sync frozen headers after populate completes
@@ -9193,7 +9758,6 @@ class CentroidFinderWindow(QMainWindow):
             # Re-apply pseudo-headers after populate to ensure they're visible
             try:
                 QTimer.singleShot(150, lambda: self._setup_pseudo_headers_ref(self.table_ref))
-                QTimer.singleShot(200, lambda: self._setup_pseudo_headers_between(self.table))
             except Exception:
                 pass
             # Auto-shrink fonts so long XYZ values (e.g., 5+ digits) don't clip.
@@ -9875,12 +10439,31 @@ class CentroidFinderWindow(QMainWindow):
                                             txt = "" if g is None else str(int(g))
                                         except Exception:
                                             txt = ""
+                                    elif c in (1, 2):
+                                        # u,v should come from centroids directly, not from mutable source table.
+                                        # This avoids accidental leakage from pseudo-header rows/state races.
+                                        try:
+                                            if self.centroids is not None and 0 <= r < len(self.centroids):
+                                                _g, xp, yp = self.centroids[r]
+                                                su, sv = _fmt_uv_from_proc_pt((float(xp), float(yp)))
+                                                txt = su if c == 1 else sv
+                                            else:
+                                                txt = ""
+                                        except Exception:
+                                            txt = ""
                                     elif c == (data_cols - 1):
                                         # Exclude flag — will be set as checkbox below
                                         txt = ""
                                     else:
                                         src_item = src.item(src_row_map[c - 1], r)
                                         txt = src_item.text() if src_item is not None else ""
+                                        # Guard against occasional header-token leakage into data cells.
+                                        # When it happens, users may see X/Y/Z in u,v columns after Add Target.
+                                        try:
+                                            if str(txt).strip().lower() in {"image", "stage", "residual", "grp", "x", "y", "z", "u", "v", "|r|"}:
+                                                txt = ""
+                                        except Exception:
+                                            pass
                                 except Exception:
                                     txt = ""
                                 it = QTableWidgetItem(str(txt))
@@ -10041,7 +10624,7 @@ class CentroidFinderWindow(QMainWindow):
                         widths_ref = [50] * cnt
                         # Last column (Show) wider for toggle
                         if cnt >= 1:
-                            widths_ref[-1] = 40
+                            widths_ref[-1] = 48
                         for i in range(cnt):
                             w = int(widths_ref[i]) if i < len(widths_ref) else int(widths_ref[-1])
                             try:
@@ -10124,7 +10707,7 @@ class CentroidFinderWindow(QMainWindow):
                         for i in range(cnt2):
                             try:
                                 if i == (cnt2 - 1):
-                                    w = 40
+                                    w = 48
                                 elif ref_tbl is not None and i < ref_tbl.columnCount():
                                     w = int(ref_tbl.columnWidth(i))
                                 else:
@@ -10615,9 +11198,18 @@ class CentroidFinderWindow(QMainWindow):
                 pass
 
     def keyPressEvent(self, event):
+        try:
+            key = event.key()
+        except Exception:
+            key = None
+
+        # Global cancel: stop heavy calculation with Esc.
+        if key == Qt.Key_Escape and bool(getattr(self, '_calc_in_progress', False)):
+            self._request_calc_stop("esc")
+            return
+
         # ピックモード中の操作
         if self.pick_mode in ('add', 'update', 'target_add', 'target_update'):
-            key = event.key()
             # Escでキャンセル
             if key == Qt.Key_Escape:
                 self._end_pick_mode()

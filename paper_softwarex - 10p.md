@@ -8,7 +8,7 @@ bibliography: paper.bib
 repository: https://github.com/YoshiakiKON/PiXY
 archive_doi: 10.5281/zenodo.18174474
 license: MIT
-version: 1.3.1
+version: 1.3.2
 ---
 
 Abstract
@@ -25,7 +25,7 @@ Metadata
 |---|---|
 | Software title | PiXY: Pixel to stage-XY Coordinate Converter |
 | Authors | Yoshiaki KON |
-| Version | 1.3.1 |
+| Version | 1.3.2 |
 | Repository URL | https://github.com/YoshiakiKON/PiXY |
 | Archive DOI | 10.5281/zenodo.18174474 |
 | License | MIT |

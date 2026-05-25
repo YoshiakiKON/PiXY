@@ -79,7 +79,7 @@ class ImageViewController(QObject):
         self._wheel_zoom_pick_mode = None
         self._wheel_zoom_last_event_t = None
         self._wheel_fast_render_applied = False
-        self._wheel_fast_max_pixels = 3072 * 3072
+        self._wheel_fast_max_pixels = 4096 * 4096
         self._wheel_settle_timer = QTimer(self)
         self._wheel_settle_timer.setSingleShot(True)
         self._wheel_settle_timer.setInterval(140)
@@ -273,6 +273,27 @@ class ImageViewController(QObject):
             elif et == QEvent.Leave:
                 try:
                     self.ui._update_cursor_info_overlay(None)
+                except Exception:
+                    pass
+                try:
+                    # End add-fiducial mode on Leave after first add.
+                    if self.ui.pick_mode == 'add' and getattr(self.ui, '_ref_add_has_added', False):
+                        try:
+                            if hasattr(self.ui, '_log_info'):
+                                self.ui._log_info("AddRef: mode end on Leave after first add")
+                        except Exception:
+                            pass
+                        self.ui._end_pick_mode()
+
+                    # End target_add mode when cursor leaves the image, but only after
+                    # the first point has been placed (before that, mode persists until cancel).
+                    if self.ui.pick_mode == 'target_add' and getattr(self.ui, '_target_add_has_added', False):
+                        try:
+                            if hasattr(self.ui, '_log_info'):
+                                self.ui._log_info("AddTarget: mode end on Leave after first add")
+                        except Exception:
+                            pass
+                        self.ui._end_pick_mode()
                 except Exception:
                     pass
                 return False
@@ -571,6 +592,28 @@ class ImageViewController(QObject):
             evt_t = getattr(self, '_wheel_zoom_last_event_t', None)
             self._wheel_zoom_pending = False
 
+            def _recenter_to_anchor():
+                try:
+                    if anchor_full is None:
+                        return
+                    try:
+                        vp_now = self.ui.proc_scroll.viewport()
+                        anchor_vp_live = QPoint(int(vp_now.width() // 2), int(vp_now.height() // 2))
+                    except Exception:
+                        anchor_vp_live = anchor_vp
+                    if anchor_vp_live is None:
+                        return
+                    x_full, y_full = anchor_full
+                    dxy = self.ui._full_to_display(x_full, y_full)
+                    if dxy is None:
+                        return
+                    lx, ly = dxy
+                    sx = float(lx) - float(anchor_vp_live.x())
+                    sy = float(ly) - float(anchor_vp_live.y())
+                    self.ui._set_scroll(sx, sy)
+                except Exception:
+                    pass
+
             t0 = perf_counter() if self._wheel_profile else None
             if abs(float(getattr(self.ui, 'proc_zoom', 1.0)) - target_zoom) > 1e-6:
                 self.ui.proc_zoom = target_zoom
@@ -581,36 +624,13 @@ class ImageViewController(QObject):
                 self.ui._apply_proc_zoom()
 
                 # Keep anchor at viewport center.
-                if anchor_full is not None:
-                    def _recenter_once():
-                        try:
-                            try:
-                                vp_now = self.ui.proc_scroll.viewport()
-                                anchor_vp_live = QPoint(int(vp_now.width() // 2), int(vp_now.height() // 2))
-                            except Exception:
-                                anchor_vp_live = anchor_vp
-
-                            if anchor_vp_live is None:
-                                return
-
-                            x_full, y_full = anchor_full
-                            dxy = self.ui._full_to_display(x_full, y_full)
-                            if dxy is None:
-                                return
-                            lx, ly = dxy
-                            sx = float(lx) - float(anchor_vp_live.x())
-                            sy = float(ly) - float(anchor_vp_live.y())
-                            self.ui._set_scroll(sx, sy)
-                        except Exception:
-                            pass
-
-                    try:
-                        # Immediate correction
-                        _recenter_once()
-                        # Deferred correction after layout/scroll range settles
-                        QTimer.singleShot(0, _recenter_once)
-                    except Exception:
-                        pass
+                try:
+                    # Immediate correction
+                    _recenter_to_anchor()
+                    # Deferred correction after layout/scroll range settles
+                    QTimer.singleShot(0, _recenter_to_anchor)
+                except Exception:
+                    pass
 
                 # ピックモード中は十字線を再描画
                 try:
@@ -683,17 +703,66 @@ class ImageViewController(QObject):
             # the fast path already delivered.  This avoids an expensive no-op
             # re-render when the image is small or the zoom level is low.
             if bool(getattr(self, '_wheel_fast_render_applied', False)):
+                def _estimate_draw_size(max_pixels_cap):
+                    try:
+                        source_img = self.ui._last_overlay_full if self.ui._last_overlay_full is not None else self.ui.proc_img
+                        if source_img is None:
+                            return None
+                        h, w = source_img.shape[:2]
+                        z = max(0.001, float(getattr(self.ui, 'proc_zoom', 1.0)))
+                        cap = int(max_pixels_cap)
+                        desired_pixels = float(w) * float(h) * (z * z)
+                        if desired_pixels > float(cap):
+                            scale_down = (float(cap) / float(desired_pixels)) ** 0.5
+                            draw_w = max(1, int(round(float(w) * z * scale_down)))
+                            draw_h = max(1, int(round(float(h) * z * scale_down)))
+                        else:
+                            draw_w = max(1, int(round(float(w) * z)))
+                            draw_h = max(1, int(round(float(h) * z)))
+                        return (draw_w, draw_h)
+                    except Exception:
+                        return None
+
                 need_redraw = True
                 try:
                     full_cap = self.ui._get_render_max_pixels()
                     fast_cap = int(getattr(self, '_wheel_fast_max_pixels', 0) or 0)
                     if fast_cap > 0 and fast_cap >= full_cap:
                         need_redraw = False          # fast render was already at full quality
+                    else:
+                        fast_size = _estimate_draw_size(fast_cap) if fast_cap > 0 else None
+                        full_size = _estimate_draw_size(full_cap)
+                        # If the full-quality redraw would change the actual canvas size,
+                        # it can look like a zoom jump after continuous wheel input.
+                        # Keep the current geometry stable in that case.
+                        if fast_size is not None and full_size is not None and fast_size != full_size:
+                            need_redraw = False
                 except Exception:
                     pass
                 if need_redraw:
                     try:
                         self.ui._apply_proc_zoom()
+                        # Recenter again after the full-quality redraw; the canvas size can
+                        # change slightly compared with the fast path on very large images.
+                        try:
+                            anchor_full = getattr(self, '_wheel_zoom_anchor_full', None)
+                            anchor_vp = getattr(self, '_wheel_zoom_anchor_vp', None)
+                            if anchor_full is not None:
+                                try:
+                                    vp_now = self.ui.proc_scroll.viewport()
+                                    anchor_vp_live = QPoint(int(vp_now.width() // 2), int(vp_now.height() // 2))
+                                except Exception:
+                                    anchor_vp_live = anchor_vp
+                                if anchor_vp_live is not None:
+                                    x_full, y_full = anchor_full
+                                    dxy = self.ui._full_to_display(x_full, y_full)
+                                    if dxy is not None:
+                                        lx, ly = dxy
+                                        sx = float(lx) - float(anchor_vp_live.x())
+                                        sy = float(ly) - float(anchor_vp_live.y())
+                                        self.ui._set_scroll(sx, sy)
+                        except Exception:
+                            pass
                     except Exception:
                         pass
             self._wheel_fast_render_applied = False

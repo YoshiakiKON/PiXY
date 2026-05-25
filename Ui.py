@@ -1466,6 +1466,7 @@ class CentroidFinderWindow(QMainWindow):
         # New Project 初期化用: Area閾値を下位/上位1/3で一度だけ自動設定
         self._area_init_tercile_pending = False
         self._pending_recompute_after_area_init = False
+        self._ref_add_has_added = False
 
         # ピックモード（ルーペ制御）
         self.pick_mode = None  # None / 'add' / 'update'
@@ -2562,6 +2563,17 @@ class CentroidFinderWindow(QMainWindow):
             offline_col = QVBoxLayout(self.tab_offline)
             offline_col.setContentsMargins(0, 5, 0, 0)
             offline_col.setSpacing(6)
+            try:
+                offline_target_row = QHBoxLayout()
+                offline_target_row.setContentsMargins(0, 0, 0, 0)
+                offline_target_row.setSpacing(6)
+                offline_target_row.addWidget(self.btn_add_target, 0)
+                offline_target_row.addWidget(self.btn_update_target_uv, 0)
+                offline_target_row.addWidget(self.btn_clear_target, 0)
+                offline_target_row.addStretch(1)
+                offline_col.addLayout(offline_target_row, 0)
+            except Exception:
+                pass
             if getattr(self, 'grain_section', None) is not None:
                 offline_col.addWidget(self.grain_section, 0)
             offline_col.addStretch(1)
@@ -2726,14 +2738,6 @@ class CentroidFinderWindow(QMainWindow):
                     center_btn_row.addStretch(1)
                     center_col.addLayout(center_btn_row, 0)
 
-                    center_target_row = QHBoxLayout()
-                    center_target_row.setContentsMargins(0, 0, 0, 0)
-                    center_target_row.setSpacing(6)
-                    center_target_row.addWidget(self.btn_add_target, 0)
-                    center_target_row.addWidget(self.btn_update_target_uv, 0)
-                    center_target_row.addWidget(self.btn_clear_target, 0)
-                    center_target_row.addStretch(1)
-                    center_col.addLayout(center_target_row, 0)
                 except Exception:
                     pass
 
@@ -3179,18 +3183,6 @@ class CentroidFinderWindow(QMainWindow):
             pass
 
         try:
-            prev_mode = str(getattr(self, 'calc_mode', 'auto'))
-        except Exception:
-            prev_mode = 'auto'
-
-        # Save current UI params into previous mode bucket before switching
-        try:
-            if str(prev_mode) in ('auto', 'manual'):
-                self._calc_params_by_mode[str(prev_mode)] = self._snapshot_calc_params()
-        except Exception:
-            pass
-
-        try:
             if int(idx) == 1:
                 self.calc_mode = 'manual'
             else:
@@ -3203,17 +3195,8 @@ class CentroidFinderWindow(QMainWindow):
         except Exception:
             self.auto_update_mode = True
 
-        # Restore params for the new mode (if previously saved)
-        try:
-            new_mode = str(getattr(self, 'calc_mode', 'auto'))
-        except Exception:
-            new_mode = 'auto'
-        try:
-            snap = getattr(self, '_calc_params_by_mode', {}).get(str(new_mode))
-            if isinstance(snap, dict) and snap:
-                self._apply_calc_params_snapshot(snap)
-        except Exception:
-            pass
+        # Important behavior: mode toggle must not alter any calc parameter values.
+        # Only trigger policy (Auto/Manual) is switched here.
 
         # Optional trace: confirm mode switch actually applied
         try:
@@ -7307,6 +7290,7 @@ class CentroidFinderWindow(QMainWindow):
         finally:
             self.table_ref.blockSignals(False)
         # ピックモード開始（Add）
+        self._ref_add_has_added = False
         self._start_pick_mode('add', ref_index=target)
         # カーソルを画像中心にジャンプ
         self._move_cursor_to_image_center()
@@ -8589,7 +8573,8 @@ class CentroidFinderWindow(QMainWindow):
         idx = curCol
         if self.selected_index != idx:
             self.selected_index = idx
-            self.schedule_update(force=True)
+            # Selection-only update: redraw highlight/table sync without heavy recomputation.
+            self.schedule_update(force=True, recompute_centroids=False)
         try:
             self._center_on_centroid_index(idx)
         except Exception:
@@ -8606,7 +8591,8 @@ class CentroidFinderWindow(QMainWindow):
             idx = int(curRow) - header_rows
             if self.selected_index != idx:
                 self.selected_index = idx
-                self.schedule_update(force=True)
+                # Selection-only update: redraw highlight/table sync without heavy recomputation.
+                self.schedule_update(force=True, recompute_centroids=False)
             try:
                 self._center_on_centroid_index(idx)
             except Exception:
@@ -8919,6 +8905,7 @@ class CentroidFinderWindow(QMainWindow):
         self.pick_mode = None
         self.pick_ref_index = None
         self._replace_target_source_index = None
+        self._ref_add_has_added = False
         # 通常は手のカーソル
         self.img_label_proc.setCursor(QCursor(Qt.OpenHandCursor))
         # ルーペは存在しない
@@ -8977,6 +8964,15 @@ class CentroidFinderWindow(QMainWindow):
                 return
             x_proc = x_full / self.scale_proc_to_full
             y_proc = y_full / self.scale_proc_to_full
+            center_full_before = None
+            try:
+                if getattr(self, 'proc_scroll', None) is not None:
+                    vp = self.proc_scroll.viewport()
+                    pos_vp = QPoint(int(vp.width() // 2), int(vp.height() // 2))
+                    pos_label = self._viewport_pos_to_label_pos(pos_vp)
+                    center_full_before = self._display_to_full(pos_label)
+            except Exception:
+                center_full_before = None
             try:
                 if getattr(self, 'manual_targets', None) is None:
                     self.manual_targets = []
@@ -9079,7 +9075,33 @@ class CentroidFinderWindow(QMainWindow):
                 self._replace_target_source_index = None
                 self._replace_target_source_group = None
                 try:
+                    # Cancel pending wheel-settle recenter to avoid post-add viewport jumps.
+                    ivc = getattr(self, 'interactions', None)
+                    if ivc is not None:
+                        try:
+                            if getattr(ivc, '_wheel_settle_timer', None) is not None:
+                                ivc._wheel_settle_timer.stop()
+                        except Exception:
+                            pass
+                        try:
+                            if getattr(ivc, '_wheel_zoom_timer', None) is not None:
+                                ivc._wheel_zoom_timer.stop()
+                        except Exception:
+                            pass
+                        try:
+                            ivc._wheel_zoom_pending = False
+                            ivc._wheel_zoom_target = None
+                            ivc._wheel_zoom_anchor_full = None
+                            ivc._wheel_zoom_anchor_vp = None
+                        except Exception:
+                            pass
+
                     self._apply_proc_zoom()
+                    if center_full_before is not None:
+                        try:
+                            self._ensure_full_pos_visible(float(center_full_before[0]), float(center_full_before[1]))
+                        except Exception:
+                            pass
                 except Exception:
                     pass
             except Exception:
@@ -9090,9 +9112,35 @@ class CentroidFinderWindow(QMainWindow):
             if self.scale_proc_to_full != 0:
                 x_proc = x_full / self.scale_proc_to_full
                 y_proc = y_full / self.scale_proc_to_full
+                center_full_before = None
+                try:
+                    if getattr(self, 'proc_scroll', None) is not None:
+                        vp = self.proc_scroll.viewport()
+                        pos_vp = QPoint(int(vp.width() // 2), int(vp.height() // 2))
+                        pos_label = self._viewport_pos_to_label_pos(pos_vp)
+                        center_full_before = self._display_to_full(pos_label)
+                except Exception:
+                    center_full_before = None
                 idx = self.pick_ref_index if self.pick_ref_index is not None else self.ref_selected_index
                 if idx is not None and 0 <= idx < len(self.ref_points):
                     self.ref_points[idx] = (x_proc, y_proc)
+                    # Add Fiducial は1点追加後も継続し、次の空きRefへ自動移動する。
+                    if self.pick_mode == 'add':
+                        try:
+                            self._ref_add_has_added = True
+                        except Exception:
+                            pass
+                        try:
+                            next_idx = None
+                            for i, pt in enumerate(self.ref_points):
+                                if pt is None:
+                                    next_idx = int(i)
+                                    break
+                            if next_idx is not None:
+                                self.pick_ref_index = int(next_idx)
+                                self.ref_selected_index = int(next_idx)
+                        except Exception:
+                            pass
 
                     # すぐに左表へ反映（populate_tables が遅延しても X/Y を見せる）
                     try:
@@ -9216,13 +9264,39 @@ class CentroidFinderWindow(QMainWindow):
                         pass
                     # End pick mode first so _apply_proc_zoom() won't re-draw the crosshair.
                     try:
-                        if self.pick_mode in ('add', 'update'):
+                        if self.pick_mode == 'update':
                             self._end_pick_mode(redraw=False)
                     except Exception:
                         pass
                     # Redraw once to reflect the newly added/updated ref point.
                     try:
+                        # Cancel pending wheel-settle recenter to avoid post-click viewport jumps.
+                        ivc = getattr(self, 'interactions', None)
+                        if ivc is not None:
+                            try:
+                                if getattr(ivc, '_wheel_settle_timer', None) is not None:
+                                    ivc._wheel_settle_timer.stop()
+                            except Exception:
+                                pass
+                            try:
+                                if getattr(ivc, '_wheel_zoom_timer', None) is not None:
+                                    ivc._wheel_zoom_timer.stop()
+                            except Exception:
+                                pass
+                            try:
+                                ivc._wheel_zoom_pending = False
+                                ivc._wheel_zoom_target = None
+                                ivc._wheel_zoom_anchor_full = None
+                                ivc._wheel_zoom_anchor_vp = None
+                            except Exception:
+                                pass
+
                         self._apply_proc_zoom()
+                        if center_full_before is not None:
+                            try:
+                                self._ensure_full_pos_visible(float(center_full_before[0]), float(center_full_before[1]))
+                            except Exception:
+                                pass
                     except Exception:
                         pass
 

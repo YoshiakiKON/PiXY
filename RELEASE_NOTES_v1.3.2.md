@@ -1,4 +1,4 @@
-# PiXY v1.3.1 — Release Notes (2026-02-18)
+# PiXY v1.3.2 — Release Notes (2026-02-18)
 
 ## Software description
 
@@ -12,10 +12,10 @@ This release provides a minimal submission package (see below) that contains onl
 
 ## Notes
 
-- Change history is documented in `RELEASE_NOTES_v1.3.1.md` — no additional change log is included here.
-- This `v1.3.1` release is intended as a minimal archive for paper submission: it contains the same codebase as `v1.3.1` but is packaged with only the files necessary for reproducible execution and review (source files, minimal assets required at runtime, and a README). Non-essential documentation and large auxiliary files (full image sets, intermediate build artifacts, and editorial material) are omitted from the minimal package.
+- Change history is documented in `RELEASE_NOTES_v1.3.2.md` — no additional change log is included here.
+- This `v1.3.2` release is intended as a minimal archive for paper submission: it contains the same codebase as `v1.3.2` but is packaged with only the files necessary for reproducible execution and review (source files, minimal assets required at runtime, and a README). Non-essential documentation and large auxiliary files (full image sets, intermediate build artifacts, and editorial material) are omitted from the minimal package.
 
-If you want me to create the minimal archive now (tag `v1.3.1`, generate a zip of the selected files, and push the tag), confirm and I will proceed.
+If you want me to create the minimal archive now (tag `v1.3.2`, generate a zip of the selected files, and push the tag), confirm and I will proceed.
 
 ---
 Generated: 2026-02-18

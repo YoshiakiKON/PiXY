@@ -2563,20 +2563,30 @@ class CentroidFinderWindow(QMainWindow):
             offline_col = QVBoxLayout(self.tab_offline)
             offline_col.setContentsMargins(0, 5, 0, 0)
             offline_col.setSpacing(6)
-            try:
-                offline_target_row = QHBoxLayout()
-                offline_target_row.setContentsMargins(0, 0, 0, 0)
-                offline_target_row.setSpacing(6)
-                offline_target_row.addWidget(self.btn_add_target, 0)
-                offline_target_row.addWidget(self.btn_update_target_uv, 0)
-                offline_target_row.addWidget(self.btn_clear_target, 0)
-                offline_target_row.addStretch(1)
-                offline_col.addLayout(offline_target_row, 0)
-            except Exception:
-                pass
             if getattr(self, 'grain_section', None) is not None:
                 offline_col.addWidget(self.grain_section, 0)
-            offline_col.addStretch(1)
+            try:
+                self.offline_group_scroll = QScrollArea()
+                self.offline_group_scroll.setWidgetResizable(True)
+                self.offline_group_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAsNeeded)
+                self.offline_group_scroll.setVerticalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+                self.offline_group_scroll.setFrameShape(QScrollArea.NoFrame)
+                self.offline_group_scroll.setMinimumHeight(220)
+                try:
+                    self.offline_group_scroll.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
+                except Exception:
+                    pass
+
+                self.offline_group_inner = QWidget()
+                self.offline_group_layout = QHBoxLayout(self.offline_group_inner)
+                self.offline_group_layout.setContentsMargins(4, 2, 4, 2)
+                self.offline_group_layout.setSpacing(8)
+                self.offline_group_scroll.setWidget(self.offline_group_inner)
+                offline_col.addWidget(self.offline_group_scroll, 1)
+            except Exception:
+                self.offline_group_scroll = None
+                self.offline_group_inner = None
+                self.offline_group_layout = None
             self.left_tabs.addTab(self.tab_offline, 'Off-line Targeting')
 
             # On-line Alignment tab: fiducial controls + table
@@ -2590,6 +2600,9 @@ class CentroidFinderWindow(QMainWindow):
             self.left_tabs = None
             self.tab_offline = None
             self.tab_online = None
+            self.offline_group_scroll = None
+            self.offline_group_inner = None
+            self.offline_group_layout = None
             offline_col = None
             online_col = None
 
@@ -2737,6 +2750,15 @@ class CentroidFinderWindow(QMainWindow):
                     center_btn_row.addWidget(self.btn_filter, 0)
                     center_btn_row.addStretch(1)
                     center_col.addLayout(center_btn_row, 0)
+
+                    center_target_row = QHBoxLayout()
+                    center_target_row.setContentsMargins(0, 0, 0, 0)
+                    center_target_row.setSpacing(6)
+                    center_target_row.addWidget(self.btn_add_target, 0)
+                    center_target_row.addWidget(self.btn_update_target_uv, 0)
+                    center_target_row.addWidget(self.btn_clear_target, 0)
+                    center_target_row.addStretch(1)
+                    center_col.addLayout(center_target_row, 0)
 
                 except Exception:
                     pass
@@ -5147,6 +5169,10 @@ class CentroidFinderWindow(QMainWindow):
                     if did_centroid_recompute:
                         areas_now = getattr(self.centroid_processor, 'last_component_areas', [])
                         boundary_mask_now = getattr(self.centroid_processor, 'last_boundary_mask', None)
+                        try:
+                            self._compute_group_header_colors(poster)
+                        except Exception:
+                            pass
                         # Also compute and cache full-image u,v coordinates for centroids
                         try:
                             # centroids are returned in proc coords (group, x_proc, y_proc)
@@ -5202,6 +5228,10 @@ class CentroidFinderWindow(QMainWindow):
                     if did_centroid_recompute:
                         areas_now = getattr(self.centroid_processor, 'last_component_areas', [])
                         boundary_mask_now = getattr(self.centroid_processor, 'last_boundary_mask', None)
+                        try:
+                            self._compute_group_header_colors(poster)
+                        except Exception:
+                            pass
                         self._cache.update({
                             "img_id": id(self.proc_img),
                             "levels": params["levels"],
@@ -10651,6 +10681,11 @@ class CentroidFinderWindow(QMainWindow):
                 pass
 
             try:
+                self._refresh_offline_group_lists()
+            except Exception:
+                pass
+
+            try:
                 self._apply_excl_checkbox_style()
             except Exception:
                 pass
@@ -10821,9 +10856,255 @@ class CentroidFinderWindow(QMainWindow):
         except Exception:
             pass
 
+    def resizeEvent(self, event):
+        try:
+            super().resizeEvent(event)
+        except Exception:
+            pass
+        try:
+            QTimer.singleShot(0, self._refresh_offline_group_lists)
+        except Exception:
+            pass
+
     def _apply_excl_checkbox_style(self):
         # No longer using checkboxes — Show/Hide toggles are cell widgets
         pass
+
+    def _compute_group_header_colors(self, poster_img=None):
+        """Compute representative RGB colors per K-Means group using median pixel color."""
+        try:
+            poster = poster_img
+            if poster is None:
+                poster = getattr(self, '_cache', {}).get('poster')
+            if poster is None:
+                return {}
+
+            try:
+                unique_colors = np.unique(np.asarray(poster).reshape(-1, 3), axis=0)
+            except Exception:
+                return {}
+
+            proc_img = getattr(self, 'proc_img', None)
+            use_proc = False
+            try:
+                use_proc = (proc_img is not None and proc_img.shape[:2] == poster.shape[:2])
+            except Exception:
+                use_proc = False
+
+            group_rgb = {}
+            for idx, col in enumerate(unique_colors, 1):
+                try:
+                    bgr = np.asarray(col, dtype=np.uint8)
+                    mask = np.all(poster == bgr, axis=2)
+                    if not np.any(mask):
+                        continue
+                    src = proc_img if use_proc else poster
+                    vals = np.asarray(src[mask], dtype=np.float32)
+                    if vals.size == 0:
+                        continue
+                    med_bgr = np.median(vals, axis=0)
+                    r = int(np.clip(round(float(med_bgr[2])), 0, 255))
+                    g = int(np.clip(round(float(med_bgr[1])), 0, 255))
+                    b = int(np.clip(round(float(med_bgr[0])), 0, 255))
+                    group_rgb[int(idx)] = (r, g, b)
+                except Exception:
+                    continue
+
+            try:
+                self._cache['group_header_rgb'] = dict(group_rgb)
+            except Exception:
+                pass
+            return group_rgb
+        except Exception:
+            return {}
+
+    def _offline_group_table_height(self):
+        """Return table height adapted to current visible area of the Offline tab."""
+        try:
+            sc = getattr(self, 'offline_group_scroll', None)
+            if sc is None:
+                return 190
+            vp = sc.viewport()
+            if vp is None:
+                return 190
+            avail = int(vp.height())
+            # Reserve header/margins and keep a practical range.
+            h = int(avail - 34)
+            h = max(140, min(560, h))
+            return h
+        except Exception:
+            return 190
+
+    def _refresh_offline_group_lists(self):
+        """Rebuild group-wise u/v lists shown at the bottom of Off-line Targeting tab."""
+        try:
+            host = getattr(self, 'offline_group_layout', None)
+            if host is None:
+                return
+
+            while host.count() > 0:
+                item = host.takeAt(0)
+                if item is None:
+                    continue
+                w = item.widget()
+                if w is not None:
+                    try:
+                        w.deleteLater()
+                    except Exception:
+                        pass
+
+            centroids = list(getattr(self, 'centroids', []) or [])
+            if not centroids:
+                empty = QLabel("No detected centroids")
+                try:
+                    empty.setStyleSheet("color:#666; font-size:11px;")
+                except Exception:
+                    pass
+                host.addWidget(empty)
+                return
+
+            table_h = self._offline_group_table_height()
+            try:
+                header_h = 22
+                body_h = max(120, int(table_h))
+                panel_h = header_h + body_h + 8
+            except Exception:
+                body_h = 190
+                panel_h = 220
+
+            grouped = {}
+            cache_uv = None
+            try:
+                cache_uv = list(getattr(self, '_cache', {}).get('centroids_full_uv') or [])
+            except Exception:
+                cache_uv = None
+
+            if cache_uv and len(cache_uv) == len(centroids):
+                for g, u, v in cache_uv:
+                    try:
+                        gg = int(g)
+                    except Exception:
+                        continue
+                    if gg <= 0:
+                        continue
+                    grouped.setdefault(gg, []).append((int(u), int(v)))
+            else:
+                try:
+                    spf = float(getattr(self, 'scale_proc_to_full', 1.0) or 1.0)
+                except Exception:
+                    spf = 1.0
+                try:
+                    h_full = int(getattr(self, '_img_base_size', None)[1]) if getattr(self, '_img_base_size', None) is not None else None
+                except Exception:
+                    h_full = None
+                if h_full is None:
+                    try:
+                        h_full = int(self.img_full.shape[0]) if getattr(self, 'img_full', None) is not None else None
+                    except Exception:
+                        h_full = None
+
+                for g, xp, yp in centroids:
+                    try:
+                        gg = int(g)
+                    except Exception:
+                        continue
+                    if gg <= 0:
+                        continue
+                    try:
+                        x_full = float(xp) * spf
+                        y_full = float(yp) * spf
+                        u = int(round(x_full))
+                        if h_full is not None and h_full > 0:
+                            v = int(round((h_full - 1) - y_full))
+                        else:
+                            v = int(round(-y_full))
+                    except Exception:
+                        continue
+                    grouped.setdefault(gg, []).append((u, v))
+
+            group_colors = {}
+            try:
+                group_colors = dict(getattr(self, '_cache', {}).get('group_header_rgb') or {})
+            except Exception:
+                group_colors = {}
+            if not group_colors:
+                try:
+                    group_colors = self._compute_group_header_colors()
+                except Exception:
+                    group_colors = {}
+
+            for idx, grp in enumerate(sorted(grouped.keys())):
+                panel = QWidget()
+                pv = QVBoxLayout(panel)
+                pv.setContentsMargins(0, 0, 0, 0)
+                pv.setSpacing(2)
+
+                try:
+                    cr, cg, cb = group_colors.get(int(grp), (128, 128, 128))
+                except Exception:
+                    cr, cg, cb = (128, 128, 128)
+                try:
+                    # Perceived luminance for contrast-aware text color.
+                    lum = (0.299 * float(cr)) + (0.587 * float(cg)) + (0.114 * float(cb))
+                    txt_color = 'black' if lum >= 150.0 else 'white'
+                except Exception:
+                    txt_color = 'white'
+                head = QLabel(f"Grp{int(grp)}")
+                try:
+                    head.setAlignment(Qt.AlignCenter)
+                    head.setFixedHeight(22)
+                    head.setStyleSheet(
+                        f"background-color: rgb({cr},{cg},{cb}); color: {txt_color};"
+                        "font-weight: bold; border-radius: 4px;"
+                    )
+                except Exception:
+                    pass
+                pv.addWidget(head, 0)
+
+                tbl = QTableWidget()
+                tbl.setColumnCount(2)
+                tbl.setRowCount(len(grouped[grp]))
+                tbl.setHorizontalHeaderLabels(["u", "v"])
+                try:
+                    tbl.verticalHeader().setVisible(True)
+                    tbl.verticalHeader().setDefaultAlignment(Qt.AlignHCenter | Qt.AlignVCenter)
+                except Exception:
+                    pass
+                try:
+                    hh = tbl.horizontalHeader()
+                    hh.setSectionResizeMode(QHeaderView.Fixed)
+                    tbl.setColumnWidth(0, 57)
+                    tbl.setColumnWidth(1, 57)
+                except Exception:
+                    pass
+                try:
+                    tbl.setSelectionMode(QAbstractItemView.NoSelection)
+                    tbl.setEditTriggers(QAbstractItemView.NoEditTriggers)
+                    tbl.setVerticalScrollBarPolicy(Qt.ScrollBarAlwaysOn)
+                    tbl.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+                    tbl.setFixedWidth(141)
+                    tbl.setFixedHeight(body_h)
+                    panel.setFixedHeight(panel_h)
+                except Exception:
+                    pass
+
+                for r, (u, v) in enumerate(grouped[grp]):
+                    iu = QTableWidgetItem(str(int(u)))
+                    iv = QTableWidgetItem(str(int(v)))
+                    try:
+                        iu.setTextAlignment(Qt.AlignCenter)
+                        iv.setTextAlignment(Qt.AlignCenter)
+                    except Exception:
+                        pass
+                    tbl.setItem(r, 0, iu)
+                    tbl.setItem(r, 1, iv)
+
+                pv.addWidget(tbl, 1)
+                host.addWidget(panel, 0)
+
+            host.addStretch(1)
+        except Exception:
+            pass
 
     def _make_show_toggle_ref(self, ref_idx):
         """Create an iOS-style toggle switch for the ref table."""

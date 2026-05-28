@@ -5808,12 +5808,16 @@ class CentroidFinderWindow(QMainWindow):
 
         try:
             ov = self._get_overlay_render_payload()
+            try:
+                self._last_overlay_payload = dict(ov or {})
+            except Exception:
+                self._last_overlay_payload = ov
             pm, (off_x, off_y), (new_w, new_h) = build_zoomed_canvas(
                 source_img,
                 self.proc_zoom,
                 self.view_padding,
                 ov['centroids'],
-                ov['selected_index'],
+                None,
                 self.ref_points,
                 self.scale_proc_to_full,
                 ref_selected_index=getattr(self, 'ref_selected_index', None),
@@ -6764,9 +6768,14 @@ class CentroidFinderWindow(QMainWindow):
             except Exception:
                 pass
 
-            self.img_label_proc.setPixmap(pm_to_show)
             try:
-                self.img_label_proc.resize(pm_to_show.width(), pm_to_show.height())
+                pm_selected = self._compose_pixmap_with_selected_overlay(pm_to_show)
+            except Exception:
+                pm_selected = pm_to_show
+
+            self.img_label_proc.setPixmap(pm_selected)
+            try:
+                self.img_label_proc.resize(pm_selected.width(), pm_selected.height())
             except Exception:
                 pass
         except Exception:
@@ -6804,6 +6813,108 @@ class CentroidFinderWindow(QMainWindow):
                 self._draw_crosshair(pos_label)
         except Exception:
             pass
+
+    def _compose_pixmap_with_selected_overlay(self, base_pm):
+        """Return a pixmap with only the selected centroid marker overlaid.
+
+        The base pixmap should already contain image, gray centroids, ref points,
+        grids/rotation, etc. This method only draws the blue selected marker.
+        """
+        if base_pm is None:
+            return None
+        try:
+            from qt_compat.QtGui import QPixmap, QPainter, QPen, QColor
+        except Exception:
+            return base_pm
+
+        try:
+            ov = getattr(self, '_last_overlay_payload', None)
+            if not isinstance(ov, dict):
+                ov = self._get_overlay_render_payload()
+        except Exception:
+            ov = None
+        if not isinstance(ov, dict):
+            return base_pm
+
+        try:
+            cent = list(ov.get('centroids', []) or [])
+            sel = ov.get('selected_index', None)
+            if sel is None:
+                return base_pm
+            sel = int(sel)
+            if not (0 <= sel < len(cent)):
+                return base_pm
+        except Exception:
+            return base_pm
+
+        try:
+            excluded = set(ov.get('excluded_indices', set()) or set())
+            forced = set(ov.get('force_visible_indices', set()) or set())
+            vis_groups = ov.get('visible_groups', None)
+            vis_groups = None if vis_groups is None else {int(g) for g in (vis_groups or set())}
+            grp = int(cent[sel][0])
+            if sel not in forced:
+                if sel in excluded:
+                    return base_pm
+                if vis_groups is not None and grp not in vis_groups:
+                    return base_pm
+        except Exception:
+            pass
+
+        try:
+            _g, xp, yp = cent[sel]
+            xf = float(xp) * float(getattr(self, 'scale_proc_to_full', 1.0) or 1.0)
+            yf = float(yp) * float(getattr(self, 'scale_proc_to_full', 1.0) or 1.0)
+            dxy = self._full_to_display(float(xf), float(yf))
+            if dxy is None:
+                return base_pm
+            xd = int(round(float(dxy[0])))
+            yd = int(round(float(dxy[1])))
+        except Exception:
+            return base_pm
+
+        pm2 = QPixmap(base_pm)
+        p = QPainter(pm2)
+        try:
+            p.setRenderHint(QPainter.Antialiasing, True)
+            p.setPen(QPen(QColor(255, 255, 255), 2))
+            p.setBrush(QColor(0, 102, 255))
+            rs = 6
+            p.drawEllipse(xd - rs, yd - rs, rs * 2, rs * 2)
+
+            try:
+                labels = ov.get('label_texts', None)
+                if labels is not None and 0 <= sel < len(labels):
+                    lbl = str(labels[sel])
+                else:
+                    lbl = str(int(sel) + 1)
+            except Exception:
+                lbl = str(int(sel) + 1)
+            p.setPen(QPen(QColor(255, 255, 255, 230), 1))
+            p.drawText(int(xd + rs + 3), int(yd - rs - 3), lbl)
+        finally:
+            try:
+                p.end()
+            except Exception:
+                pass
+        return pm2
+
+    def _refresh_selected_overlay_only(self):
+        """Selection-only refresh: keep image/gray points fixed and redraw blue marker only."""
+        try:
+            base = getattr(self, '_display_pm_base', None)
+            if base is None:
+                self._apply_proc_zoom()
+                return
+            pm = self._compose_pixmap_with_selected_overlay(base)
+            if pm is None:
+                return
+            self.img_label_proc.setPixmap(pm)
+        except Exception:
+            try:
+                self._apply_proc_zoom()
+            except Exception:
+                pass
 
     def _viewport_pos_to_label_pos(self, pos):
         # スクロールビュー座標をラベル座標へ変換
@@ -7703,6 +7814,11 @@ class CentroidFinderWindow(QMainWindow):
             self._explicit_excluded_centroid_indices = explicit
             self._force_visible_centroid_indices = force_visible
             self._sanitize_excluded_indices()
+            # Re-apply group visibility (Show/Hide) by group number after index refresh.
+            try:
+                self._sync_show_from_filter()
+            except Exception:
+                pass
         except Exception:
             pass
 
@@ -8183,6 +8299,18 @@ class CentroidFinderWindow(QMainWindow):
         if not idxs:
             return
         try:
+            all_groups = set(self._available_group_numbers())
+            cur = self._get_visible_groups_set()
+            if cur is None:
+                cur = set(all_groups)
+            if bool(visible):
+                cur.add(int(group_no))
+            else:
+                cur.discard(int(group_no))
+            self.visible_groups = None if cur == all_groups else cur
+        except Exception:
+            pass
+        try:
             s = set(getattr(self, 'excluded_centroid_indices', set()) or set())
             exp = set(getattr(self, '_explicit_excluded_centroid_indices', set()) or set())
             fv = set(getattr(self, '_force_visible_centroid_indices', set()) or set())
@@ -8204,6 +8332,12 @@ class CentroidFinderWindow(QMainWindow):
             return
 
     def _is_group_visible(self, group_no):
+        try:
+            vis = self._get_visible_groups_set()
+            if vis is not None:
+                return int(group_no) in vis
+        except Exception:
+            pass
         idxs = self._group_centroid_indices(group_no)
         if not idxs:
             return True
@@ -8241,6 +8375,10 @@ class CentroidFinderWindow(QMainWindow):
             pass
 
     def _set_all_groups_visible(self, visible):
+        try:
+            self.visible_groups = None if bool(visible) else set()
+        except Exception:
+            pass
         try:
             s = set(getattr(self, 'excluded_centroid_indices', set()) or set())
             exp = set(getattr(self, '_explicit_excluded_centroid_indices', set()) or set())

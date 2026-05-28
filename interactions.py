@@ -139,6 +139,12 @@ class ImageViewController(QObject):
                 return False
 
             if et == QEvent.MouseButtonPress and event.button() == Qt.LeftButton:
+                # If wheel-zoom updates are pending, commit them before hit-testing.
+                # This prevents one-step-late selection and post-click viewport jumps.
+                try:
+                    self._flush_pending_wheel_zoom_on_click()
+                except Exception:
+                    pass
                 pos_vp = _evt_point(event) if obj is self.ui.proc_scroll.viewport() else self.ui._label_pos_to_viewport_pos(_evt_point(event))
                 pos_label = _evt_point(event) if obj is self.ui.img_label_proc else self.ui._viewport_pos_to_label_pos(_evt_point(event))
                 # 近傍の点を判定（通常モード時）: centroid / ref のうち近い方を選択
@@ -251,8 +257,12 @@ class ImageViewController(QObject):
                                 try:
                                     if self.ui.selected_index != idx:
                                         self.ui.selected_index = idx
-                                        # テーブル/表示を更新
-                                        self.ui.schedule_update(force=True, recompute_centroids=False)
+                                        # 画像クリック時はベース画像を固定し、
+                                        # 選択マーカーのみ差分描画する。
+                                        try:
+                                            self.ui._refresh_selected_overlay_only()
+                                        except Exception:
+                                            self.ui.schedule_update(force=True, recompute_centroids=False)
                                     # Always sync visible table selection/scroll even when index is unchanged.
                                     try:
                                         self.ui._sync_table_selection()
@@ -446,6 +456,43 @@ class ImageViewController(QObject):
             except Exception:
                 pass
             return False
+
+    def _flush_pending_wheel_zoom_on_click(self):
+        """Finalize wheel zoom state before point-selection click handling.
+
+        - Apply pending zoom tick now so hit-testing uses current mapping.
+        - Cancel delayed settle pass to avoid post-click viewport jump.
+        """
+        try:
+            if bool(getattr(self, '_wheel_zoom_pending', False)):
+                try:
+                    self._on_wheel_zoom_tick()
+                except Exception:
+                    pass
+        except Exception:
+            pass
+
+        try:
+            if getattr(self, '_wheel_zoom_timer', None) is not None and self._wheel_zoom_timer.isActive():
+                self._wheel_zoom_timer.stop()
+        except Exception:
+            pass
+
+        try:
+            if getattr(self, '_wheel_settle_timer', None) is not None and self._wheel_settle_timer.isActive():
+                self._wheel_settle_timer.stop()
+        except Exception:
+            pass
+
+        # Do not allow deferred fast->full pass to reposition viewport after click.
+        try:
+            self.ui._max_render_pixels_override = None
+        except Exception:
+            pass
+        try:
+            self._wheel_fast_render_applied = False
+        except Exception:
+            pass
         except Exception:
             # Log other exceptions and avoid letting them crash the Qt event loop.
             try:

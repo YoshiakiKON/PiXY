@@ -21,10 +21,10 @@ import qt_compat
 from qt_compat.QtWidgets import (
     QSlider, QMainWindow, QLabel, QVBoxLayout, QHBoxLayout, QPushButton, QLineEdit, QWidget,
     QFileDialog, QStyle, QSizePolicy, QTableWidget, QTableWidgetItem, QAbstractItemView,
-    QHeaderView, QScrollArea, QApplication, QMenu, QComboBox, QTabWidget
+    QHeaderView, QScrollArea, QApplication, QMenu, QComboBox, QTabWidget, QFrame
 )
 from qt_compat.QtWidgets import QButtonGroup
-from qt_compat.QtCore import Qt, QTimer, QObject, QEvent, QRect, QPoint, pyqtSignal, QThread
+from qt_compat.QtCore import Qt, QTimer, QObject, QEvent, QRect, QPoint, pyqtSignal, QThread, QSettings
 from qt_compat.QtGui import QPixmap, QFont, QCursor, QPainter, QPen, QColor, QPalette
 
 from Util import cvimg_to_qpixmap, kmeans_posterize
@@ -1042,6 +1042,10 @@ class CentroidFinderWindow(QMainWindow):
         self._explicit_excluded_centroid_indices = set()  # ユーザー操作/置換により明示的に除外された重心インデックス
         self._force_visible_centroid_indices = set()  # フィルタ非表示中でも一時的に表示する重心インデックス
         self.visible_groups = None       # None=all visible, otherwise set[int]
+        self.center_list_indices = []    # 中カラムに追加された重心インデックス
+        self.center_numeric_rows = []    # 中カラム表示値の数値スナップショット(dict list)
+        self._table_between_row_indices = []  # table_between行 -> centroidsインデックス
+        self.overlay_point_source = 'left'  # 'left': 左リスト(全検出), 'center': 中リスト(Add済み)
         self._replace_target_source_index = None
         self._replace_target_source_group = None
         self.selected_index = None     # 選択中の重心インデックス
@@ -1057,6 +1061,12 @@ class CentroidFinderWindow(QMainWindow):
         self.visible_ref_cols = 3      # 表示する参照点列数
         self.flip_mode = 'auto'        # 左右反転モード ('auto', 'normal', 'flip')
         self.overlay_mode = 'Original'  # Overlay display mode: Original / Posterized
+        self._centroid_extraction_overlay_mode = 'Posterized'  # CentroidExtraction時の既定/記憶値
+        self._centroid_extraction_show_boundaries = True
+        try:
+            self._load_centroid_extraction_preferences()
+        except Exception:
+            pass
         # Display labels: editable display strings separate from internal keys
         # Internal keys should be code-safe identifiers; change display text here.
         self.display_labels = {
@@ -1422,6 +1432,9 @@ class CentroidFinderWindow(QMainWindow):
         self.btn_open = QPushButton("Export Image")
         self.btn_open.setFixedHeight(40)
         self.btn_open.clicked.connect(self._on_export_image_clicked)
+        self.btn_replace_image = QPushButton("Replace Image")
+        self.btn_replace_image.setFixedHeight(40)
+        self.btn_replace_image.clicked.connect(self._on_replace_image_clicked)
         # Export ボタンは短くして隣に Clipboard を追加
         self.btn_export = QPushButton("Export XYZ")
         self.btn_export.setFixedHeight(40)
@@ -1441,6 +1454,9 @@ class CentroidFinderWindow(QMainWindow):
         self.btn_clear_target = QPushButton("Clear")
         self.btn_clear_target.setFixedHeight(40)
         self.btn_clear_target.clicked.connect(self._on_clear_target)
+        self.btn_clear_target_all = QPushButton("Clear ALL")
+        self.btn_clear_target_all.setFixedHeight(40)
+        self.btn_clear_target_all.clicked.connect(self._on_clear_target_all)
 
         # 自動更新/手動再計算の UI 部品を先に作成
         # Auto Update の ON/OFF 表示・選択は不要なので、常に auto_update_mode=True とする
@@ -1467,6 +1483,7 @@ class CentroidFinderWindow(QMainWindow):
         self._area_init_tercile_pending = False
         self._pending_recompute_after_area_init = False
         self._ref_add_has_added = False
+        self.centroid_extraction_mode = False
 
         # ピックモード（ルーペ制御）
         self.pick_mode = None  # None / 'add' / 'update'
@@ -1629,6 +1646,7 @@ class CentroidFinderWindow(QMainWindow):
         try:
             # Simply add the btn_open directly to avoid nested layout alignment issues
             img_header.addWidget(self.btn_open, 0, Qt.AlignLeft | Qt.AlignVCenter)
+            img_header.addWidget(self.btn_replace_image, 0, Qt.AlignLeft | Qt.AlignVCenter)
         except Exception:
             pass
         # 中央上には自動更新/手動再計算をまとめる
@@ -1641,9 +1659,11 @@ class CentroidFinderWindow(QMainWindow):
             pass
         # 右上コントロール（左→右）: Coordinate, Boundary, Posterization Overlay
         overlay_ctrl = None
+        self.overlay_mode_controls = None
         try:
             # small overlay control placed at right-top next to Flip
             overlay_ctrl = QWidget()
+            self.overlay_mode_controls = overlay_ctrl
             try:
                 ol_layout = QHBoxLayout(overlay_ctrl)
                 ol_layout.setContentsMargins(0, 0, 0, 0)
@@ -1693,6 +1713,7 @@ class CentroidFinderWindow(QMainWindow):
             except Exception:
                 pass
         except Exception:
+            self.overlay_mode_controls = None
             pass
 
         # Boundary / Display Mode は左詰めで配置（Openの右側）
@@ -1956,7 +1977,7 @@ class CentroidFinderWindow(QMainWindow):
         # make rows a little taller / more airy so controls don't feel cramped
         try:
             # Reduce vertical gaps so labels feel tighter
-            sliders_layout.setSpacing(10)
+            sliders_layout.setSpacing(0)
             sliders_layout.setContentsMargins(6, 2, 6, 2)
         except Exception:
             pass
@@ -2002,14 +2023,14 @@ class CentroidFinderWindow(QMainWindow):
 
                 try:
                     minus_btn = QPushButton("-")
-                    minus_btn.setFixedSize(28, 28)
+                    minus_btn.setFixedSize(28, 23)
                     minus_btn.clicked.connect(lambda _, f=nudger_minus: f(-1))
                 except Exception:
                     minus_btn = QPushButton("-")
 
                 try:
                     plus_btn = QPushButton("+")
-                    plus_btn.setFixedSize(28, 28)
+                    plus_btn.setFixedSize(28, 23)
                     plus_btn.clicked.connect(lambda _, f=nudger_plus: f(1))
                 except Exception:
                     plus_btn = QPushButton("+")
@@ -2108,21 +2129,6 @@ class CentroidFinderWindow(QMainWindow):
         except Exception:
             pass
 
-        # Area histogram (Advanced only; shown below Min Area)
-        try:
-            self.area_hist = AreaHistogramWidget()
-            try:
-                self.area_hist.setFont(ctrl_font)
-            except Exception:
-                pass
-            try:
-                self.area_hist.rangeChanged.connect(self._on_area_hist_range_changed)
-            except Exception:
-                pass
-            sliders_layout.addWidget(self.area_hist)
-        except Exception:
-            self.area_hist = None
-
         # Trim row (Advanced - Boundary Offset)
         try:
             r = _build_control_row('trim', self.display_labels.get('trim', STR.NAME_TRIM), self.edit_trim, self.slider_trim, self._nudge_trim, self._nudge_trim)
@@ -2165,12 +2171,35 @@ class CentroidFinderWindow(QMainWindow):
         except Exception:
             self.row_shape_complex = None
 
+        # Area histogram (Advanced only; place at the bottom under Shape Complexity)
+        try:
+            self.area_hist = AreaHistogramWidget()
+            try:
+                self.area_hist.setFont(ctrl_font)
+            except Exception:
+                pass
+            try:
+                # Keep chart area stable so axis labels do not visually collide with next row.
+                self.area_hist.setMinimumHeight(190)
+                self.area_hist.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
+            except Exception:
+                pass
+            try:
+                self.area_hist.rangeChanged.connect(self._on_area_hist_range_changed)
+            except Exception:
+                pass
+            sliders_layout.addWidget(self.area_hist)
+        except Exception:
+            self.area_hist = None
+
         # MinAreaとテーブルの間にボタン行（左詰め）を追加
         actions_row = QHBoxLayout()
         # ここから「境界線」ボタンは削除（画像右上に移動済み）
+        self.btn_start_centroid_extraction = QPushButton("START Centroid Extraction")
         self.btn_add_ref = QPushButton(STR.BUTTON_ADD_REF)
         self.btn_update_xy = QPushButton(STR.BUTTON_UPDATE_XY)
         self.btn_clear_ref = QPushButton(STR.BUTTON_CLEAR)
+        self.btn_start_centroid_extraction.clicked.connect(self._on_toggle_centroid_extraction_mode)
         self.btn_add_ref.clicked.connect(self._on_add_ref_point)
         self.btn_update_xy.clicked.connect(self._on_update_xy)
         self.btn_clear_ref.clicked.connect(self._on_clear_ref)
@@ -2361,7 +2390,13 @@ class CentroidFinderWindow(QMainWindow):
 
         # Save / Load Project ボタン（ロゴの下、Add Fiducial の上）
         try:
-            _proj_row = QHBoxLayout()
+            self.left_project_row = QWidget()
+            try:
+                self.left_project_row.setObjectName('leftProjectRow')
+                self.left_project_row.setStyleSheet('#leftProjectRow { border-bottom: 1px solid #c6c6c6; }')
+            except Exception:
+                pass
+            _proj_row = QHBoxLayout(self.left_project_row)
             _proj_row.setContentsMargins(0, 0, 0, 0)
             _proj_row.setSpacing(6)
             self.btn_new_project = QPushButton("New Project")
@@ -2376,15 +2411,16 @@ class CentroidFinderWindow(QMainWindow):
             _proj_row.addWidget(self.btn_save_project)
             _proj_row.addWidget(self.btn_load_project)
             _proj_row.addStretch(1)
-            left_col.addLayout(_proj_row, 0)
+            left_col.addWidget(self.left_project_row, 0)
         except Exception:
+            self.left_project_row = None
             self.btn_new_project = None
             self.btn_save_project = None
             self.btn_load_project = None
 
         # Build Grain Identification block (to be placed below ref table)
         try:
-            self.grain_ident_mode = 'basic'
+            self.grain_ident_mode = 'advanced'
         except Exception:
             pass
         try:
@@ -2431,6 +2467,11 @@ class CentroidFinderWindow(QMainWindow):
                     self.toggle_grain_ident.set_on_changed(lambda idx: self._on_toggle_grain_ident(int(idx)))
                 except Exception:
                     pass
+                try:
+                    self.toggle_grain_ident.setCheckedIndex(1)
+                    self.toggle_grain_ident.setVisible(False)
+                except Exception:
+                    pass
                 gil.addWidget(self.toggle_grain_ident)
             except Exception:
                 self.toggle_grain_ident = None
@@ -2443,14 +2484,11 @@ class CentroidFinderWindow(QMainWindow):
             gl.setContentsMargins(0, 0, 0, 0)
             gl.setSpacing(6)
             if getattr(self, 'grain_ident_controls', None) is not None:
-                # Keep Auto-detect section always expanded (manual-first workflow)
                 try:
-                    self.lbl_grain_ident.setText(STR.SECTION_AUTO_DETECT)
-                    self.lbl_grain_ident.setCursor(QCursor(Qt.ArrowCursor))
-                    self.lbl_grain_ident.setToolTip(STR.SECTION_AUTO_DETECT_HINT)
+                    # User requested to remove the Auto-detect title row.
+                    self.grain_ident_controls.setVisible(False)
                 except Exception:
                     pass
-                gl.addWidget(self.grain_ident_controls, 0)
 
             # Body: wraps calc_mode_controls + sliders_layout
             self.grain_body = QWidget()
@@ -2563,8 +2601,55 @@ class CentroidFinderWindow(QMainWindow):
             offline_col = QVBoxLayout(self.tab_offline)
             offline_col.setContentsMargins(0, 5, 0, 0)
             offline_col.setSpacing(6)
+            try:
+                offline_overlay_row = QHBoxLayout()
+                offline_overlay_row.setContentsMargins(0, 0, 0, 0)
+                offline_overlay_row.setSpacing(6)
+                self.lbl_overlay_source = QLabel("Overlay Points")
+                try:
+                    fov = self.lbl_overlay_source.font()
+                    fov.setBold(True)
+                    self.lbl_overlay_source.setFont(fov)
+                except Exception:
+                    pass
+                offline_overlay_row.addWidget(self.lbl_overlay_source, 0)
+                offline_overlay_row.addStretch(1)
+                self.toggle_overlay_source = SegmentControl(["Left List", "Center List"], checked_index=0, btn_w=108, btn_h=27)
+                try:
+                    if str(getattr(self, 'overlay_point_source', 'left')) == 'center':
+                        self.toggle_overlay_source.setCheckedIndex(1)
+                except Exception:
+                    pass
+                try:
+                    self.toggle_overlay_source.set_on_changed(lambda idx: self._on_toggle_overlay_source(int(idx)))
+                except Exception:
+                    pass
+                offline_overlay_row.addWidget(self.toggle_overlay_source, 0)
+                offline_col.addLayout(offline_overlay_row, 0)
+            except Exception:
+                self.lbl_overlay_source = None
+                self.toggle_overlay_source = None
             if getattr(self, 'grain_section', None) is not None:
                 offline_col.addWidget(self.grain_section, 0)
+            try:
+                offline_global_row = QHBoxLayout()
+                offline_global_row.setContentsMargins(0, 0, 0, 0)
+                offline_global_row.setSpacing(6)
+                self.btn_add_all_grp_list = QPushButton("Add ALL Group to List")
+                self.btn_add_all_grp_list.setFixedSize(316, 27)
+                self.btn_add_all_grp_list.clicked.connect(self._add_all_groups_to_center_list)
+                offline_global_row.addWidget(self.btn_add_all_grp_list, 0)
+                self.toggle_show_all_groups = SegmentControl(["Show ALL", "Hide ALL"], checked_index=0, btn_w=94, btn_h=27)
+                try:
+                    self.toggle_show_all_groups.set_on_changed(lambda idx: self._on_toggle_show_all_groups(int(idx)))
+                except Exception:
+                    pass
+                offline_global_row.addWidget(self.toggle_show_all_groups, 0)
+                offline_global_row.addStretch(1)
+                offline_col.addLayout(offline_global_row, 0)
+            except Exception:
+                self.btn_add_all_grp_list = None
+                self.toggle_show_all_groups = None
             try:
                 self.offline_group_scroll = QScrollArea()
                 self.offline_group_scroll.setWidgetResizable(True)
@@ -2595,7 +2680,11 @@ class CentroidFinderWindow(QMainWindow):
             online_col.setContentsMargins(0, 0, 0, 0)
             online_col.setSpacing(6)
             self.left_tabs.addTab(self.tab_online, 'On-line Alignment')
-            self.left_tabs.setCurrentIndex(0)
+            try:
+                self.left_tabs.tabBar().hide()
+            except Exception:
+                pass
+            self.left_tabs.setCurrentIndex(1)
         except Exception:
             self.left_tabs = None
             self.tab_offline = None
@@ -2605,6 +2694,23 @@ class CentroidFinderWindow(QMainWindow):
             self.offline_group_layout = None
             offline_col = None
             online_col = None
+
+        # Centroid Extraction切替ボタンは左カラム直下に置き、Off-line表示中も常に見えるようにする
+        try:
+            start_extract_row = QHBoxLayout()
+            start_extract_row.setContentsMargins(0, 5, 0, 0)
+            start_extract_row.setSpacing(6)
+            try:
+                start_extract_row.addWidget(self.btn_start_centroid_extraction)
+            except Exception:
+                pass
+            try:
+                start_extract_row.addStretch(1)
+            except Exception:
+                pass
+            left_col.addLayout(start_extract_row, 0)
+        except Exception:
+            pass
 
         # 左カラムの表の上に Add/Update/Clear ボタンを配置
         try:
@@ -2722,6 +2828,10 @@ class CentroidFinderWindow(QMainWindow):
 
         if self.left_tabs is not None:
             left_col.addWidget(self.left_tabs, 1)
+            try:
+                self._set_centroid_extraction_mode(False)
+            except Exception:
+                pass
         # Wrap left column layout in a QWidget and cap its maximum width so it doesn't grow too wide
         self.left_container = QWidget()
         self.left_container.setLayout(left_col)
@@ -2747,18 +2857,45 @@ class CentroidFinderWindow(QMainWindow):
                     center_btn_row.setSpacing(6)
                     center_btn_row.addWidget(self.btn_export, 0)
                     center_btn_row.addWidget(self.btn_clipboard, 0)
-                    center_btn_row.addWidget(self.btn_filter, 0)
+                    try:
+                        self.btn_filter.setVisible(False)
+                    except Exception:
+                        pass
                     center_btn_row.addStretch(1)
                     center_col.addLayout(center_btn_row, 0)
 
                     center_target_row = QHBoxLayout()
                     center_target_row.setContentsMargins(0, 0, 0, 0)
                     center_target_row.setSpacing(6)
-                    center_target_row.addWidget(self.btn_add_target, 0)
                     center_target_row.addWidget(self.btn_update_target_uv, 0)
                     center_target_row.addWidget(self.btn_clear_target, 0)
+                    center_target_row.addWidget(self.btn_clear_target_all, 0)
                     center_target_row.addStretch(1)
                     center_col.addLayout(center_target_row, 0)
+
+                    center_add_row = QHBoxLayout()
+                    center_add_row.setContentsMargins(0, 0, 0, 0)
+                    center_add_row.setSpacing(6)
+                    center_add_row.addWidget(self.btn_add_target, 0)
+                    self.lbl_add_target_as = QLabel("as")
+                    try:
+                        self.lbl_add_target_as.setAlignment(Qt.AlignVCenter | Qt.AlignLeft)
+                    except Exception:
+                        pass
+                    center_add_row.addWidget(self.lbl_add_target_as, 0)
+                    self.combo_add_target_group = QComboBox()
+                    try:
+                        self.combo_add_target_group.setFixedHeight(40)
+                        self.combo_add_target_group.setMinimumWidth(120)
+                    except Exception:
+                        pass
+                    center_add_row.addWidget(self.combo_add_target_group, 0)
+                    center_add_row.addStretch(1)
+                    center_col.addLayout(center_add_row, 0)
+                    try:
+                        self._refresh_target_group_combo()
+                    except Exception:
+                        pass
 
                 except Exception:
                     pass
@@ -3181,6 +3318,20 @@ class CentroidFinderWindow(QMainWindow):
 
     # オーバーレイ表示モード（Original/Posterized）変更ハンドラ
     def _on_overlay_mode_changed(self, idx):
+        if not bool(getattr(self, 'centroid_extraction_mode', False)):
+            try:
+                self.overlay_mode = 'Original'
+                self.overlay_mix = 0
+            except Exception:
+                pass
+            try:
+                tog = getattr(self, 'overlay_mode_toggle', None)
+                if tog is not None:
+                    tog.setCheckedIndex(0)
+            except Exception:
+                pass
+            self.schedule_update(force=True, recompute_centroids=False)
+            return
         try:
             modes = ['Original', 'Posterized']
             mode = modes[int(idx)] if 0 <= int(idx) < len(modes) else 'Original'
@@ -3599,6 +3750,8 @@ class CentroidFinderWindow(QMainWindow):
 
     # 境界線表示トグルハンドラ
     def _on_toggle_boundaries(self, checked):
+        if not bool(getattr(self, 'centroid_extraction_mode', False)):
+            checked = False
         self.show_boundaries = bool(checked)
         try:
             if getattr(self, 'btn_boundary_show', None) is not None and getattr(self, 'btn_boundary_hide', None) is not None:
@@ -3870,13 +4023,14 @@ class CentroidFinderWindow(QMainWindow):
 
     # Grain Identification トグルハンドラ（Basic/Advanced）
     def _on_toggle_grain_ident(self, idx):
+        self.grain_ident_mode = 'advanced'
         try:
-            if int(idx) == 0:
-                self.grain_ident_mode = 'basic'
-            else:
-                self.grain_ident_mode = 'advanced'
+            tog = getattr(self, 'toggle_grain_ident', None)
+            if tog is not None:
+                tog.setCheckedIndex(1)
+                tog.setVisible(False)
         except Exception:
-            self.grain_ident_mode = 'basic'
+            pass
         # Basic/Advanced is UI visibility only: do not trigger heavy recomputation here.
         try:
             self._apply_grain_ident_visibility()
@@ -3885,8 +4039,16 @@ class CentroidFinderWindow(QMainWindow):
             pass
 
     def _apply_grain_ident_visibility(self):
-        mode = str(getattr(self, 'grain_ident_mode', 'basic'))
-        show_basic = bool(mode == 'basic')
+        mode = 'advanced'
+        self.grain_ident_mode = 'advanced'
+        show_basic = False
+        try:
+            tog = getattr(self, 'toggle_grain_ident', None)
+            if tog is not None:
+                tog.setCheckedIndex(1)
+                tog.setVisible(False)
+        except Exception:
+            pass
         try:
             if getattr(self, 'row_num_groups', None) is not None:
                 # Number of Groups is shared between Basic/Advanced
@@ -4417,6 +4579,17 @@ class CentroidFinderWindow(QMainWindow):
             return
         self._open_image_from_path(fname, reset_project_state=True)
 
+    def _on_replace_image_clicked(self):
+        """Replace only the base image while keeping current project data."""
+        last_path = load_last_image_path()
+        fname, _ = QFileDialog.getOpenFileName(self, "Replace Image", last_path, STR.FILE_FILTER)
+        if not fname:
+            return
+        try:
+            self._open_image_from_path(fname, reset_project_state=False, auto_detect=False)
+        except Exception:
+            pass
+
     def _open_startup_image(self):
         """起動時はデモ画像を自動読み込みし、見つからない場合のみ手動選択へフォールバック。"""
         try:
@@ -4480,6 +4653,10 @@ class CentroidFinderWindow(QMainWindow):
             self.manual_targets = []
             self.centroids = []
             self._auto_centroids = []
+            self.center_list_indices = []
+            self.center_numeric_rows = []
+            self._table_between_row_indices = []
+            self.overlay_point_source = 'left'
             self.selected_index = None
             self.excluded_centroid_indices = set()
             self._explicit_excluded_centroid_indices = set()
@@ -4491,6 +4668,16 @@ class CentroidFinderWindow(QMainWindow):
             pass
         try:
             self.visible_ref_cols = 3
+        except Exception:
+            pass
+        try:
+            tog = getattr(self, 'toggle_overlay_source', None)
+            if tog is not None:
+                tog.setCheckedIndex(0)
+        except Exception:
+            pass
+        try:
+            self._set_centroid_extraction_mode(False)
         except Exception:
             pass
 
@@ -5619,19 +5806,21 @@ class CentroidFinderWindow(QMainWindow):
             return
 
         try:
+            ov = self._get_overlay_render_payload()
             pm, (off_x, off_y), (new_w, new_h) = build_zoomed_canvas(
                 source_img,
                 self.proc_zoom,
                 self.view_padding,
-                self.centroids,
-                self.selected_index,
+                ov['centroids'],
+                ov['selected_index'],
                 self.ref_points,
                 self.scale_proc_to_full,
                 ref_selected_index=getattr(self, 'ref_selected_index', None),
-                manual_indices=self._manual_centroid_indices(),
-                excluded_indices=set(getattr(self, 'excluded_centroid_indices', set()) or set()),
-                force_visible_indices=set(getattr(self, '_force_visible_centroid_indices', set()) or set()),
-                visible_groups=self._get_visible_groups_set(),
+                manual_indices=ov['manual_indices'],
+                excluded_indices=ov['excluded_indices'],
+                force_visible_indices=ov['force_visible_indices'],
+                visible_groups=ov['visible_groups'],
+                label_texts=ov.get('label_texts'),
                 colors=None,
                 debug_ref_coords=True,
                 interp_mode=self.interp_mode,
@@ -5974,19 +6163,21 @@ class CentroidFinderWindow(QMainWindow):
                 return None
 
         # Build pixmap from the full overlay and display it directly
+        ov = self._get_overlay_render_payload()
         pm, (off_x, off_y), (new_w, new_h) = build_zoomed_canvas(
             self._last_overlay_full,
             self.proc_zoom,
             self.view_padding,
-            self.centroids,
-            self.selected_index,
+            ov['centroids'],
+            ov['selected_index'],
             self.ref_points,
             self.scale_proc_to_full,
             ref_selected_index=getattr(self, 'ref_selected_index', None),
-            manual_indices=self._manual_centroid_indices(),
-            excluded_indices=set(getattr(self, 'excluded_centroid_indices', set()) or set()),
-            force_visible_indices=set(getattr(self, '_force_visible_centroid_indices', set()) or set()),
-            visible_groups=self._get_visible_groups_set(),
+            manual_indices=ov['manual_indices'],
+            excluded_indices=ov['excluded_indices'],
+            force_visible_indices=ov['force_visible_indices'],
+            visible_groups=ov['visible_groups'],
+            label_texts=ov.get('label_texts'),
             colors=None,
             interp_mode=self.interp_mode,
             max_pixels=self._get_render_max_pixels(),
@@ -6604,7 +6795,7 @@ class CentroidFinderWindow(QMainWindow):
 
         # If pick mode active, redraw crosshair
         try:
-            if self.pick_mode in ('add', 'update', 'target_add', 'target_update'):
+            if self.pick_mode in ('add', 'update', 'target_add', 'target_update', 'center_uv_update'):
                 global_pt = QCursor.pos()
                 vp = self.proc_scroll.viewport()
                 pos_vp = vp.mapFromGlobal(global_pt)
@@ -7558,6 +7749,702 @@ class CentroidFinderWindow(QMainWindow):
         except Exception:
             return []
 
+    def _safe_float_or_nan(self, v):
+        try:
+            s = str(v).strip()
+            if s == "":
+                return float('nan')
+            return float(s.replace(',', ''))
+        except Exception:
+            return float('nan')
+
+    def _center_uv_from_proc(self, x_proc, y_proc):
+        try:
+            spf = float(getattr(self, 'scale_proc_to_full', 1.0) or 1.0)
+        except Exception:
+            spf = 1.0
+        try:
+            h_full = int(self._img_base_size[1]) if getattr(self, '_img_base_size', None) is not None else None
+        except Exception:
+            h_full = None
+        if h_full is None:
+            try:
+                h_full = int(self.img_full.shape[0]) if getattr(self, 'img_full', None) is not None else None
+            except Exception:
+                h_full = None
+        try:
+            x_full = float(x_proc) * spf
+            y_full = float(y_proc) * spf
+            u = int(round(x_full))
+            if h_full is not None and h_full > 0:
+                v = int(round((h_full - 1) - y_full))
+            else:
+                v = int(round(-y_full))
+            return u, v
+        except Exception:
+            return 0, 0
+
+    def _proc_from_center_uv(self, u_val, v_val):
+        try:
+            spf = float(getattr(self, 'scale_proc_to_full', 1.0) or 1.0)
+        except Exception:
+            spf = 1.0
+        if abs(spf) < 1e-12:
+            spf = 1.0
+        try:
+            h_full = int(self._img_base_size[1]) if getattr(self, '_img_base_size', None) is not None else None
+        except Exception:
+            h_full = None
+        if h_full is None:
+            try:
+                h_full = int(self.img_full.shape[0]) if getattr(self, 'img_full', None) is not None else None
+            except Exception:
+                h_full = None
+        try:
+            u = float(u_val)
+            v = float(v_val)
+            x_full = u
+            if h_full is not None and h_full > 0:
+                y_full = float((h_full - 1) - v)
+            else:
+                y_full = float(-v)
+            return float(x_full / spf), float(y_full / spf)
+        except Exception:
+            return None
+
+    def _snapshot_center_row_from_centroid(self, cidx):
+        try:
+            idx = int(cidx)
+            cents = list(getattr(self, 'centroids', []) or [])
+            if not (0 <= idx < len(cents)):
+                return None
+            g, xp, yp = cents[idx]
+            u, v = self._center_uv_from_proc(float(xp), float(yp))
+
+            x_val = float('nan')
+            y_val = float('nan')
+            z_val = float('nan')
+            try:
+                src = getattr(self, 'table', None)
+                if src is not None and 0 <= idx < src.columnCount():
+                    x_it = src.item(4, idx)
+                    y_it = src.item(5, idx)
+                    z_it = src.item(6, idx)
+                    x_val = self._safe_float_or_nan(x_it.text() if x_it is not None else "")
+                    y_val = self._safe_float_or_nan(y_it.text() if y_it is not None else "")
+                    z_val = self._safe_float_or_nan(z_it.text() if z_it is not None else "")
+            except Exception:
+                pass
+
+            try:
+                is_manual = 1.0 if idx in set(self._manual_centroid_indices() or set()) else 0.0
+            except Exception:
+                is_manual = 0.0
+
+            return {
+                'source_idx': int(idx),
+                'grp': float(int(g)),
+                'u': float(u),
+                'v': float(v),
+                'x': float(x_val),
+                'y': float(y_val),
+                'z': float(z_val),
+                'x_proc': float(xp),
+                'y_proc': float(yp),
+                'show': 1.0,
+                'manual': float(is_manual),
+            }
+        except Exception:
+            return None
+
+    def _append_center_numeric_rows_from_indices(self, indices):
+        try:
+            rows = list(getattr(self, 'center_numeric_rows', []) or [])
+            existing = set()
+            for r in rows:
+                try:
+                    existing.add(int(r.get('source_idx', -1)))
+                except Exception:
+                    pass
+            for i in (indices or []):
+                try:
+                    ii = int(i)
+                except Exception:
+                    continue
+                if ii in existing:
+                    continue
+                snap = self._snapshot_center_row_from_centroid(ii)
+                if snap is None:
+                    continue
+                rows.append(snap)
+                existing.add(ii)
+            self.center_numeric_rows = rows
+        except Exception:
+            pass
+
+    def _remove_center_numeric_row_by_source_idx(self, cidx):
+        try:
+            tgt = int(cidx)
+        except Exception:
+            return
+        try:
+            rows = list(getattr(self, 'center_numeric_rows', []) or [])
+            self.center_numeric_rows = [r for r in rows if int(r.get('source_idx', -1)) != tgt]
+        except Exception:
+            pass
+
+    def _get_center_list_indices(self):
+        try:
+            n = len(getattr(self, 'centroids', []) or [])
+            cur = list(getattr(self, 'center_list_indices', []) or [])
+            seen = set()
+            out = []
+            for i in cur:
+                try:
+                    ii = int(i)
+                except Exception:
+                    continue
+                if not (0 <= ii < n):
+                    continue
+                if ii in seen:
+                    continue
+                seen.add(ii)
+                out.append(ii)
+            explicit_only = list(out)
+
+            # Manual targets are always part of the middle list.
+            try:
+                manual_idxs = sorted(int(i) for i in (self._manual_centroid_indices() or set()))
+            except Exception:
+                manual_idxs = []
+            for mi in manual_idxs:
+                if mi in seen:
+                    continue
+                if 0 <= mi < n:
+                    seen.add(mi)
+                    out.append(mi)
+
+            # Persist only explicit additions; manual points are implicit.
+            self.center_list_indices = explicit_only
+            return out
+        except Exception:
+            self.center_list_indices = []
+            return []
+
+    def _get_explicit_center_list_indices(self):
+        try:
+            n = len(getattr(self, 'centroids', []) or [])
+            cur = list(getattr(self, 'center_list_indices', []) or [])
+            seen = set()
+            out = []
+            for i in cur:
+                try:
+                    ii = int(i)
+                except Exception:
+                    continue
+                if not (0 <= ii < n):
+                    continue
+                if ii in seen:
+                    continue
+                seen.add(ii)
+                out.append(ii)
+            self.center_list_indices = out
+            return out
+        except Exception:
+            self.center_list_indices = []
+            return []
+
+    def _shift_center_list_indices(self, pivot_idx, delta):
+        """Shift explicit center-list indices when centroid indices are inserted/removed."""
+        try:
+            p = int(pivot_idx)
+            d = int(delta)
+        except Exception:
+            return
+        if d == 0:
+            return
+        try:
+            cur = list(getattr(self, 'center_list_indices', []) or [])
+            out = []
+            for i in cur:
+                try:
+                    ii = int(i)
+                except Exception:
+                    continue
+                if d > 0:
+                    if ii >= p:
+                        ii += d
+                else:
+                    if ii == p:
+                        continue
+                    if ii > p:
+                        ii += d
+                out.append(ii)
+            self.center_list_indices = out
+        except Exception:
+            pass
+        try:
+            rows = list(getattr(self, 'center_numeric_rows', []) or [])
+            out_rows = []
+            for r in rows:
+                rr = dict(r)
+                try:
+                    ii = int(rr.get('source_idx', -1))
+                except Exception:
+                    ii = -1
+                if d > 0:
+                    if ii >= p:
+                        ii += d
+                else:
+                    if ii == p:
+                        continue
+                    if ii > p:
+                        ii += d
+                rr['source_idx'] = int(ii)
+                out_rows.append(rr)
+            self.center_numeric_rows = out_rows
+        except Exception:
+            pass
+
+    def _add_group_to_center_list(self, group_no):
+        try:
+            g = int(group_no)
+        except Exception:
+            return
+        try:
+            existing = self._get_explicit_center_list_indices()
+            existing_set = set(existing)
+            added = []
+            for idx, c in enumerate(getattr(self, 'centroids', []) or []):
+                try:
+                    if int(c[0]) != g:
+                        continue
+                except Exception:
+                    continue
+                if idx in existing_set:
+                    continue
+                existing.append(int(idx))
+                existing_set.add(int(idx))
+                added.append(int(idx))
+            self.center_list_indices = existing
+            try:
+                self._append_center_numeric_rows_from_indices(added)
+            except Exception:
+                pass
+            if added and getattr(self, 'selected_index', None) not in set(existing):
+                try:
+                    self.selected_index = int(added[0])
+                except Exception:
+                    pass
+        except Exception:
+            return
+        try:
+            self.schedule_update(force=True, recompute_centroids=False)
+        except Exception:
+            pass
+
+    def _group_centroid_indices(self, group_no):
+        try:
+            g = int(group_no)
+        except Exception:
+            return []
+        out = []
+        for idx, c in enumerate(getattr(self, 'centroids', []) or []):
+            try:
+                if int(c[0]) == g:
+                    out.append(int(idx))
+            except Exception:
+                continue
+        return out
+
+    def _set_group_visible(self, group_no, visible):
+        idxs = self._group_centroid_indices(group_no)
+        if not idxs:
+            return
+        try:
+            s = set(getattr(self, 'excluded_centroid_indices', set()) or set())
+            exp = set(getattr(self, '_explicit_excluded_centroid_indices', set()) or set())
+            fv = set(getattr(self, '_force_visible_centroid_indices', set()) or set())
+            if bool(visible):
+                for ci in idxs:
+                    s.discard(ci)
+                    exp.discard(ci)
+                    fv.add(ci)
+            else:
+                for ci in idxs:
+                    s.add(ci)
+                    exp.add(ci)
+                    fv.discard(ci)
+            self.excluded_centroid_indices = s
+            self._explicit_excluded_centroid_indices = exp
+            self._force_visible_centroid_indices = fv
+            self._sanitize_excluded_indices()
+        except Exception:
+            return
+
+    def _is_group_visible(self, group_no):
+        idxs = self._group_centroid_indices(group_no)
+        if not idxs:
+            return True
+        excl = set(getattr(self, 'excluded_centroid_indices', set()) or set())
+        return any((ci not in excl) for ci in idxs)
+
+    def _add_all_groups_to_center_list(self):
+        try:
+            existing = self._get_explicit_center_list_indices()
+            existing_set = set(existing)
+            added = []
+            groups = self._available_group_numbers()
+            for g in groups:
+                for ci in self._group_centroid_indices(g):
+                    if ci in existing_set:
+                        continue
+                    existing.append(int(ci))
+                    existing_set.add(int(ci))
+                    added.append(int(ci))
+            self.center_list_indices = existing
+            try:
+                self._append_center_numeric_rows_from_indices(added)
+            except Exception:
+                pass
+            if added and getattr(self, 'selected_index', None) not in existing_set:
+                try:
+                    self.selected_index = int(added[0])
+                except Exception:
+                    pass
+        except Exception:
+            return
+        try:
+            self.schedule_update(force=True, recompute_centroids=False)
+        except Exception:
+            pass
+
+    def _set_all_groups_visible(self, visible):
+        try:
+            s = set(getattr(self, 'excluded_centroid_indices', set()) or set())
+            exp = set(getattr(self, '_explicit_excluded_centroid_indices', set()) or set())
+            fv = set(getattr(self, '_force_visible_centroid_indices', set()) or set())
+            for idx, c in enumerate(getattr(self, 'centroids', []) or []):
+                try:
+                    g = int(c[0])
+                except Exception:
+                    continue
+                if g <= 0:
+                    continue
+                ci = int(idx)
+                if bool(visible):
+                    s.discard(ci)
+                    exp.discard(ci)
+                    fv.add(ci)
+                else:
+                    s.add(ci)
+                    exp.add(ci)
+                    fv.discard(ci)
+            self.excluded_centroid_indices = s
+            self._explicit_excluded_centroid_indices = exp
+            self._force_visible_centroid_indices = fv
+            self._sanitize_excluded_indices()
+        except Exception:
+            return
+        try:
+            self.schedule_update(force=True, recompute_centroids=False)
+        except Exception:
+            pass
+
+    def _on_toggle_show_all_groups(self, idx):
+        try:
+            show_all = (int(idx) == 0)
+        except Exception:
+            show_all = True
+        self._set_all_groups_visible(show_all)
+
+    def _on_toggle_overlay_source(self, idx):
+        try:
+            self.overlay_point_source = 'center' if int(idx) == 1 else 'left'
+        except Exception:
+            self.overlay_point_source = 'left'
+        try:
+            self.schedule_update(force=True, recompute_centroids=False)
+        except Exception:
+            pass
+
+    def _update_centroid_extraction_button(self):
+        try:
+            btn = getattr(self, 'btn_start_centroid_extraction', None)
+            if btn is None:
+                return
+            if bool(getattr(self, 'centroid_extraction_mode', False)):
+                btn.setText('Finish Centroid Extraction')
+                btn.setStyleSheet(
+                    'QPushButton { background-color: rgb(230,230,230); color: black; border: none; border-radius: 8px; }'
+                    'QPushButton:hover { background-color: rgb(220,220,220); }'
+                    'QPushButton:pressed { background-color: rgb(210,210,210); }'
+                )
+            else:
+                btn.setText('START Centroid Extraction')
+                btn.setStyleSheet(
+                    'QPushButton { background-color: rgb(160,15,15); color: white; border: none; border-radius: 8px; }'
+                    'QPushButton:hover { background-color: rgb(160,15,15); }'
+                    'QPushButton:pressed { background-color: rgb(160,15,15); }'
+                )
+        except Exception:
+            pass
+
+    def _load_centroid_extraction_preferences(self):
+        try:
+            s = QSettings('PiXY', 'PiXY')
+        except Exception:
+            return
+        try:
+            mode = str(s.value('centroid_extraction/overlay_mode', 'Posterized') or 'Posterized')
+            if mode not in ('Original', 'Posterized'):
+                mode = 'Posterized'
+            self._centroid_extraction_overlay_mode = mode
+        except Exception:
+            self._centroid_extraction_overlay_mode = 'Posterized'
+        try:
+            raw = s.value('centroid_extraction/show_boundaries', True)
+            if isinstance(raw, str):
+                raw_l = raw.strip().lower()
+                show = raw_l in ('1', 'true', 'yes', 'on')
+            else:
+                show = bool(raw)
+            self._centroid_extraction_show_boundaries = bool(show)
+        except Exception:
+            self._centroid_extraction_show_boundaries = True
+
+    def _save_centroid_extraction_preferences(self):
+        try:
+            s = QSettings('PiXY', 'PiXY')
+            s.setValue('centroid_extraction/overlay_mode', str(getattr(self, '_centroid_extraction_overlay_mode', 'Posterized')))
+            s.setValue('centroid_extraction/show_boundaries', bool(getattr(self, '_centroid_extraction_show_boundaries', True)))
+            s.sync()
+        except Exception:
+            pass
+
+    def _apply_overlay_boundary_state(self, mode: str, show_boundaries: bool):
+        try:
+            mode_n = str(mode or 'Original')
+            if mode_n not in ('Original', 'Posterized'):
+                mode_n = 'Original'
+        except Exception:
+            mode_n = 'Original'
+        self.overlay_mode = mode_n
+        try:
+            self.overlay_mix = {'Original': 0, 'Posterized': 100}.get(mode_n, 0)
+        except Exception:
+            pass
+        self.show_boundaries = bool(show_boundaries)
+        try:
+            if getattr(self, 'btn_boundary_show', None) is not None and getattr(self, 'btn_boundary_hide', None) is not None:
+                self.btn_boundary_show.setChecked(bool(self.show_boundaries))
+                self.btn_boundary_hide.setChecked(not bool(self.show_boundaries))
+        except Exception:
+            pass
+        try:
+            tog = getattr(self, 'overlay_mode_toggle', None)
+            if tog is not None:
+                tog.setCheckedIndex(1 if mode_n == 'Posterized' else 0)
+        except Exception:
+            pass
+
+    def _set_centroid_extraction_mode(self, active: bool):
+        prev = bool(getattr(self, 'centroid_extraction_mode', False))
+        try:
+            self.centroid_extraction_mode = bool(active)
+        except Exception:
+            pass
+        try:
+            if (not bool(active)) and bool(prev):
+                # Finish時の設定を次回CentroidExtraction開始の既定値として記憶
+                mode_now = str(getattr(self, 'overlay_mode', 'Posterized') or 'Posterized')
+                if mode_now not in ('Original', 'Posterized'):
+                    mode_now = 'Posterized'
+                self._centroid_extraction_overlay_mode = mode_now
+                self._centroid_extraction_show_boundaries = bool(getattr(self, 'show_boundaries', True))
+                self._save_centroid_extraction_preferences()
+        except Exception:
+            pass
+        try:
+            if bool(active):
+                mode_pref = str(getattr(self, '_centroid_extraction_overlay_mode', 'Posterized') or 'Posterized')
+                show_pref = bool(getattr(self, '_centroid_extraction_show_boundaries', True))
+                self._apply_overlay_boundary_state(mode_pref, show_pref)
+            else:
+                # 通常モードは常に Boundary非表示 + Original 固定
+                self._apply_overlay_boundary_state('Original', False)
+        except Exception:
+            pass
+        try:
+            show_adv = bool(active)
+            bc = getattr(self, 'boundary_controls', None)
+            bt = getattr(self, 'boundary_toggle', None)
+            ovc = getattr(self, 'overlay_mode_controls', None)
+            ovt = getattr(self, 'overlay_mode_toggle', None)
+            ovsrc_lbl = getattr(self, 'lbl_overlay_source', None)
+            ovsrc_tog = getattr(self, 'toggle_overlay_source', None)
+            if bc is not None:
+                bc.setVisible(show_adv)
+            elif bt is not None:
+                bt.setVisible(show_adv)
+            if ovc is not None:
+                ovc.setVisible(show_adv)
+            elif ovt is not None:
+                ovt.setVisible(show_adv)
+            if ovsrc_lbl is not None:
+                ovsrc_lbl.setVisible(not bool(active))
+            if ovsrc_tog is not None:
+                ovsrc_tog.setVisible(not bool(active))
+        except Exception:
+            pass
+        try:
+            tabs = getattr(self, 'left_tabs', None)
+            if tabs is not None:
+                tabs.setCurrentIndex(0 if bool(active) else 1)
+        except Exception:
+            pass
+        try:
+            if bool(active):
+                self.overlay_point_source = 'left'
+            else:
+                self.overlay_point_source = 'center'
+            tog = getattr(self, 'toggle_overlay_source', None)
+            if tog is not None:
+                tog.setCheckedIndex(0 if bool(active) else 1)
+        except Exception:
+            pass
+        try:
+            self._update_centroid_extraction_button()
+        except Exception:
+            pass
+        try:
+            self.schedule_update(force=True, recompute_centroids=False)
+        except Exception:
+            pass
+
+    def _on_toggle_centroid_extraction_mode(self):
+        try:
+            self._set_centroid_extraction_mode(not bool(getattr(self, 'centroid_extraction_mode', False)))
+        except Exception:
+            pass
+
+    def _get_overlay_render_payload(self):
+        """Return centroids/selection/index-sets for overlay rendering based on source toggle."""
+        try:
+            src = str(getattr(self, 'overlay_point_source', 'left') or 'left').lower()
+        except Exception:
+            src = 'left'
+
+        base = list(getattr(self, 'centroids', []) or [])
+        if src != 'center':
+            # Left List: use current auto/offline display controls (Show/Hide, Filter).
+            manual_src = set(self._manual_centroid_indices() or set())
+            keep = [i for i in range(len(base)) if i not in manual_src]
+            remap = {orig: j for j, orig in enumerate(keep)}
+            cent = [base[i] for i in keep]
+            sel_orig = getattr(self, 'selected_index', None)
+            sel_new = remap.get(int(sel_orig)) if sel_orig is not None else None
+            excl_src = set(getattr(self, 'excluded_centroid_indices', set()) or set())
+            fv_src = set(getattr(self, '_force_visible_centroid_indices', set()) or set())
+            excl_new = {remap[i] for i in excl_src if i in remap}
+            fv_new = {remap[i] for i in fv_src if i in remap}
+
+            # Label format for Left List overlay: G{grp}-{index_in_group}
+            label_texts = []
+            grp_count = {}
+            for g, _xp, _yp in cent:
+                try:
+                    gg = int(g)
+                except Exception:
+                    gg = 0
+                n0 = int(grp_count.get(gg, 0)) + 1
+                grp_count[gg] = n0
+                label_texts.append(f"G{gg}-{n0}")
+
+            return {
+                'centroids': cent,
+                'selected_index': sel_new,
+                'manual_indices': set(),
+                'excluded_indices': excl_new,
+                'force_visible_indices': fv_new,
+                'visible_groups': self._get_visible_groups_set(),
+                'label_texts': label_texts,
+            }
+
+        # Center List: use persisted middle-table numeric rows (not centroid index linkage).
+        try:
+            self._append_center_numeric_rows_from_indices(self._get_center_list_indices())
+        except Exception:
+            pass
+        rows = list(getattr(self, 'center_numeric_rows', []) or [])
+
+        cent = []
+        manual_new = set()
+        source_to_local = {}
+        for ridx, r in enumerate(rows):
+            try:
+                rd = dict(r or {})
+            except Exception:
+                continue
+            try:
+                g = int(round(float(rd.get('grp', 0.0))))
+            except Exception:
+                g = 0
+
+            xp = rd.get('x_proc', float('nan'))
+            yp = rd.get('y_proc', float('nan'))
+            try:
+                xp_f = float(xp)
+                yp_f = float(yp)
+                if np.isnan(xp_f) or np.isnan(yp_f):
+                    raise ValueError('nan')
+            except Exception:
+                uv_proc = self._proc_from_center_uv(rd.get('u', float('nan')), rd.get('v', float('nan')))
+                if uv_proc is None:
+                    continue
+                xp_f, yp_f = uv_proc
+
+            cent.append((int(g), float(xp_f), float(yp_f)))
+
+            try:
+                if float(rd.get('manual', 0.0)) >= 0.5:
+                    manual_new.add(int(len(cent) - 1))
+            except Exception:
+                pass
+            try:
+                src_i = int(rd.get('source_idx', -1))
+                if src_i >= 0:
+                    source_to_local[src_i] = int(len(cent) - 1)
+            except Exception:
+                pass
+
+        sel_new = None
+        try:
+            row_sel = self._current_center_selected_row()
+            if row_sel is not None and 0 <= int(row_sel) < len(cent):
+                sel_new = int(row_sel)
+        except Exception:
+            pass
+        if sel_new is None:
+            try:
+                sel_orig = getattr(self, 'selected_index', None)
+                if sel_orig is not None:
+                    sel_new = source_to_local.get(int(sel_orig))
+            except Exception:
+                pass
+
+        return {
+            'centroids': cent,
+            'selected_index': sel_new,
+            'manual_indices': manual_new,
+            # Middle list visibility is independent from left-column Show/Hide state.
+            'excluded_indices': set(),
+            'force_visible_indices': set(),
+            # center-list mode is explicit subset, so group visibility filter is unnecessary.
+            'visible_groups': None,
+            'label_texts': None,
+        }
+
     def _get_visible_groups_set(self):
         vis = getattr(self, 'visible_groups', None)
         if vis is None:
@@ -7688,7 +8575,7 @@ class CentroidFinderWindow(QMainWindow):
         for entry in (getattr(self, 'manual_targets', []) or []):
             try:
                 _g, x, y = entry
-                mt.append((0, float(x), float(y)))
+                mt.append((int(_g), float(x), float(y)))
             except Exception:
                 pass
         auto_g0 = []
@@ -7728,50 +8615,138 @@ class CentroidFinderWindow(QMainWindow):
             return cur
         return cur[:base] + cur[base + mt_n:]
 
+    def _get_add_target_group(self):
+        try:
+            cb = getattr(self, 'combo_add_target_group', None)
+            if cb is None:
+                return 0
+            try:
+                d = cb.currentData()
+                if d is not None:
+                    return int(d)
+            except Exception:
+                pass
+            txt = str(cb.currentText() or '').strip().lower()
+            txt = txt.replace('grp', '').strip()
+            return int(txt) if txt != '' else 0
+        except Exception:
+            return 0
+
+    def _refresh_target_group_combo(self):
+        try:
+            cb = getattr(self, 'combo_add_target_group', None)
+            if cb is None:
+                return
+            cur = self._get_add_target_group()
+
+            left_max = 0
+            try:
+                for g in (self._available_group_numbers() or []):
+                    gg = int(g)
+                    if gg > left_max:
+                        left_max = gg
+            except Exception:
+                pass
+
+            center_max = 0
+            try:
+                for r in (getattr(self, 'center_numeric_rows', []) or []):
+                    try:
+                        gv = int(round(float(r.get('grp', 0.0))))
+                    except Exception:
+                        continue
+                    if gv > center_max:
+                        center_max = gv
+            except Exception:
+                pass
+
+            upper = max(int(left_max), int(center_max)) + 1
+            upper = max(1, int(upper))
+            vals = list(range(0, upper + 1))
+
+            old = False
+            try:
+                old = cb.blockSignals(True)
+            except Exception:
+                old = False
+            try:
+                cb.clear()
+            except Exception:
+                pass
+            for g in vals:
+                try:
+                    cb.addItem(f"Grp {int(g)}", int(g))
+                except Exception:
+                    pass
+            sel = int(cur) if int(cur) in set(vals) else int(max(0, min(int(cur), int(upper))))
+            try:
+                idx = cb.findData(int(sel))
+                if idx < 0:
+                    idx = 0
+                cb.setCurrentIndex(int(idx))
+            except Exception:
+                pass
+            try:
+                cb.blockSignals(old)
+            except Exception:
+                pass
+        except Exception:
+            pass
+
     def _on_update_target_uv(self):
-        # Toggle pick-mode（Update u,v）
-        if self.pick_mode == 'target_update':
+        # Toggle pick-mode（Update u,v）: update selected middle-row u,v only.
+        if self.pick_mode == 'center_uv_update':
             self._end_pick_mode()
             return
         try:
-            if getattr(self, 'manual_targets', None) is None:
-                self.manual_targets = []
-        except Exception:
-            pass
-        m_idx = self._selected_manual_target_index()
-        if m_idx is not None:
-            self._replace_target_source_index = None
-            self._replace_target_source_group = None
-            self._start_pick_mode('target_update', ref_index=int(m_idx))
+            row = self._current_center_selected_row()
+            if row is None:
+                return
+            self._start_pick_mode('center_uv_update', ref_index=int(row))
             self._move_cursor_to_image_center()
-            return
-
-        # If selected point is auto-detected, treat Update as "replace":
-        # hide the selected source point and add a new manual point.
-        try:
-            idx = getattr(self, 'selected_index', None)
-            if idx is None:
-                return
-            idx = int(idx)
-            cents = getattr(self, 'centroids', []) or []
-            if not (0 <= idx < len(cents)):
-                return
-            self._replace_target_source_index = idx
-            try:
-                self._replace_target_source_group = int(cents[idx][0])
-            except Exception:
-                self._replace_target_source_group = None
-            self._start_pick_mode('target_add')
         except Exception:
             return
-        self._move_cursor_to_image_center()
 
     def _on_clear_target(self):
+        # Clear should remove the currently selected row in the middle list.
+        try:
+            sel_idx = self._current_center_selected_index()
+            if sel_idx is not None:
+                self.selected_index = int(sel_idx)
+        except Exception:
+            sel_idx = None
+
         try:
             if getattr(self, 'manual_targets', None) is None:
                 self.manual_targets = []
         except Exception:
             pass
+
+        # Non-manual row: remove only from explicit center list entries.
+        try:
+            mset = set(self._manual_centroid_indices() or set())
+        except Exception:
+            mset = set()
+        try:
+            if sel_idx is not None and int(sel_idx) not in mset:
+                explicit = list(self._get_explicit_center_list_indices())
+                tgt = int(sel_idx)
+                new_explicit = [int(i) for i in explicit if int(i) != tgt]
+                if len(new_explicit) != len(explicit):
+                    self.center_list_indices = new_explicit
+                    try:
+                        self._remove_center_numeric_row_by_source_idx(tgt)
+                    except Exception:
+                        pass
+                    self.selected_index = None
+                    try:
+                        self.schedule_update(force=True, recompute_centroids=False)
+                    except Exception:
+                        pass
+                return
+        except Exception:
+            pass
+
         m_idx = self._selected_manual_target_index()
         if m_idx is None:
             return
@@ -7782,6 +8757,15 @@ class CentroidFinderWindow(QMainWindow):
             self.manual_targets.pop(rem)
         except Exception:
             return
+
+        try:
+            self._shift_center_list_indices(rem_centroid_idx, -1)
+        except Exception:
+            pass
+        try:
+            self._remove_center_numeric_row_by_source_idx(rem_centroid_idx)
+        except Exception:
+            pass
 
         try:
             old_excl = set(getattr(self, 'excluded_centroid_indices', set()) or set())
@@ -7846,6 +8830,118 @@ class CentroidFinderWindow(QMainWindow):
             self._apply_proc_zoom()
         except Exception:
             pass
+
+    def _on_clear_target_all(self):
+        """Clear all rows in middle list (explicit Add rows + manual targets)."""
+        try:
+            if getattr(self, 'manual_targets', None) is None:
+                self.manual_targets = []
+        except Exception:
+            pass
+
+        # Clear all explicit additions first.
+        try:
+            self.center_list_indices = []
+        except Exception:
+            pass
+        try:
+            self.center_numeric_rows = []
+        except Exception:
+            pass
+
+        try:
+            mt_n = int(len(getattr(self, 'manual_targets', []) or []))
+        except Exception:
+            mt_n = 0
+        if mt_n > 0:
+            try:
+                base = int(self._manual_target_base_index())
+            except Exception:
+                base = 0
+
+            def _remove_manual_block(idxs):
+                out = set()
+                start = int(base)
+                end = int(base + mt_n)
+                for i in (idxs or set()):
+                    try:
+                        ii = int(i)
+                    except Exception:
+                        continue
+                    if ii < start:
+                        out.add(ii)
+                    elif ii >= end:
+                        out.add(ii - mt_n)
+                return out
+
+            try:
+                self.excluded_centroid_indices = _remove_manual_block(getattr(self, 'excluded_centroid_indices', set()) or set())
+            except Exception:
+                pass
+            try:
+                self._explicit_excluded_centroid_indices = _remove_manual_block(getattr(self, '_explicit_excluded_centroid_indices', set()) or set())
+            except Exception:
+                pass
+            try:
+                self._force_visible_centroid_indices = _remove_manual_block(getattr(self, '_force_visible_centroid_indices', set()) or set())
+            except Exception:
+                pass
+
+            try:
+                self.manual_targets = []
+            except Exception:
+                pass
+            try:
+                auto_only = list(getattr(self, '_auto_centroids', []) or self._auto_centroids_from_current())
+                self.centroids = self._compose_centroids_with_manual(auto_only)
+            except Exception:
+                pass
+
+        self.selected_index = None
+        try:
+            self._sanitize_excluded_indices()
+        except Exception:
+            pass
+        try:
+            self.schedule_update(force=True, recompute_centroids=False)
+        except Exception:
+            pass
+
+    def _current_center_selected_index(self):
+        """Return selected centroid index based on middle table selection mapping."""
+        try:
+            t = getattr(self, 'table_between', None)
+            if t is not None:
+                r = int(t.currentRow())
+                if r >= 2:
+                    row = int(r - 2)
+                    idxs = list(getattr(self, '_table_between_row_indices', []) or [])
+                    if 0 <= row < len(idxs):
+                        return int(idxs[row])
+        except Exception:
+            pass
+        try:
+            idx = getattr(self, 'selected_index', None)
+            return None if idx is None else int(idx)
+        except Exception:
+            return None
+
+    def _current_center_selected_row(self):
+        """Return selected data-row index in middle table (0-based, without header rows)."""
+        try:
+            t = getattr(self, 'table_between', None)
+            if t is None:
+                return None
+            r = int(t.currentRow())
+            if r < 2:
+                return None
+            rr = int(r - 2)
+            rows = list(getattr(self, 'center_numeric_rows', []) or [])
+            if not (0 <= rr < len(rows)):
+                return None
+            return rr
+        except Exception:
+            return None
 
     def _on_cycle_flip_mode(self):
         # Auto -> Normal -> Flip -> Auto と循環
@@ -8087,28 +9183,11 @@ class CentroidFinderWindow(QMainWindow):
     def _apply_load_project_defaults(self):
         """Apply UI defaults after Load Project.
 
-        - Show the On-line Alignment tab by default.
+        - Show the normal On-line Alignment contents by default.
         - Set recalculation trigger to Manual by default.
         """
-        # Show On-line Alignment tab (if available)
         try:
-            tabs = getattr(self, 'left_tabs', None)
-            if tabs is not None:
-                idx = -1
-                try:
-                    tab_online = getattr(self, 'tab_online', None)
-                    if tab_online is not None:
-                        idx = int(tabs.indexOf(tab_online))
-                except Exception:
-                    idx = -1
-                if idx < 0:
-                    try:
-                        if int(tabs.count()) > 1:
-                            idx = 1
-                    except Exception:
-                        idx = -1
-                if idx >= 0:
-                    tabs.setCurrentIndex(int(idx))
+            self._set_centroid_extraction_mode(False)
         except Exception:
             pass
 
@@ -8315,6 +9394,36 @@ class CentroidFinderWindow(QMainWindow):
                 pass
         data["manual_targets"] = mt_list
         try:
+            data["center_list_indices"] = [int(i) for i in (getattr(self, 'center_list_indices', []) or [])]
+        except Exception:
+            data["center_list_indices"] = []
+        try:
+            rows = []
+            for r in (getattr(self, 'center_numeric_rows', []) or []):
+                try:
+                    rows.append({
+                        "source_idx": int(r.get('source_idx', -1)),
+                        "grp": float(r.get('grp', float('nan'))),
+                        "u": float(r.get('u', float('nan'))),
+                        "v": float(r.get('v', float('nan'))),
+                        "x": float(r.get('x', float('nan'))),
+                        "y": float(r.get('y', float('nan'))),
+                        "z": float(r.get('z', float('nan'))),
+                        "x_proc": float(r.get('x_proc', float('nan'))),
+                        "y_proc": float(r.get('y_proc', float('nan'))),
+                        "show": float(r.get('show', 1.0)),
+                        "manual": float(r.get('manual', 0.0)),
+                    })
+                except Exception:
+                    continue
+            data["center_numeric_rows"] = rows
+        except Exception:
+            data["center_numeric_rows"] = []
+        try:
+            data["overlay_point_source"] = str(getattr(self, 'overlay_point_source', 'left'))
+        except Exception:
+            data["overlay_point_source"] = 'left'
+        try:
             # Persist only explicit exclusions (not temporary Filter-driven group hiding)
             src = getattr(self, '_explicit_excluded_centroid_indices', None)
             if src is None:
@@ -8465,7 +9574,7 @@ class CentroidFinderWindow(QMainWindow):
         except Exception:
             pass
         try:
-            self.grain_ident_mode = str(data.get("grain_ident_mode", "basic"))
+            self.grain_ident_mode = 'advanced'
         except Exception:
             pass
         try:
@@ -8552,6 +9661,48 @@ class CentroidFinderWindow(QMainWindow):
         self.manual_targets = mt_restored
         self.centroids = self._compose_centroids_with_manual(self._auto_centroids)
         try:
+            self.center_list_indices = [int(i) for i in (data.get("center_list_indices", []) or [])]
+        except Exception:
+            self.center_list_indices = []
+        try:
+            rows = []
+            for r in (data.get("center_numeric_rows", []) or []):
+                try:
+                    rows.append({
+                        "source_idx": int(r.get('source_idx', -1)),
+                        "grp": float(r.get('grp', float('nan'))),
+                        "u": float(r.get('u', float('nan'))),
+                        "v": float(r.get('v', float('nan'))),
+                        "x": float(r.get('x', float('nan'))),
+                        "y": float(r.get('y', float('nan'))),
+                        "z": float(r.get('z', float('nan'))),
+                        "x_proc": float(r.get('x_proc', float('nan'))),
+                        "y_proc": float(r.get('y_proc', float('nan'))),
+                        "show": float(r.get('show', 1.0)),
+                        "manual": float(r.get('manual', 0.0)),
+                    })
+                except Exception:
+                    continue
+            self.center_numeric_rows = rows
+        except Exception:
+            self.center_numeric_rows = []
+        try:
+            if not (getattr(self, 'center_numeric_rows', None) or []):
+                self._append_center_numeric_rows_from_indices(self._get_center_list_indices())
+        except Exception:
+            pass
+        try:
+            src = str(data.get("overlay_point_source", 'left') or 'left').lower()
+            self.overlay_point_source = 'center' if src == 'center' else 'left'
+        except Exception:
+            self.overlay_point_source = 'left'
+        try:
+            tog = getattr(self, 'toggle_overlay_source', None)
+            if tog is not None:
+                tog.setCheckedIndex(1 if str(getattr(self, 'overlay_point_source', 'left')) == 'center' else 0)
+        except Exception:
+            pass
+        try:
             self.excluded_centroid_indices = set(int(i) for i in (data.get("excluded_centroid_indices", []) or []))
         except Exception:
             self.excluded_centroid_indices = set()
@@ -8613,12 +9764,18 @@ class CentroidFinderWindow(QMainWindow):
     def _on_table_between_current_changed(self, curRow, curCol, prevRow, prevCol):
         # transposed view row maps to original table column (selected centroid index)
         try:
+            if bool(getattr(self, 'centroid_extraction_mode', False)):
+                return
             if curRow is None or curRow < 0:
                 return
             header_rows = 2
             if int(curRow) < header_rows:
                 return
-            idx = int(curRow) - header_rows
+            row = int(curRow) - header_rows
+            idxs = list(getattr(self, '_table_between_row_indices', []) or [])
+            if not (0 <= row < len(idxs)):
+                return
+            idx = int(idxs[row])
             if self.selected_index != idx:
                 self.selected_index = idx
                 # Selection-only update: redraw highlight/table sync without heavy recomputation.
@@ -8857,7 +10014,7 @@ class CentroidFinderWindow(QMainWindow):
         # ルーペ表示は廃止
         # While waiting for image click after "Add Ref. Point", gray-invert the button and change text to "Cancel".
         try:
-            if str(mode) in ('add', 'update', 'target_add', 'target_update'):
+            if str(mode) in ('add', 'update', 'target_add', 'target_update', 'center_uv_update'):
                 # pick モード開始時は対応ボタンをキャンセル表示にする
                 if str(mode) == 'add':
                     target_btn = self.btn_add_ref
@@ -8988,6 +10145,46 @@ class CentroidFinderWindow(QMainWindow):
             return
         x_full, y_full = xy
 
+        if self.pick_mode == 'center_uv_update':
+            try:
+                if self.scale_proc_to_full == 0:
+                    return
+                x_proc = x_full / self.scale_proc_to_full
+                y_proc = y_full / self.scale_proc_to_full
+                u, v = self._center_uv_from_proc(float(x_proc), float(y_proc))
+
+                row = self.pick_ref_index if self.pick_ref_index is not None else self._current_center_selected_row()
+                if row is None:
+                    return
+                row = int(row)
+                rows = list(getattr(self, 'center_numeric_rows', []) or [])
+                if not (0 <= row < len(rows)):
+                    return
+                rd = dict(rows[row] or {})
+                rd['u'] = float(u)
+                rd['v'] = float(v)
+                rd['x_proc'] = float(x_proc)
+                rd['y_proc'] = float(y_proc)
+                rows[row] = rd
+                self.center_numeric_rows = rows
+                try:
+                    si = int(rd.get('source_idx', -1))
+                    if si >= 0:
+                        self.selected_index = si
+                except Exception:
+                    pass
+                try:
+                    self._end_pick_mode(redraw=False)
+                except Exception:
+                    pass
+                try:
+                    self.schedule_update(force=True, recompute_centroids=False)
+                except Exception:
+                    pass
+            except Exception:
+                pass
+            return
+
         # ピックモード中は、マウス位置の座標をRefに保存して終了
         if self.pick_mode in ('target_add', 'target_update'):
             if self.scale_proc_to_full == 0:
@@ -9012,7 +10209,15 @@ class CentroidFinderWindow(QMainWindow):
                     base = self._manual_target_base_index()
                     mt_old_n = len(self.manual_targets)
                     insert_idx = int(base + mt_old_n)
-                    self.manual_targets.append((0, float(x_proc), float(y_proc)))
+                    try:
+                        add_grp = int(self._get_add_target_group())
+                    except Exception:
+                        add_grp = 0
+                    try:
+                        self._shift_center_list_indices(insert_idx, +1)
+                    except Exception:
+                        pass
+                    self.manual_targets.append((int(add_grp), float(x_proc), float(y_proc)))
                     try:
                         if hasattr(self, '_log_info'):
                             self._log_info(
@@ -9070,6 +10275,10 @@ class CentroidFinderWindow(QMainWindow):
                         pass
                     self.centroids = self._compose_centroids_with_manual(auto_only)
                     self.selected_index = insert_idx
+                    try:
+                        self._append_center_numeric_rows_from_indices([insert_idx])
+                    except Exception:
+                        pass
                 else:
                     idx_t = self.pick_ref_index if self.pick_ref_index is not None else self._selected_manual_target_index()
                     if idx_t is None:
@@ -10321,8 +11530,7 @@ class CentroidFinderWindow(QMainWindow):
                 try:
                     from qt_compat.QtWidgets import QTableWidgetItem
                     from qt_compat.QtCore import Qt as _Qt
-
-                    data_rows = int(src.columnCount())
+                    data_rows = int(len(getattr(self, 'ref_points', []) or []))
                     # Visible columns: u,v,Stage(XYZ),Residual(XYZ),Excl  (|R| removed)
                     sub_labels_ref = ["u", "v", "X", "Y", "Z", "X", "Y", "Z", ""]
                     data_cols = len(sub_labels_ref)
@@ -10491,8 +11699,17 @@ class CentroidFinderWindow(QMainWindow):
                     from qt_compat.QtWidgets import QTableWidgetItem, QWidget, QHBoxLayout
                     from qt_compat.QtCore import Qt as _Qt
                     import Strings as STR
-
-                    data_rows = int(src.columnCount())
+                    center_indices = list(self._get_center_list_indices())
+                    try:
+                        self._append_center_numeric_rows_from_indices(center_indices)
+                    except Exception:
+                        pass
+                    center_rows = list(getattr(self, 'center_numeric_rows', []) or [])
+                    data_rows = int(len(center_rows))
+                    try:
+                        self._table_between_row_indices = [int(r.get('source_idx', -1)) for r in center_rows]
+                    except Exception:
+                        self._table_between_row_indices = []
                     # Add one extra column at the left for Posterization Level (group_no)
                     base_cols = 0
                     try:
@@ -10521,51 +11738,42 @@ class CentroidFinderWindow(QMainWindow):
                         except Exception:
                             pass
 
-                        # Vertical header: blank for header rows, then 1..N
+                        # Vertical header: blank for header rows, then 1..N (center-list order)
                         try:
-                            hlabels = []
-                            for i in range(src.columnCount()):
-                                hi = src.horizontalHeaderItem(i)
-                                hlabels.append(hi.text() if hi is not None else str(i + 1))
+                            hlabels = [str(i + 1) for i in range(data_rows)]
                             dst.setVerticalHeaderLabels(["", ""] + hlabels)
                         except Exception:
                             pass
 
                         for r in range(data_rows):
+                            try:
+                                rowd = dict(center_rows[r] or {})
+                            except Exception:
+                                continue
+                            try:
+                                cidx = int(rowd.get('source_idx', -1))
+                            except Exception:
+                                cidx = -1
                             for c in range(data_cols):
                                 try:
                                     if c == 0:
-                                        # Posterization level/group number for this centroid
                                         try:
-                                            g = None
-                                            if self.centroids is not None and 0 <= r < len(self.centroids):
-                                                g = self.centroids[r][0]
-                                            txt = "" if g is None else str(int(g))
+                                            txt = str(int(round(float(rowd.get('grp', 0.0)))))
                                         except Exception:
                                             txt = ""
                                     elif c in (1, 2):
-                                        # u,v should come from centroids directly, not from mutable source table.
-                                        # This avoids accidental leakage from pseudo-header rows/state races.
                                         try:
-                                            if self.centroids is not None and 0 <= r < len(self.centroids):
-                                                _g, xp, yp = self.centroids[r]
-                                                su, sv = _fmt_uv_from_proc_pt((float(xp), float(yp)))
-                                                txt = su if c == 1 else sv
-                                            else:
-                                                txt = ""
+                                            vv = rowd.get('u', 0.0) if c == 1 else rowd.get('v', 0.0)
+                                            txt = str(int(round(float(vv))))
                                         except Exception:
                                             txt = ""
                                     elif c == (data_cols - 1):
                                         # Exclude flag — will be set as checkbox below
                                         txt = ""
                                     else:
-                                        src_item = src.item(src_row_map[c - 1], r)
-                                        txt = src_item.text() if src_item is not None else ""
-                                        # Guard against occasional header-token leakage into data cells.
-                                        # When it happens, users may see X/Y/Z in u,v columns after Add Target.
                                         try:
-                                            if str(txt).strip().lower() in {"image", "stage", "residual", "grp", "x", "y", "z", "u", "v", "|r|"}:
-                                                txt = ""
+                                            sval = rowd.get('x', float('nan')) if c == 3 else (rowd.get('y', float('nan')) if c == 4 else rowd.get('z', float('nan')))
+                                            txt = "" if np.isnan(float(sval)) else str(float(sval))
                                         except Exception:
                                             pass
                                 except Exception:
@@ -10601,18 +11809,14 @@ class CentroidFinderWindow(QMainWindow):
                                         f = it.font(); f.setBold(True); it.setFont(f)
                                 except Exception:
                                     pass
-                                # Dim text + gray background for excluded rows
-                                try:
-                                    if self._is_centroid_excluded(r):
-                                        it.setForeground(QColor(180, 180, 180))
-                                        it.setBackground(QColor(235, 235, 235))
-                                except Exception:
-                                    pass
                                 dst.setItem(header_rows + r, c, it)
                                 # Place Show/Hide toggle in the Show column
                                 if c == (data_cols - 1):
                                     try:
-                                        tog = self._make_show_toggle_centroid(r)
+                                        if 0 <= cidx < len(getattr(self, 'centroids', []) or []):
+                                            tog = self._make_show_toggle_centroid(cidx)
+                                        else:
+                                            tog = None
                                         if tog is not None:
                                             wrap = QWidget(dst)
                                             lay = QHBoxLayout(wrap)
@@ -10862,6 +12066,10 @@ class CentroidFinderWindow(QMainWindow):
         except Exception:
             pass
         try:
+            self._update_offline_group_table_height_cache()
+        except Exception:
+            pass
+        try:
             QTimer.singleShot(0, self._refresh_offline_group_lists)
         except Exception:
             pass
@@ -10918,8 +12126,37 @@ class CentroidFinderWindow(QMainWindow):
         except Exception:
             return {}
 
+    def _update_offline_group_table_height_cache(self):
+        """Update cached offline group-table height from current viewport size."""
+        try:
+            sc = getattr(self, 'offline_group_scroll', None)
+            if sc is None:
+                return
+            vp = sc.viewport()
+            if vp is None:
+                return
+            avail = int(vp.height())
+            h = int(avail - 34)
+            h = max(140, min(560, h))
+            self._offline_group_table_h_cached = int(h)
+        except Exception:
+            pass
+
     def _offline_group_table_height(self):
         """Return table height adapted to current visible area of the Offline tab."""
+        try:
+            cached = getattr(self, '_offline_group_table_h_cached', None)
+            if cached is not None:
+                return int(cached)
+        except Exception:
+            pass
+        try:
+            self._update_offline_group_table_height_cache()
+            cached = getattr(self, '_offline_group_table_h_cached', None)
+            if cached is not None:
+                return int(cached)
+        except Exception:
+            pass
         try:
             sc = getattr(self, 'offline_group_scroll', None)
             if sc is None:
@@ -10938,6 +12175,10 @@ class CentroidFinderWindow(QMainWindow):
     def _refresh_offline_group_lists(self):
         """Rebuild group-wise u/v lists shown at the bottom of Off-line Targeting tab."""
         try:
+            try:
+                self._refresh_target_group_combo()
+            except Exception:
+                pass
             host = getattr(self, 'offline_group_layout', None)
             if host is None:
                 return
@@ -10965,12 +12206,32 @@ class CentroidFinderWindow(QMainWindow):
 
             table_h = self._offline_group_table_height()
             try:
-                header_h = 22
+                mid_tbl = getattr(self, 'table_between', None)
+            except Exception:
+                mid_tbl = None
+            try:
+                data_font = mid_tbl.font() if mid_tbl is not None else None
+            except Exception:
+                data_font = None
+            try:
+                mid_u_w = int(mid_tbl.columnWidth(1)) if mid_tbl is not None and mid_tbl.columnCount() > 1 else 0
+            except Exception:
+                mid_u_w = 0
+            try:
+                mid_v_w = int(mid_tbl.columnWidth(2)) if mid_tbl is not None and mid_tbl.columnCount() > 2 else 0
+            except Exception:
+                mid_v_w = 0
+            col_u_w = max(32, mid_u_w if mid_u_w > 0 else 57)
+            col_v_w = max(32, mid_v_w if mid_v_w > 0 else 57)
+            try:
+                header_h = 27
+                grp_toggle_h = 27
                 body_h = max(120, int(table_h))
-                panel_h = header_h + body_h + 8
+                # Add List行を廃止した分、Show/Hideトグル上下の余白を詰める。
+                panel_h = header_h + grp_toggle_h + body_h + 4
             except Exception:
                 body_h = 190
-                panel_h = 220
+                panel_h = 248
 
             grouped = {}
             cache_uv = None
@@ -11033,11 +12294,31 @@ class CentroidFinderWindow(QMainWindow):
                 except Exception:
                     group_colors = {}
 
+            try:
+                all_visible = True
+                for g in sorted(grouped.keys()):
+                    if not self._is_group_visible(int(g)):
+                        all_visible = False
+                        break
+                tog_all = getattr(self, 'toggle_show_all_groups', None)
+                if tog_all is not None:
+                    tog_all.setCheckedIndex(0 if all_visible else 1)
+            except Exception:
+                pass
+
             for idx, grp in enumerate(sorted(grouped.keys())):
                 panel = QWidget()
                 pv = QVBoxLayout(panel)
                 pv.setContentsMargins(0, 0, 0, 0)
-                pv.setSpacing(2)
+                pv.setSpacing(0)
+
+                try:
+                    grp_visible = self._is_group_visible(int(grp))
+                    grp_toggle = SegmentControl(["Show", "Hide"], checked_index=(0 if grp_visible else 1), btn_w=68, btn_h=27)
+                    grp_toggle.set_on_changed(lambda i, g=int(grp): (self._set_group_visible(g, int(i) == 0), self.schedule_update(force=True, recompute_centroids=False)))
+                    pv.addWidget(grp_toggle, 0)
+                except Exception:
+                    pass
 
                 try:
                     cr, cg, cb = group_colors.get(int(grp), (128, 128, 128))
@@ -11049,14 +12330,17 @@ class CentroidFinderWindow(QMainWindow):
                     txt_color = 'black' if lum >= 150.0 else 'white'
                 except Exception:
                     txt_color = 'white'
-                head = QLabel(f"Grp{int(grp)}")
+                head = QPushButton(f"Add Group{int(grp)}")
                 try:
-                    head.setAlignment(Qt.AlignCenter)
-                    head.setFixedHeight(22)
+                    head.setFixedHeight(27)
                     head.setStyleSheet(
                         f"background-color: rgb({cr},{cg},{cb}); color: {txt_color};"
-                        "font-weight: bold; border-radius: 4px;"
+                        "font-weight: bold; border: none; border-radius: 4px;"
                     )
+                    try:
+                        head.clicked.connect(lambda _=False, g=int(grp): self._add_group_to_center_list(g))
+                    except Exception:
+                        pass
                 except Exception:
                     pass
                 pv.addWidget(head, 0)
@@ -11066,15 +12350,24 @@ class CentroidFinderWindow(QMainWindow):
                 tbl.setRowCount(len(grouped[grp]))
                 tbl.setHorizontalHeaderLabels(["u", "v"])
                 try:
+                    if data_font is not None:
+                        tbl.setFont(data_font)
+                except Exception:
+                    pass
+                try:
                     tbl.verticalHeader().setVisible(True)
                     tbl.verticalHeader().setDefaultAlignment(Qt.AlignHCenter | Qt.AlignVCenter)
+                    vh = tbl.verticalHeader()
+                    vh.setSectionResizeMode(QHeaderView.Fixed)
+                    vh.setMinimumWidth(28)
+                    vh.setMaximumWidth(28)
                 except Exception:
                     pass
                 try:
                     hh = tbl.horizontalHeader()
                     hh.setSectionResizeMode(QHeaderView.Fixed)
-                    tbl.setColumnWidth(0, 57)
-                    tbl.setColumnWidth(1, 57)
+                    tbl.setColumnWidth(0, col_u_w)
+                    tbl.setColumnWidth(1, col_v_w)
                 except Exception:
                     pass
                 try:
@@ -11082,7 +12375,19 @@ class CentroidFinderWindow(QMainWindow):
                     tbl.setEditTriggers(QAbstractItemView.NoEditTriggers)
                     tbl.setVerticalScrollBarPolicy(Qt.ScrollBarAlwaysOn)
                     tbl.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
-                    tbl.setFixedWidth(141)
+                    try:
+                        row_hdr_w = int(tbl.verticalHeader().width() or 28)
+                    except Exception:
+                        row_hdr_w = 28
+                    try:
+                        frame_w = int(tbl.frameWidth() or 1) * 2
+                    except Exception:
+                        frame_w = 2
+                    try:
+                        scroll_w = int(tbl.verticalScrollBar().sizeHint().width() or 16)
+                    except Exception:
+                        scroll_w = 16
+                    tbl.setFixedWidth(row_hdr_w + col_u_w + col_v_w + scroll_w + frame_w)
                     tbl.setFixedHeight(body_h)
                     panel.setFixedHeight(panel_h)
                 except Exception:
@@ -11094,6 +12399,12 @@ class CentroidFinderWindow(QMainWindow):
                     try:
                         iu.setTextAlignment(Qt.AlignCenter)
                         iv.setTextAlignment(Qt.AlignCenter)
+                    except Exception:
+                        pass
+                    try:
+                        if data_font is not None:
+                            iu.setFont(data_font)
+                            iv.setFont(data_font)
                     except Exception:
                         pass
                     tbl.setItem(r, 0, iu)
@@ -11201,7 +12512,8 @@ class CentroidFinderWindow(QMainWindow):
                     except Exception:
                         pass
                     try:
-                        self.schedule_update(force=True, recompute_centroids=False)
+                        # START押下時(OFF->ON)のみ一度自動再計算を実行。
+                        self.schedule_update(force=True, recompute_centroids=(bool(active) and (not bool(prev))))
                     except Exception:
                         pass
                 except Exception:
@@ -11331,7 +12643,10 @@ class CentroidFinderWindow(QMainWindow):
             # Select corresponding row in transposed middle table (row == original column index)
             try:
                 header_rows = 2
-                view_r = int(idx) + header_rows
+                idxs = list(getattr(self, '_table_between_row_indices', []) or [])
+                if int(idx) not in idxs:
+                    return
+                view_r = int(idxs.index(int(idx))) + header_rows
                 if hasattr(self, 'table_between') and 0 <= view_r < self.table_between.rowCount():
                     try:
                         self.table_between.blockSignals(True)
@@ -11564,7 +12879,7 @@ class CentroidFinderWindow(QMainWindow):
             return
 
         # ピックモード中の操作
-        if self.pick_mode in ('add', 'update', 'target_add', 'target_update'):
+        if self.pick_mode in ('add', 'update', 'target_add', 'target_update', 'center_uv_update'):
             # Escでキャンセル
             if key == Qt.Key_Escape:
                 self._end_pick_mode()
@@ -11671,7 +12986,7 @@ class CentroidFinderWindow(QMainWindow):
                 except Exception:
                     pass
                 try:
-                    add_btn.setFixedWidth(int(round(base_w * 1.5)))
+                    add_btn.setFixedWidth(int(round(base_w * 1.5)) + 15)
                 except Exception:
                     pass
             if add_target_btn is not None:
@@ -11690,7 +13005,8 @@ class CentroidFinderWindow(QMainWindow):
             clr_btn = getattr(self, 'btn_clear_ref', None)
             upd_target_btn = getattr(self, 'btn_update_target_uv', None)
             clr_target_btn = getattr(self, 'btn_clear_target', None)
-            for btn in (upd_btn, clr_btn, upd_target_btn, clr_target_btn):
+            clr_target_all_btn = getattr(self, 'btn_clear_target_all', None)
+            for btn in (upd_btn, clr_btn, upd_target_btn, clr_target_btn, clr_target_all_btn):
                 if btn is not None:
                     try:
                         style_blue = f"QPushButton {{ background-color: {blue}; color: white; border: none; border-radius: {radius}px; }}"
@@ -11706,13 +13022,16 @@ class CentroidFinderWindow(QMainWindow):
             exp_btn = getattr(self, 'btn_export', None)
             clip_btn = getattr(self, 'btn_clipboard', None)
             filter_btn = getattr(self, 'btn_filter', None)
+            add_all_grp_btn = getattr(self, 'btn_add_all_grp_list', None)
             open_btn = getattr(self, 'btn_open', None)
+            replace_img_btn = getattr(self, 'btn_replace_image', None)
             flip_btn = getattr(self, 'btn_flip_mode', None)
             combo_flip = getattr(self, 'combo_flip_mode', None)
             new_btn = getattr(self, 'btn_new_project', None)
             save_btn = getattr(self, 'btn_save_project', None)
             load_btn = getattr(self, 'btn_load_project', None)
-            for btn in (exp_btn, clip_btn, filter_btn, open_btn, flip_btn, save_btn, load_btn):
+            start_ce_btn = getattr(self, 'btn_start_centroid_extraction', None)
+            for btn in (exp_btn, clip_btn, filter_btn, add_all_grp_btn, open_btn, replace_img_btn, flip_btn, save_btn, load_btn):
                 if btn is not None:
                     try:
                         style_blue = f"QPushButton {{ background-color: {blue}; color: white; border: none; border-radius: {radius}px; }}"
@@ -11720,7 +13039,10 @@ class CentroidFinderWindow(QMainWindow):
                     except Exception:
                         pass
                     try:
-                        btn.setFixedWidth(int(base_w) + 10)
+                        w = int(base_w) + 10
+                        if btn is add_all_grp_btn:
+                            w = int(w * 2)
+                        btn.setFixedWidth(w)
                     except Exception:
                         pass
 
@@ -11747,6 +13069,24 @@ class CentroidFinderWindow(QMainWindow):
                     pass
                 try:
                     new_btn.setFixedWidth(int(base_w) + 10)
+                except Exception:
+                    pass
+
+            if start_ce_btn is not None:
+                try:
+                    start_ce_btn.setFixedWidth(int(base_w) + 120)
+                except Exception:
+                    pass
+                try:
+                    # Keep mode-aware color/text in sync after base style pass.
+                    self._update_centroid_extraction_button()
+                except Exception:
+                    pass
+
+            if replace_img_btn is not None:
+                try:
+                    # Keep existing base width relation and make it +30pt wider.
+                    replace_img_btn.setFixedWidth(int(base_w) + 40)
                 except Exception:
                     pass
 

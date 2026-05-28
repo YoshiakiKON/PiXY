@@ -2,6 +2,29 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.4.0] - 2026-05-28
+### Workflow and UI
+- Introduced a Start/Finish Centroid Extraction workflow and made the left panel mode-driven (default On-line content with extraction mode switch).
+- Hid tab headers for the left workflow surface and routed mode changes through the Start/Finish button.
+- Added mode-dependent behavior for Boundary and Display Mode controls:
+  - normal mode is fixed to Boundary OFF + Original display,
+  - extraction mode restores the last extraction preferences.
+- Persisted extraction display preferences (Boundary/Display Mode) across launches.
+- Refined left panel controls and spacing:
+  - removed Auto-detect title row,
+  - fixed/adjusted button widths and row spacing,
+  - simplified group cards (Add GroupX button + Show/Hide toggle).
+
+### Data handling and interaction fixes
+- Kept center-list values as explicit numeric snapshots and aligned overlay rendering with that source of truth.
+- Added Replace Image button flow near Export Image.
+- Fixed center-table selection behavior during Centroid Extraction mode (selection no longer drives unintended overlay point selection).
+- Fixed Update u,v pick-mode cursor/crosshair handling by including center_uv_update in interaction-mode checks.
+
+### Packaging
+- Bumped project version to 1.4.0.
+- Release target EXE name updated to `PiXY_ver140.exe`.
+
 ## [1.3.3] - 2026-05-26
 ### Performance
 - Neck separation path was significantly accelerated by processing component masks in ROI space and replacing iterative marker propagation with OpenCV distance-transform label assignment.

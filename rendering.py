@@ -11,6 +11,7 @@ def build_zoomed_canvas(overlay_full_img, proc_zoom, view_padding,
                         excluded_indices=None,
                         force_visible_indices=None,
                         visible_groups=None,
+                        label_texts=None,
                         colors=None, interp_mode='auto', debug_ref_coords=False,
                         max_pixels=None):
     """
@@ -149,7 +150,14 @@ def build_zoomed_canvas(overlay_full_img, proc_zoom, view_padding,
                     painter.setFont(label_font)
                 painter.setPen(QPen(QColor(235, 235, 235, 180), 1))
                 rtxt = int(cfg['centroid_radius'])
-                painter.drawText(xd + rtxt + 2, yd - rtxt - 2, str(int(idx) + 1))
+                try:
+                    if label_texts is not None and 0 <= int(idx) < len(label_texts):
+                        lbl = str(label_texts[int(idx)])
+                    else:
+                        lbl = str(int(idx) + 1)
+                except Exception:
+                    lbl = str(int(idx) + 1)
+                painter.drawText(xd + rtxt + 2, yd - rtxt - 2, lbl)
             except Exception:
                 pass
 
@@ -216,7 +224,14 @@ def build_zoomed_canvas(overlay_full_img, proc_zoom, view_padding,
                     painter.setFont(label_font)
                 painter.setPen(QPen(QColor(255, 255, 255, 230), 1))
                 rs = int(cfg['selected_radius'])
-                painter.drawText(xd + rs + 3, yd - rs - 3, str(int(selected_index) + 1))
+                try:
+                    if label_texts is not None and 0 <= int(selected_index) < len(label_texts):
+                        lbl = str(label_texts[int(selected_index)])
+                    else:
+                        lbl = str(int(selected_index) + 1)
+                except Exception:
+                    lbl = str(int(selected_index) + 1)
+                painter.drawText(xd + rs + 3, yd - rs - 3, lbl)
             except Exception:
                 pass
 

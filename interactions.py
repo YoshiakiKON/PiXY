@@ -167,7 +167,7 @@ class ImageViewController(QObject):
                 except Exception:
                     pass
                 # 近傍の点があればカーソルを矢印に、それ以外は手のひら（ピックモード中は十字）
-                if self.ui.pick_mode in ('add', 'update', 'target_add', 'target_update'):
+                if self.ui.pick_mode in ('add', 'update', 'target_add', 'target_update', 'center_uv_update'):
                     # ピックモードはカーソル固定（Ui側で設定）
                     pass
                 else:
@@ -196,7 +196,7 @@ class ImageViewController(QObject):
                         self._drag_recent.append((monotonic(), QPoint(pos_vp)))
                         return True
                 # draw crosshair in pick modes when not dragging
-                if self.ui.pick_mode in ('add', 'update', 'target_add', 'target_update') and not self._dragging:
+                if self.ui.pick_mode in ('add', 'update', 'target_add', 'target_update', 'center_uv_update') and not self._dragging:
                     self.ui._draw_crosshair(pos_label)
             elif et == QEvent.MouseButtonRelease and event.button() == Qt.LeftButton:
                 pos_label = _evt_point(event) if obj is self.ui.img_label_proc else self.ui._viewport_pos_to_label_pos(_evt_point(event))
@@ -419,7 +419,7 @@ class ImageViewController(QObject):
                     self.ui._update_cursor_info_overlay(pos_label)
                 except Exception:
                     pass
-                if self.ui.pick_mode in ('add', 'update', 'target_add', 'target_update'):
+                if self.ui.pick_mode in ('add', 'update', 'target_add', 'target_update', 'center_uv_update'):
                     try:
                         global_pt = QCursor.pos()
                         vp = self.ui.proc_scroll.viewport()
@@ -634,7 +634,7 @@ class ImageViewController(QObject):
 
                 # ピックモード中は十字線を再描画
                 try:
-                    if pick_mode in ('add', 'update', 'target_add', 'target_update'):
+                    if pick_mode in ('add', 'update', 'target_add', 'target_update', 'center_uv_update'):
                         try:
                             vp_now = self.ui.proc_scroll.viewport()
                             anchor_vp_live = QPoint(int(vp_now.width() // 2), int(vp_now.height() // 2))

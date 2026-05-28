@@ -9,7 +9,7 @@
 - リポジトリ: https://github.com/YoshiakiKON/PiXY
 - Zenodo DOI: 10.5281/zenodo.18174474
 - ライセンス: MIT
-- 最終更新: 2026-02-18
+- 最終更新: 2026-05-28
 
 ---
 
@@ -45,11 +45,14 @@ python Main.py
 
 ## クイックスタート（最短手順）
 
-1. PiXY_v1XX.exeを実行
+1. `PiXY_ver140.exe` を実行
 2. `New Project` をクリックし、解析対象の画像ファイルを選択して読み込む。
-3. 左側のパラメータ（`Number of Groups (K)`, `Grain Size Threshold` など）を調整し，粒子の重心が検出されているか確認．
-4. `Add Fiducial Point` をクリックして参照点（画像上）を選択し、装置上で同じ点のステージ座標をテーブルに入力する。3点以上入力し，残差を確認．残差が全体的に大きい場合には点数を増やす．特に大きい点がある場合には，その点を確認もしくは除外する．
-5. 問題なければ `Export XYZ` または `Clipboard` で座標を出力して装置へ渡す。
+3. `START Centroid Extraction` を押す。
+4. 抽出モードで左側パラメータ（`Number of Groups`, `Boundary Offset`, `Neck Separation`, `Shape Complexity`, `Grain Size Threshold` ヒストグラム）を調整し，粒子の重心が検出されているか確認．
+5. 左カードの `Add GroupN` ボタンで各グループの点を中カラムへ追加する。
+6. `Finish Centroid Extraction` を押して On-line Alignment に戻る。
+7. `Add Fiducial Point` をクリックして参照点（画像上）を選択し、装置上で同じ点のステージ座標をテーブルに入力する。3点以上入力し，残差を確認．残差が全体的に大きい場合には点数を増やす．特に大きい点がある場合には，その点を確認もしくは除外する．
+8. 問題なければ `Export XYZ` または `Clipboard` で座標を出力して装置へ渡す。
 
 ---
 
@@ -67,24 +70,27 @@ python Main.py
     - `Clear`（参照点側）: 参照点テーブルの選択行を削除、または入力をクリアする。
 
   - 左側下段（粒子検出パラメータ設定）
-    - `Grain Identification`（`Basic` / `Advanced`）: 粒子検出パラメータの表示を切り替える（`Advanced` で追加の調整項目を表示）。
+    - `START Centroid Extraction` / `Finish Centroid Extraction`: 抽出モードの開始/終了。
+    - 粒子検出パラメータは `Advanced` 固定で運用。
     - `Recalculation Trigger`（`Auto` / `Manual`）: 粒子検出の再計算方法を切り替える。`Auto` はパラメータ変更のたびに再計算し、`Manual` は `ReCalculate` をクリックしたときのみ再計算する。
     - `Number of Groups (K)` — K-means のクラスタ数。推奨 3–10（色数に応じて試し、過分割を避ける）
-    - `Grain Size Threshold` — 最小領域面積（px）。推奨 10–50 px（ノイズ除去）
-    - `Maximum Area` — 最大領域面積（px）。大きすぎる領域を除外
     - `Boundary Offset` — 画像周縁の不完全領域の影響を避けるためのオフセット（端部の除外など）
     - `Neck Separation` — 接触粒子を分割する強さ（大きいほど分割が強い）
     - `Shape Complexity` — 形状が複雑な領域を抑制/分割するための調整パラメータ
+    - `Grain Size Threshold` — ヒストグラムで最小/最大面積を選択
+    - グループカード（左下）
+      - `Add GroupN`: グループNの検出点を中カラムへ追加
+      - `Show` / `Hide`: グループごとの表示切替
+      - `Add ALL Group to List`: 全グループを中カラムへ追加
 
   - 中央（候補点テーブル）
     - `Export XYZ`: 推定した変換で候補点をステージ座標（X,Y,Z）へ変換し、CSVとして保存する。
     - `Clipboard`: 出力データをクリップボードへコピーし、装置ソフトへ貼り付けできる形式（TSV）で提供する。
-    - `Filter`: グループフィルタを開き、画像上で表示/出力対象のグループを選択する。
     - `Add Target`: 画像上でターゲット点を手動追加する（自動抽出以外の点を追加したい場合に使用）。
     - `Update u, v`: 選択中の行（ターゲット）の画像座標 `u, v` を、現在クリックしている位置で更新する。
     - `Clear`（ターゲット側）: ターゲット側の選択状態や一時的な指定をクリアする。
 
-    ※注（`Add Target` / `Update u, v` と `Filter` の挙動）
+    ※注（`Add Target` / `Update u, v` とグループ表示切替の挙動）
     - `Update u, v`（Update Target）は現状ベータ仕様です。今後のバージョンで内部挙動やUIが変わる可能性があります。
     - `Add Target` で追加される点は「手動点」として扱われ、グループは常に `Group 0` になります。
     - 手動点は候補リストの先頭（No.1）ではなく、「自動抽出された `Group 0` の点の末尾」に追加されます。
@@ -93,14 +99,14 @@ python Main.py
       - 選択中が手動点（= `Group 0`）の場合: その手動点の座標を更新します（点の数は増えません）。
       - 選択中が自動抽出点（`Group >= 1` 等）の場合: 「置換（replace）」として扱い、
         (1) 元の点は候補から非表示（除外）にし、(2) 新しい手動点（`Group 0`）を追加します。
-    - `Filter` で `Group 0` を非表示にしている場合でも、`Group 0` 以外の点を `Update u, v` で置換したときに追加される新しい点は
+    - グループの `Show` / `Hide` で `Group 0` を非表示にしている場合でも、`Group 0` 以外の点を `Update u, v` で置換したときに追加される新しい点は
       「いま更新した点」として見える状態（表示扱い）になります。
       - これは「更新したのに点が消えて行方不明になる」ことを防ぐための例外的な表示ルールです。
 
   - 右側（画像表示・見え方の調整）
     - `Export Image`: 現在のオーバーレイ（境界・重心番号など）を元画像に合成し、画像として書き出す。
-    - `Original` / `Posterized`: 元画像表示とポスタライズ表示を切り替え、クラスタ分割の妥当性を確認する。
-    - `Boundary`（`Show` / `Hide`）: 領域境界線オーバーレイの表示/非表示を切り替える。
+    - `Original` / `Posterized` と `Boundary`（`Show` / `Hide`）は Centroid Extraction モード中のみ表示。
+      - 通常モードは `Original` + `Boundary OFF` に固定。
     - `Coordinate`（`Image` / `Stage`）: 表示座標系を画像座標/ステージ座標表示に切り替える。
       - Image座標（u, v）表示時
         - `Flip`（`Normal` / `Flip`）: 画像の左右反転を切り替え、装置表示との左右差を補正する。
@@ -182,13 +188,13 @@ python Main.py
 ## ライセンスと引用方法
 
 - ライセンス: MIT
-- 引用例: Y. KON, PiXY v1.3.2. Zenodo:10.5281/zenodo.18174474
+- 引用例: Y. KON, PiXY v1.4.0. Zenodo:10.5281/zenodo.18174474
 
 ---
 
 ## 変更履歴（抜粋）
 
-- v1.3.2 (2026-02-18): `Add Target` / `Update u, v` と `Filter`（Group 0 非表示）併用時の表示・並び順の挙動を整理
+- v1.4.0 (2026-05-28): Start/Finish Centroid Extraction ワークフロー導入、モード依存表示制御、左パネルのグループ操作更新。
 
 - v1.3.2 (2026-02-18): Windows EXE 配布、UI フリップ処理改善、README 追加
 - v1.2.3: 内部のバグ修正、参照点残差表示改善

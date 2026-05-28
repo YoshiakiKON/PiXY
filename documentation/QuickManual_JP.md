@@ -19,21 +19,28 @@ python Main.py
 ## よく使う操作（スクショ参照）
 
 1) 画像を開く
-- メニューまたは `Open Image` を選び、画像を読み込みます。
+- `New Project` で画像を読み込みます。
 
 ![Open Image](images/quick_jp_1.png)
 
-2) 重心を検出する
-- `Detect` または同等のボタンを押すと、画面上に重心が表示されます。
+2) 重心抽出を開始する
+- `START Centroid Extraction` を押します。
+- 左パラメータを調整して重心を確認します。
 
 ![Detect Centroids](images/quick_jp_2.png)
 
-3) フィデューシャル点（Fiducial point）の追加
-- `Add Fiducial Point` をクリックしてフィデューシャル点モードに入り、画像上でフィデューシャル点をクリックして観測点を追加します。
+3) グループを中カラムへ追加
+- 左カードの `Add GroupN` で必要な点を中カラムへ追加します。
+
+![Detect Centroids](images/quick_jp_2.png)
+
+4) 抽出終了後にフィデューシャル点を追加
+- `Finish Centroid Extraction` を押してから `Add Fiducial Point` を使います。
+- 画像上でフィデューシャル点をクリックして観測点を追加します。
 
 ![Add Ref](images/quick_jp_3.png)
 
-4) 変換とエクスポート
+5) 変換とエクスポート
 - フィデューシャルテーブルで画像座標 `u`/`v` と装置座標 `Stage X`/`Stage Y` を確認・編集してフィットを調整し、エクスポートでCSV出力できます。
 
 ![Export](images/quick_jp_4.png)

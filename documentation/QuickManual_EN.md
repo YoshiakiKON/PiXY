@@ -17,21 +17,28 @@ python Main.py
 ## Common tasks (see screenshots)
 
 1) Open image
-- Use the menu or `Open Image` to load an image.
+- Use `New Project` to load an image.
 
 ![Open Image](images/quick_en_1.png)
 
-2) Detect centroids
-- Click `Detect` (or equivalent) to display centroids.
+2) Start centroid extraction
+- Click `START Centroid Extraction`.
+- Tune extraction parameters on the left and verify detected centroids.
 
 ![Detect Centroids](images/quick_en_2.png)
 
-3) Add fiducial points
+3) Add groups to center list
+- Use `Add GroupN` buttons in the left group cards to move required points to the center list.
+
+![Detect Centroids](images/quick_en_2.png)
+
+4) Finish extraction and add fiducials
+- Click `Finish Centroid Extraction`, then click `Add Fiducial Point`.
 - Click `Add Fiducial Point`, then click image points to add observations.
 
 ![Add Ref](images/quick_en_3.png)
 
-4) Transform & export
+5) Transform & export
 - Edit image coordinates (`u`/`v`) and stage coordinates (`Stage X`/`Stage Y`) in the reference table to refine the fit, then export to CSV.
 
 ![Export](images/quick_en_4.png)

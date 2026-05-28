@@ -253,11 +253,11 @@ class ImageViewController(QObject):
                                         self.ui.selected_index = idx
                                         # テーブル/表示を更新
                                         self.ui.schedule_update(force=True, recompute_centroids=False)
-                                        # immediately sync visible table selection to reflect change
-                                        try:
-                                            self.ui._sync_table_selection()
-                                        except Exception:
-                                            pass
+                                    # Always sync visible table selection/scroll even when index is unchanged.
+                                    try:
+                                        self.ui._sync_table_selection()
+                                    except Exception:
+                                        pass
                                 except Exception:
                                     pass
                             return True

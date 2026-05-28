@@ -1045,6 +1045,7 @@ class CentroidFinderWindow(QMainWindow):
         self.center_list_indices = []    # 中カラムに追加された重心インデックス
         self.center_numeric_rows = []    # 中カラム表示値の数値スナップショット(dict list)
         self._table_between_row_indices = []  # table_between行 -> centroidsインデックス
+        self._offline_group_tables = {}   # grp -> {table: QTableWidget, indices: list[int]}
         self.overlay_point_source = 'left'  # 'left': 左リスト(全検出), 'center': 中リスト(Add済み)
         self._replace_target_source_index = None
         self._replace_target_source_group = None
@@ -7882,6 +7883,126 @@ class CentroidFinderWindow(QMainWindow):
         except Exception:
             pass
 
+    def _is_center_row_visible(self, rowd):
+        """Return True when a center row should be visible in overlay/table."""
+        try:
+            rd = dict(rowd or {})
+        except Exception:
+            rd = {}
+        try:
+            if float(rd.get('show', 1.0)) < 0.5:
+                return False
+        except Exception:
+            pass
+        try:
+            src_i = int(rd.get('source_idx', -1))
+        except Exception:
+            src_i = -1
+        if src_i >= 0:
+            try:
+                if self._is_centroid_excluded(src_i):
+                    return False
+            except Exception:
+                pass
+        return True
+
+    def _set_center_row_visible(self, row_idx, visible, source_idx=None):
+        """Apply Show/Hide from middle table row and refresh overlay/table."""
+        try:
+            rr = int(row_idx)
+        except Exception:
+            return
+        try:
+            rows = list(getattr(self, 'center_numeric_rows', []) or [])
+            if not (0 <= rr < len(rows)):
+                return
+            rd = dict(rows[rr] or {})
+            rd['show'] = 1.0 if bool(visible) else 0.0
+            rows[rr] = rd
+            self.center_numeric_rows = rows
+        except Exception:
+            pass
+
+        try:
+            if source_idx is None:
+                source_idx = int(dict(getattr(self, 'center_numeric_rows', [])[rr] or {}).get('source_idx', -1))
+            si = int(source_idx)
+        except Exception:
+            si = -1
+
+        if si >= 0:
+            try:
+                s = set(getattr(self, 'excluded_centroid_indices', set()) or set())
+                exp = set(getattr(self, '_explicit_excluded_centroid_indices', set()) or set())
+                fv = set(getattr(self, '_force_visible_centroid_indices', set()) or set())
+                if bool(visible):
+                    s.discard(si)
+                    exp.discard(si)
+                    fv.add(si)
+                else:
+                    s.add(si)
+                    exp.add(si)
+                    fv.discard(si)
+                self.excluded_centroid_indices = s
+                self._explicit_excluded_centroid_indices = exp
+                self._force_visible_centroid_indices = fv
+                self._sanitize_excluded_indices()
+            except Exception:
+                pass
+
+        try:
+            self.schedule_update(force=True, recompute_centroids=False)
+        except Exception:
+            pass
+
+    def _make_show_toggle_center_row(self, row_idx, rowd):
+        """Create Show/Hide toggle for middle-table row using row-level show state."""
+        try:
+            rr = int(row_idx)
+        except Exception:
+            rr = -1
+        try:
+            rd = dict(rowd or {})
+        except Exception:
+            rd = {}
+        try:
+            src_i = int(rd.get('source_idx', -1))
+        except Exception:
+            src_i = -1
+        checked = bool(self._is_center_row_visible(rd))
+
+        from qt_compat.QtWidgets import QWidget as _QW
+        from qt_compat.QtCore import QRectF
+        from qt_compat.QtGui import QPainter, QColor as _QC
+
+        class _Toggle(_QW):
+            def __init__(self, checked=True, parent=None):
+                super().__init__(parent)
+                self._checked = bool(checked)
+                self.setFixedSize(32, 16)
+                self.setCursor(Qt.PointingHandCursor)
+                self._cb = None
+            def paintEvent(self, ev):
+                p = QPainter(self)
+                p.setRenderHint(QPainter.Antialiasing)
+                bg = _QC('#757575') if self._checked else _QC('#ccc')
+                p.setBrush(bg)
+                p.setPen(Qt.NoPen)
+                p.drawRoundedRect(QRectF(0, 0, 32, 16), 8, 8)
+                p.setBrush(_QC('white'))
+                x = 18.0 if self._checked else 2.0
+                p.drawEllipse(QRectF(x, 2, 12, 12))
+                p.end()
+            def mousePressEvent(self, ev):
+                self._checked = not self._checked
+                self.update()
+                if self._cb:
+                    self._cb(bool(self._checked))
+
+        sw = _Toggle(checked=checked)
+        sw._cb = lambda is_visible, r=rr, si=src_i: self._set_center_row_visible(r, bool(is_visible), si)
+        return sw
+
     def _remove_center_numeric_row_by_source_idx(self, cidx):
         try:
             tgt = int(cidx)
@@ -8381,6 +8502,7 @@ class CentroidFinderWindow(QMainWindow):
         cent = []
         manual_new = set()
         source_to_local = {}
+        excluded_new = set()
         for ridx, r in enumerate(rows):
             try:
                 rd = dict(r or {})
@@ -8405,6 +8527,12 @@ class CentroidFinderWindow(QMainWindow):
                 xp_f, yp_f = uv_proc
 
             cent.append((int(g), float(xp_f), float(yp_f)))
+
+            try:
+                if not self._is_center_row_visible(rd):
+                    excluded_new.add(int(len(cent) - 1))
+            except Exception:
+                pass
 
             try:
                 if float(rd.get('manual', 0.0)) >= 0.5:
@@ -8437,8 +8565,8 @@ class CentroidFinderWindow(QMainWindow):
             'centroids': cent,
             'selected_index': sel_new,
             'manual_indices': manual_new,
-            # Middle list visibility is independent from left-column Show/Hide state.
-            'excluded_indices': set(),
+            # Middle list visibility follows per-row Show/Hide (and source exclusion when linked).
+            'excluded_indices': excluded_new,
             'force_visible_indices': set(),
             # center-list mode is explicit subset, so group visibility filter is unnecessary.
             'visible_groups': None,
@@ -11751,6 +11879,10 @@ class CentroidFinderWindow(QMainWindow):
                             except Exception:
                                 continue
                             try:
+                                row_visible = bool(self._is_center_row_visible(rowd))
+                            except Exception:
+                                row_visible = True
+                            try:
                                 cidx = int(rowd.get('source_idx', -1))
                             except Exception:
                                 cidx = -1
@@ -11809,14 +11941,18 @@ class CentroidFinderWindow(QMainWindow):
                                         f = it.font(); f.setBold(True); it.setFont(f)
                                 except Exception:
                                     pass
+                                # Dim text + gray background for hidden center rows.
+                                try:
+                                    if not bool(row_visible):
+                                        it.setForeground(QColor(180, 180, 180))
+                                        it.setBackground(QColor(235, 235, 235))
+                                except Exception:
+                                    pass
                                 dst.setItem(header_rows + r, c, it)
                                 # Place Show/Hide toggle in the Show column
                                 if c == (data_cols - 1):
                                     try:
-                                        if 0 <= cidx < len(getattr(self, 'centroids', []) or []):
-                                            tog = self._make_show_toggle_centroid(cidx)
-                                        else:
-                                            tog = None
+                                        tog = self._make_show_toggle_center_row(r, rowd)
                                         if tog is not None:
                                             wrap = QWidget(dst)
                                             lay = QHBoxLayout(wrap)
@@ -12182,6 +12318,7 @@ class CentroidFinderWindow(QMainWindow):
             host = getattr(self, 'offline_group_layout', None)
             if host is None:
                 return
+            self._offline_group_tables = {}
 
             while host.count() > 0:
                 item = host.takeAt(0)
@@ -12241,14 +12378,14 @@ class CentroidFinderWindow(QMainWindow):
                 cache_uv = None
 
             if cache_uv and len(cache_uv) == len(centroids):
-                for g, u, v in cache_uv:
+                for src_i, (g, u, v) in enumerate(cache_uv):
                     try:
                         gg = int(g)
                     except Exception:
                         continue
                     if gg <= 0:
                         continue
-                    grouped.setdefault(gg, []).append((int(u), int(v)))
+                    grouped.setdefault(gg, []).append((int(u), int(v), int(src_i)))
             else:
                 try:
                     spf = float(getattr(self, 'scale_proc_to_full', 1.0) or 1.0)
@@ -12264,7 +12401,7 @@ class CentroidFinderWindow(QMainWindow):
                     except Exception:
                         h_full = None
 
-                for g, xp, yp in centroids:
+                for src_i, (g, xp, yp) in enumerate(centroids):
                     try:
                         gg = int(g)
                     except Exception:
@@ -12281,7 +12418,7 @@ class CentroidFinderWindow(QMainWindow):
                             v = int(round(-y_full))
                     except Exception:
                         continue
-                    grouped.setdefault(gg, []).append((u, v))
+                    grouped.setdefault(gg, []).append((u, v, int(src_i)))
 
             group_colors = {}
             try:
@@ -12371,7 +12508,8 @@ class CentroidFinderWindow(QMainWindow):
                 except Exception:
                     pass
                 try:
-                    tbl.setSelectionMode(QAbstractItemView.NoSelection)
+                    tbl.setSelectionBehavior(QAbstractItemView.SelectRows)
+                    tbl.setSelectionMode(QAbstractItemView.SingleSelection)
                     tbl.setEditTriggers(QAbstractItemView.NoEditTriggers)
                     tbl.setVerticalScrollBarPolicy(Qt.ScrollBarAlwaysOn)
                     tbl.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
@@ -12393,7 +12531,8 @@ class CentroidFinderWindow(QMainWindow):
                 except Exception:
                     pass
 
-                for r, (u, v) in enumerate(grouped[grp]):
+                row_src_indices = []
+                for r, (u, v, src_i) in enumerate(grouped[grp]):
                     iu = QTableWidgetItem(str(int(u)))
                     iv = QTableWidgetItem(str(int(v)))
                     try:
@@ -12409,11 +12548,142 @@ class CentroidFinderWindow(QMainWindow):
                         pass
                     tbl.setItem(r, 0, iu)
                     tbl.setItem(r, 1, iv)
+                    row_src_indices.append(int(src_i))
+
+                try:
+                    tbl.cellClicked.connect(lambda row, col, t=tbl: self._on_offline_group_table_clicked(t, row, col))
+                except Exception:
+                    pass
+
+                try:
+                    self._offline_group_tables[int(grp)] = {
+                        'panel': panel,
+                        'table': tbl,
+                        'indices': list(row_src_indices),
+                    }
+                except Exception:
+                    pass
 
                 pv.addWidget(tbl, 1)
                 host.addWidget(panel, 0)
 
             host.addStretch(1)
+            try:
+                self._sync_offline_group_selection()
+            except Exception:
+                pass
+        except Exception:
+            pass
+
+    def _on_offline_group_table_clicked(self, table, row, _col):
+        """Left group-table row selection -> centroid selection + image highlight."""
+        try:
+            if table is None or row is None:
+                return
+            idx = None
+            for _g, rec in dict(getattr(self, '_offline_group_tables', {}) or {}).items():
+                try:
+                    if rec.get('table') is table:
+                        ids = list(rec.get('indices', []) or [])
+                        if 0 <= int(row) < len(ids):
+                            idx = int(ids[int(row)])
+                        break
+                except Exception:
+                    continue
+            if idx is None:
+                return
+            if self.selected_index != idx:
+                self.selected_index = idx
+                self.schedule_update(force=True, recompute_centroids=False)
+            try:
+                self._center_on_centroid_index(idx)
+            except Exception:
+                pass
+        except Exception:
+            pass
+
+    def _sync_offline_group_selection(self):
+        """Sync selected centroid index to left offline group-table row highlight."""
+        try:
+            sel = getattr(self, 'selected_index', None)
+            mapping = dict(getattr(self, '_offline_group_tables', {}) or {})
+            if not mapping:
+                return
+
+            target_tbl = None
+            target_panel = None
+            target_row_final = -1
+
+            for _g, rec in mapping.items():
+                try:
+                    panel = rec.get('panel')
+                    tbl = rec.get('table')
+                    ids = list(rec.get('indices', []) or [])
+                except Exception:
+                    continue
+                if tbl is None:
+                    continue
+
+                target_row = -1
+                try:
+                    if sel is not None:
+                        target_row = int(ids.index(int(sel)))
+                except Exception:
+                    target_row = -1
+
+                if target_row >= 0:
+                    target_tbl = tbl
+                    target_panel = panel
+                    target_row_final = int(target_row)
+
+                try:
+                    tbl.blockSignals(True)
+                    if 0 <= target_row < tbl.rowCount():
+                        tbl.setCurrentCell(int(target_row), 0)
+                        tbl.selectRow(int(target_row))
+                    else:
+                        tbl.clearSelection()
+                finally:
+                    try:
+                        tbl.blockSignals(False)
+                    except Exception:
+                        pass
+
+            try:
+                self._ensure_offline_group_row_visible(target_panel, target_tbl, target_row_final)
+            except Exception:
+                pass
+        except Exception:
+            pass
+
+    def _ensure_offline_group_row_visible(self, panel, table, row):
+        """Scroll outer group area and inner group table so selected row is visible."""
+        try:
+            if panel is not None:
+                sc = getattr(self, 'offline_group_scroll', None)
+                if sc is not None:
+                    try:
+                        sc.ensureWidgetVisible(panel, 12, 0)
+                    except Exception:
+                        pass
+        except Exception:
+            pass
+
+        try:
+            if table is None or row is None:
+                return
+            rr = int(row)
+            if rr < 0 or rr >= table.rowCount():
+                return
+            it = table.item(rr, 0)
+            if it is not None:
+                try:
+                    table.scrollToItem(it, QAbstractItemView.PositionAtCenter)
+                except Exception:
+                    try:
+                        table.scrollToItem(it)
+                    except Exception:
+                        pass
         except Exception:
             pass
 
@@ -12512,8 +12782,8 @@ class CentroidFinderWindow(QMainWindow):
                     except Exception:
                         pass
                     try:
-                        # START押下時(OFF->ON)のみ一度自動再計算を実行。
-                        self.schedule_update(force=True, recompute_centroids=(bool(active) and (not bool(prev))))
+                        # Show/Hide is a visibility update only.
+                        self.schedule_update(force=True, recompute_centroids=False)
                     except Exception:
                         pass
                 except Exception:
@@ -12658,6 +12928,10 @@ class CentroidFinderWindow(QMainWindow):
                             self.table_between.blockSignals(False)
                         except Exception:
                             pass
+            except Exception:
+                pass
+            try:
+                self._sync_offline_group_selection()
             except Exception:
                 pass
         except Exception:

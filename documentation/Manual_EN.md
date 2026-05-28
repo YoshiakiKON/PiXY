@@ -1,16 +1,20 @@
 # Manual — PiXY (English)
 
-Detailed reference describing features, configuration, logs, and file formats.
+Detailed reference describing current v1.4 workflow, key controls, and files.
 
 ## Contents
 - Overview
 - Installation
 - Startup options
-- UI components
-- Handling fiducial points
+- Operation flow (v1.4)
+- Main UI
+- Fiducial points
 - Output files (CSV, centroids_*.txt)
-- Advanced configuration (`Config.py`)
+- Configuration (`Config.py`)
 - Logs & debugging
+
+## Overview
+- PiXY detects candidate points (centroids) in microscopy images and converts image coordinates (`u`, `v`) to stage coordinates (`X`, `Y`, `Z`) using fiducial points.
 
 ## Installation
 1. Prepare Python 3.10+
@@ -26,9 +30,25 @@ pip install -r requirements.txt
 - `--auto`: automatically process last image.
 - `--auto-exit`: auto process and exit.
 
+## Operation flow (v1.4)
+1. Open image via `New Project`.
+2. Click `START Centroid Extraction`.
+3. Tune extraction parameters on the left panel (`Number of Groups`, `Boundary Offset`, `Neck Separation`, `Shape Complexity`, `Grain Size Threshold` histogram).
+4. Use `Add GroupN` to move detected points to the center list.
+5. Click `Finish Centroid Extraction`.
+6. Add and refine fiducial points using `Add Fiducial Point` / `Update u, v`, then export (`Export XYZ` or clipboard).
+
 ## Main UI
-- Main window contains: image view, centroid list, fiducial table, toolbar.
-- Fiducial table shows image coordinates (`u`, `v`) and stage coordinates (`Stage X`, `Stage Y`, `Stage Z`), transformed coordinates, and residuals.
+- Left panel
+	- `START/Finish Centroid Extraction`: enter/exit extraction mode.
+	- `Recalculation Trigger` (`Auto` / `Manual`).
+	- Group cards with `Add GroupN` and `Show/Hide`.
+- Center panel
+	- Candidate table and controls (`Export XYZ`, `Clipboard`, `Add Target`, `Update u, v`, `Clear`).
+- Right panel
+	- Image display and orientation controls.
+	- `Boundary` and `Display Mode` (`Original`/`Posterized`) are visible only in extraction mode.
+	- In normal mode, display is fixed to `Original` + `Boundary OFF`.
 
 ## Fiducial points
 1. Click `Add Fiducial Point` to enter fiducial mode.

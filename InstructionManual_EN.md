@@ -9,7 +9,7 @@
 - Repository: https://github.com/YoshiakiKON/PiXY
 - Zenodo DOI: 10.5281/zenodo.18174474
 - License: MIT
-- Last updated: 2026-02-18
+- Last updated: 2026-05-28
 
 ---
 
@@ -45,11 +45,14 @@ python Main.py
 
 ## Quick Start (Minimum Steps)
 
-1. Run PiXY_v1XX.exe
+1. Run `PiXY_ver140.exe`.
 2. Click `New Project` and select an image file to load.
-3. Adjust the parameters on the left side (`Number of Groups (K)`, `Grain Size Threshold`, etc.) and confirm that particle centroids are being detected.
-4. Click `Add Fiducial Point`, click fiducials on the image, and enter the corresponding stage coordinates in the table. Enter 3 or more points and check residuals. If residuals are large overall, add more points. If one point has a much larger residual, re-check that point or exclude it.
-5. If everything looks good, export coordinates via `Export XYZ` or `Clipboard` and pass them to the instrument.
+3. Click `START Centroid Extraction`.
+4. In extraction mode, adjust the left-side detection parameters (`Number of Groups`, `Boundary Offset`, `Neck Separation`, `Shape Complexity`, and `Grain Size Threshold` histogram) and confirm that centroids are detected.
+5. Add candidate points from each group using `Add GroupN` buttons (left cards) so they appear in the center list.
+6. Click `Finish Centroid Extraction` to return to on-line alignment.
+7. Click `Add Fiducial Point`, click fiducials on the image, and enter the corresponding stage coordinates in the table. Enter 3 or more points and check residuals. If residuals are large overall, add more points. If one point has a much larger residual, re-check that point or exclude it.
+8. If everything looks good, export coordinates via `Export XYZ` or `Clipboard` and pass them to the instrument.
 
 ---
 
@@ -67,24 +70,27 @@ python Main.py
     - `Clear` (fiducials): Delete the selected fiducial row in the table, or clear its values.
 
   - Lower left (particle detection parameter settings)
-    - `Grain Identification` (`Basic` / `Advanced`): Switch which particle-detection parameters are shown (`Advanced` shows additional tuning items).
+    - `START Centroid Extraction` / `Finish Centroid Extraction`: Enter/exit extraction mode.
+    - Detection parameters are operated in `Advanced` mode only.
     - `Recalculation Trigger` (`Auto` / `Manual`): Control when particle detection is recomputed. `Auto` recomputes on every parameter change; `Manual` recomputes only when you click `ReCalculate`.
     - `Number of Groups (K)` — Number of K-means clusters. Suggested 3–10 (try based on the number of colors; avoid over-segmentation).
-    - `Grain Size Threshold` — Minimum region area (px). Suggested 10–50 px (noise removal).
-    - `Maximum Area` — Maximum region area (px). Exclude regions that are too large.
     - `Boundary Offset` — Offset to avoid incomplete regions near the image boundary (e.g., exclude edges).
     - `Neck Separation` — Strength for separating touching particles (larger = stronger separation).
     - `Shape Complexity` — Tuning parameter to suppress/split regions with complex shapes.
+    - `Grain Size Threshold` — Histogram-based min/max area selection.
+    - Group cards (bottom left)
+      - `Add GroupN`: Add detected points of group N to the center list.
+      - `Show` / `Hide`: Per-group visibility toggle.
+      - `Add ALL Group to List`: Add all groups to the center list.
 
   - Center (candidate table)
     - `Export XYZ`: Convert candidate points to stage coordinates (X,Y,Z) using the estimated transform and save as CSV.
     - `Clipboard`: Copy output data to the clipboard in a paste-ready tab-separated format (TSV) for instrument software.
-    - `Filter`: Open the group filter and select which groups to display/export.
     - `Add Target`: Manually add a target point on the image (use when you want to add a point not found by automatic extraction).
     - `Update u, v`: Update `u, v` (image coordinates) of the selected target row to the currently clicked position.
     - `Clear` (targets): Clear the target selection or any temporary designation.
 
-    Note (`Add Target` / `Update u, v` with `Filter`)
+    Note (`Add Target` / `Update u, v` with group visibility)
     - `Update u, v` (Update Target) is currently a beta feature. The internal behavior and UI may change in future versions.
     - Points added via `Add Target` are treated as manual targets and always belong to `Group 0`.
     - Manual targets are appended to the end of the auto-detected `Group 0` block (not inserted as No.1).
@@ -93,13 +99,13 @@ python Main.py
       - If a manual target (=`Group 0`) is selected: it updates that manual target in place (the number of points does not increase).
       - If an auto-detected target (e.g., `Group >= 1`) is selected: it is treated as a replace operation:
         (1) the original point is hidden/excluded, and (2) a new manual target (`Group 0`) is added at the clicked position.
-    - Even if `Group 0` is hidden by `Filter`, when you replace a non-`Group 0` point via `Update u, v`, the newly added point is forced-visible
+    - Even if `Group 0` is hidden by group `Show`/`Hide`, when you replace a non-`Group 0` point via `Update u, v`, the newly added point is forced-visible
       so you can still see the result of your update.
 
   - Right side (image display / appearance adjustments)
     - `Export Image`: Merge the current overlays (boundaries, centroid IDs, etc.) onto the original image and export as an image.
-    - `Original` / `Posterized`: Toggle between original and posterized display to verify cluster segmentation.
-    - `Boundary` (`Show` / `Hide`): Toggle region boundary overlay visibility.
+    - `Original` / `Posterized` and `Boundary` (`Show` / `Hide`) are shown only in Centroid Extraction mode.
+      - Normal mode is fixed to `Original` + `Boundary OFF`.
     - `Coordinate` (`Image` / `Stage`): Switch the displayed coordinate system between image coordinates and stage coordinates.
       - When showing Image coordinates (u, v)
         - `Flip` (`Normal` / `Flip`): Toggle a left-right flip to match the instrument view.
@@ -181,13 +187,13 @@ python Main.py
 ## License and How to Cite
 
 - License: MIT
-- Citation example: Y. KON, PiXY v1.3.2. Zenodo:10.5281/zenodo.18174474
+- Citation example: Y. KON, PiXY v1.4.0. Zenodo:10.5281/zenodo.18174474
 
 ---
 
 ## Change Log (Excerpt)
 
-- v1.3.2 (2026-02-18): Clarified behavior and ordering when using `Add Target` / `Update u, v` together with `Filter` (hiding Group 0)
+- v1.4.0 (2026-05-28): Added Start/Finish Centroid Extraction workflow, mode-dependent display controls, and updated left-panel group operations.
 
 - v1.3.2 (2026-02-18): Windows EXE distribution, improved UI flip processing, added README
 - v1.2.3: Internal bug fixes, improved fiducial residual display

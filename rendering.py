@@ -104,6 +104,7 @@ def build_zoomed_canvas(overlay_full_img, proc_zoom, view_padding,
     cfg = {
         'pen_width': 2,
         'centroid_fill': QColor(64, 64, 64),
+        'core_fill': QColor(220, 50, 50),
         'manual_fill': QColor(0, 170, 0),
         'centroid_radius': 4,
         'selected_fill': QColor(0, 102, 255),
@@ -142,7 +143,15 @@ def build_zoomed_canvas(overlay_full_img, proc_zoom, view_padding,
             if selected_index is not None and idx == selected_index:
                 continue
             painter.setPen(QPen(QColor(255, 255, 255), cfg['pen_width']))
-            painter.setBrush(cfg['manual_fill'] if idx in manual_set else cfg['centroid_fill'])
+            fill_color = cfg['manual_fill'] if idx in manual_set else cfg['centroid_fill']
+            # Core/Rim overlay uses label suffix (...c / ...r). Draw core points in red.
+            try:
+                if idx not in manual_set and label_texts is not None and 0 <= int(idx) < len(label_texts):
+                    if str(label_texts[int(idx)]).strip().lower().endswith('c'):
+                        fill_color = cfg.get('core_fill', QColor(220, 50, 50))
+            except Exception:
+                pass
+            painter.setBrush(fill_color)
             painter.drawEllipse(QPoint(xd, yd), cfg['centroid_radius'], cfg['centroid_radius'])
             # 重心番号（1始まり）を控えめに表示
             try:

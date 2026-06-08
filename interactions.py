@@ -206,6 +206,11 @@ class ImageViewController(QObject):
                     self.ui._draw_crosshair(pos_label)
             elif et == QEvent.MouseButtonRelease and event.button() == Qt.LeftButton:
                 pos_label = _evt_point(event) if obj is self.ui.img_label_proc else self.ui._viewport_pos_to_label_pos(_evt_point(event))
+                try:
+                    mods = event.modifiers() if hasattr(event, 'modifiers') else Qt.NoModifier
+                    ctrl_down = bool(mods & Qt.ControlModifier)
+                except Exception:
+                    ctrl_down = False
                 vx = vy = 0.0
                 if self._dragging and len(self._drag_recent) >= 2:
                     t2, p2 = self._drag_recent[-1]
@@ -249,27 +254,59 @@ class ImageViewController(QObject):
 
                         # Otherwise, centroid selection
                         if self._press_on_point_idx is not None:
-                            idx = self._press_on_point_idx
+                            idx_local = self._press_on_point_idx
                             self._press_on_point_idx = None
                             self._lock_to_point_select = False
-                            # 範囲チェック
-                            if 0 <= idx < len(getattr(self.ui, 'centroids', [])):
+                            try:
+                                src_idx, pos_tag = self._overlay_centroid_source_info(idx_local)
+                                if src_idx is None:
+                                    src_idx = int(idx_local)
+                                self.ui.selected_index = int(src_idx)
                                 try:
-                                    if self.ui.selected_index != idx:
-                                        self.ui.selected_index = idx
-                                        # 画像クリック時はベース画像を固定し、
-                                        # 選択マーカーのみ差分描画する。
-                                        try:
-                                            self.ui._refresh_selected_overlay_only()
-                                        except Exception:
-                                            self.ui.schedule_update(force=True, recompute_centroids=False)
-                                    # Always sync visible table selection/scroll even when index is unchanged.
-                                    try:
-                                        self.ui._sync_table_selection()
-                                    except Exception:
-                                        pass
+                                    self.ui.selected_point_pos = str(pos_tag or 'c').lower().strip()
+                                except Exception:
+                                    self.ui.selected_point_pos = 'c'
+                                try:
+                                    ptag = str(getattr(self.ui, 'selected_point_pos', 'c') or 'c').lower().strip()
+                                except Exception:
+                                    ptag = 'c'
+                                if ptag not in ('c', 'r'):
+                                    ptag = 'c'
+                                try:
+                                    cur_keys = set(getattr(self.ui, 'selected_point_keys', set()) or set())
+                                except Exception:
+                                    cur_keys = set()
+                                key = (int(src_idx), ptag)
+                                if ctrl_down:
+                                    if key in cur_keys:
+                                        cur_keys.discard(key)
+                                        if cur_keys:
+                                            try:
+                                                si, sp = next(iter(cur_keys))
+                                                self.ui.selected_index = int(si)
+                                                self.ui.selected_point_pos = str(sp)
+                                            except Exception:
+                                                pass
+                                        else:
+                                            self.ui.selected_index = None
+                                    else:
+                                        cur_keys.add(key)
+                                else:
+                                    cur_keys = {key}
+                                self.ui.selected_point_keys = cur_keys
+                                # 画像クリック時はベース画像を固定し、
+                                # 選択マーカーのみ差分描画する。
+                                try:
+                                    self.ui._refresh_selected_overlay_only()
+                                except Exception:
+                                    self.ui.schedule_update(force=True, recompute_centroids=False)
+                                # Always sync visible table selection/scroll even when index is unchanged.
+                                try:
+                                    self.ui._sync_table_selection()
                                 except Exception:
                                     pass
+                            except Exception:
+                                pass
                             return True
                     else:
                         self.ui._handle_image_click(pos_label)
@@ -505,13 +542,27 @@ class ImageViewController(QObject):
     def _nearest_centroid_hit(self, pos_label):
         """Return (idx, d2) of nearest centroid within radius; else (None, None)."""
         try:
-            if not getattr(self.ui, 'centroids', None):
+            ov = getattr(self.ui, '_last_overlay_payload', None)
+            if not isinstance(ov, dict):
+                try:
+                    ov = self.ui._get_overlay_render_payload()
+                except Exception:
+                    ov = None
+            centroids = []
+            if isinstance(ov, dict):
+                try:
+                    centroids = list(ov.get('centroids', []) or [])
+                except Exception:
+                    centroids = []
+            if not centroids:
+                centroids = list(getattr(self.ui, 'centroids', []) or [])
+            if not centroids:
                 return None, None
             radius = float(getattr(self.ui, 'select_radius_display', 10.0) or 10.0)
             r2 = radius * radius
             best_i = None
             best_d2 = None
-            for i, (_g, xp, yp) in enumerate(self.ui.centroids):
+            for i, (_g, xp, yp) in enumerate(centroids):
                 x_full = xp * getattr(self.ui, 'scale_proc_to_full', 1.0)
                 y_full = yp * getattr(self.ui, 'scale_proc_to_full', 1.0)
                 dxy = self.ui._full_to_display(x_full, y_full)
@@ -526,6 +577,48 @@ class ImageViewController(QObject):
             return best_i, best_d2
         except Exception:
             return None, None
+
+    def _overlay_centroid_source_info(self, local_idx):
+        """Resolve local overlay centroid index to (source_idx, pos_tag)."""
+        try:
+            i = int(local_idx)
+        except Exception:
+            return None, 'c'
+        try:
+            ov = getattr(self.ui, '_last_overlay_payload', None)
+            if not isinstance(ov, dict):
+                ov = self.ui._get_overlay_render_payload()
+        except Exception:
+            ov = None
+
+        if isinstance(ov, dict):
+            try:
+                l2s = list(ov.get('local_to_source', []) or [])
+            except Exception:
+                l2s = []
+            try:
+                l2p = list(ov.get('local_to_pos', []) or [])
+            except Exception:
+                l2p = []
+
+            src = None
+            if 0 <= i < len(l2s):
+                try:
+                    src = int(l2s[i])
+                except Exception:
+                    src = None
+
+            ptag = 'c'
+            if 0 <= i < len(l2p):
+                try:
+                    ptag = str(l2p[i] or 'c').lower().strip()
+                except Exception:
+                    ptag = 'c'
+            if ptag not in ('c', 'r'):
+                ptag = 'c'
+            return src, ptag
+
+        return i, 'c'
 
     def _nearest_ref_hit(self, pos_label):
         """Return (idx, d2) of nearest ref point within radius; else (None, None)."""

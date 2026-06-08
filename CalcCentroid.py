@@ -39,6 +39,41 @@ class CentroidProcessor:
         self.proc_img = proc_img
         self.scale_proc_to_full = scale_proc_to_full
         self.img_full = img_full
+        self.last_rim_points_proc = []
+
+    def _rim_point_from_contours(self, contours, cx, cy, inward_px_proc):
+        """Compute rim point: move inward from farthest contour point from centroid."""
+        try:
+            if not contours:
+                return None
+            pts = []
+            for cnt in contours:
+                try:
+                    arr = np.asarray(cnt, dtype=np.float32).reshape(-1, 2)
+                    if arr.size > 0:
+                        pts.append(arr)
+                except Exception:
+                    continue
+            if not pts:
+                return None
+            p = np.vstack(pts)
+            cxy = np.array([float(cx), float(cy)], dtype=np.float32)
+            d = p - cxy
+            d2 = np.sum(d * d, axis=1)
+            if d2.size <= 0:
+                return None
+            idx = int(np.argmax(d2))
+            tip = p[idx]
+            vec = tip - cxy
+            dist = float(np.linalg.norm(vec))
+            if not np.isfinite(dist) or dist <= 1e-9:
+                return float(tip[0]), float(tip[1])
+            inward = max(0.0, float(inward_px_proc or 0.0))
+            t = max(0.0, min(1.0, (dist - inward) / dist))
+            rp = cxy + (vec * t)
+            return float(rp[0]), float(rp[1])
+        except Exception:
+            return None
 
     def _split_by_neck_separation(self, comp_mask, neck_separation):
         """
@@ -193,11 +228,12 @@ class CentroidProcessor:
         min_area = params["min_area"]
         max_area = params.get("max_area", None)
         neck_separation = int(params.get("neck_separation", 0) or 0)
-        # Shape complexity filter (0-10). 10 means "no filtering".
+        # Shape complexity filter strength (0-10).
+        # 0 means "no filtering", 10 means "strongest filtering".
         try:
-            shape_complexity = int(params.get("shape_complexity", 10) if params is not None else 10)
+            shape_complexity = int(params.get("shape_complexity", 0) if params is not None else 0)
         except Exception:
-            shape_complexity = 10
+            shape_complexity = 0
 
         def _passes_shape_complexity(binary_mask_255: np.ndarray) -> bool:
             """Return True if the component shape is acceptable.
@@ -206,9 +242,9 @@ class CentroidProcessor:
               ratio = P^2 / (4*pi*A)
             ratio == 1 for a circle and increases for elongated/irregular shapes.
 
-            The UI parameter is 0-10; 10 disables this filter.
+            The UI parameter is 0-10; 0 disables this filter.
             """
-            if shape_complexity >= 10:
+            if shape_complexity <= 0:
                 return True
             try:
                 if binary_mask_255 is None or binary_mask_255.sum() == 0:
@@ -223,8 +259,8 @@ class CentroidProcessor:
                     return False
                 perim = float(cv2.arcLength(cnt, True))
                 ratio = (perim * perim) / (4.0 * float(np.pi) * area_c)
-                # Map slider (0..9) to permissive threshold (1..5.5)
-                thr = 1.0 + 0.5 * float(shape_complexity)
+                # Map slider (1..10) to stricter threshold (5.5..1.0)
+                thr = 6.0 - 0.5 * float(shape_complexity)
                 return bool(ratio <= thr)
             except Exception:
                 # Best-effort: if metric fails, don't drop detections
@@ -237,12 +273,18 @@ class CentroidProcessor:
             trim_px_proc = int(round(float(trim_px_full) / max(1.0, float(self.scale_proc_to_full))))
         except Exception:
             trim_px_proc = int(trim_px_full)
+        rim_offset_full = int(params.get("rim_offset_px", 3) or 0)
+        try:
+            rim_offset_proc = float(rim_offset_full) / max(1.0, float(self.scale_proc_to_full))
+        except Exception:
+            rim_offset_proc = float(rim_offset_full)
         t_uc0 = now() if timings is not None else None
         unique_colors = np.unique(poster.reshape(-1, 3), axis=0)
         if timings is not None:
             timings["unique_colors_time"] += float(now() - t_uc0)
             timings["groups"] = int(len(unique_colors))
         results = []
+        rim_results = []
         # For histogram: store component areas BEFORE applying min/max filters.
         self.last_component_areas = []
         # For boundary display: mask AFTER applying min/max filters (and trim).
@@ -312,6 +354,16 @@ class CentroidProcessor:
                     t_cent0 = now() if timings is not None else None
                     cx, cy = centroids[lab]
                     results.append([group_no, cx, cy])
+                    rim_pt = None
+                    try:
+                        contours_r, _ = cv2.findContours(comp_mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+                        if contours_r:
+                            contour_offset = np.array([[[left, top]]], dtype=np.int32)
+                            shifted_contours_r = [cnt.astype(np.int32, copy=False) + contour_offset for cnt in contours_r]
+                            rim_pt = self._rim_point_from_contours(shifted_contours_r, float(cx), float(cy), rim_offset_proc)
+                    except Exception:
+                        rim_pt = None
+                    rim_results.append(rim_pt)
                     if timings is not None:
                         timings["centroid_time"] += float(now() - t_cent0)
                     if compute_boundary_mask:
@@ -353,7 +405,7 @@ class CentroidProcessor:
                             except Exception:
                                 pass
                         # Optional shape filter for split components
-                        if shape_complexity < 10:
+                        if shape_complexity > 0:
                             try:
                                 comp_split = (split_labels == split_lab).astype(np.uint8) * 255
                             except Exception:
@@ -365,6 +417,17 @@ class CentroidProcessor:
                         cx += left
                         cy += top
                         results.append([group_no, cx, cy])
+                        rim_pt = None
+                        try:
+                            comp_split = (split_labels == split_lab).astype(np.uint8) * 255
+                            contours_r, _ = cv2.findContours(comp_split, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+                            if contours_r:
+                                contour_offset = np.array([[[left, top]]], dtype=np.int32)
+                                shifted_contours_r = [cnt.astype(np.int32, copy=False) + contour_offset for cnt in contours_r]
+                                rim_pt = self._rim_point_from_contours(shifted_contours_r, float(cx), float(cy), rim_offset_proc)
+                        except Exception:
+                            rim_pt = None
+                        rim_results.append(rim_pt)
                         if timings is not None:
                             timings["centroid_time"] += float(now() - t_cent0)
                         if compute_boundary_mask:
@@ -424,4 +487,8 @@ class CentroidProcessor:
                     pass
         if DEBUG:
             print(f"[DEBUG][CentroidProcessor] get_centroids done: found {len(results)} centroids in {total_time:.2f}s")
+        try:
+            self.last_rim_points_proc = list(rim_results)
+        except Exception:
+            self.last_rim_points_proc = []
         return results

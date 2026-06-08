@@ -2,6 +2,20 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.4.1] - 2026-06-08
+### Center table behavior and display
+- Fixed middle-table width ownership so final width is consistently decided by `_adjust_center_column_widths()`.
+- Restored vertical spacing between middle-column button rows while keeping scrollbar visibility fixes.
+- Removed obsolete extra-width constants and simplified center width calculation to measured values only.
+- Improved middle-table scrollbar visibility handling and clipping behavior after startup/layout refresh.
+
+### Target row data consistency
+- Synced middle-table `X/Y/Z` values from the canonical right table so rows added from centroid extraction reflect calculated values once available.
+- Added conditional numeric formatting in middle-table stage columns: values with absolute magnitude >= 100 are now shown as integers.
+
+### Readability polish
+- Added conditional font shrinking for middle-table `X/Y/Z` cells only when text would be elided (e.g., `123...`).
+
 ## [1.4.0] - 2026-05-28
 ### Workflow and UI
 - Introduced a Start/Finish Centroid Extraction workflow and made the left panel mode-driven (default On-line content with extraction mode switch).

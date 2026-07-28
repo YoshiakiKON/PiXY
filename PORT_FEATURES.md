@@ -43,3 +43,23 @@
 ## メモ（不安定化したら）
 - 直前ステップを `git revert` して原因を確定する（まとめて戻さない）
 - 必要ならフラグ化してON/OFF比較できるようにする
+
+---
+
+## Centroid Filter Order Spec
+
+- Current centroid filtering/evaluation order is fixed as follows:
+	1. `Trim (Boundary Offset)` erosion on per-color mask
+	2. Connected-components extraction
+	3. Early `min_area` rejection for original components
+	4. `Neck Separation` split
+	5. Per-result `min/max area` filtering
+	6. `Shape Complexity` filtering
+	7. Centroid/rim extraction and boundary contour accumulation
+
+- For split results, `Shape Complexity` is evaluated on each split component (post-split shape), not on the pre-split original component.
+
+## Group Visibility Reset Spec
+
+- When `Number of Groups` is changed, per-group show/hide state is reset and all groups become visible once.
+- This reset applies to slider edits, +/- nudges, and Enter-confirmed text edits for group-count controls.

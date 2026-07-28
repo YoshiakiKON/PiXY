@@ -9,7 +9,7 @@
 - Repository: https://github.com/YoshiakiKON/PiXY
 - Zenodo DOI: 10.5281/zenodo.18174474
 - License: MIT
-- Last updated: 2026-05-28
+- Last updated: 2026-06-10 (v1.4.1 spec)
 
 ---
 
@@ -45,7 +45,7 @@ python Main.py
 
 ## Quick Start (Minimum Steps)
 
-1. Run `PiXY_ver140.exe`.
+1. Run `PiXY_ver141.exe`.
 2. Click `New Project` and select an image file to load.
 3. Click `START Centroid Extraction`.
 4. In extraction mode, adjust the left-side detection parameters (`Number of Groups`, `Boundary Offset`, `Neck Separation`, `Shape Complexity`, and `Grain Size Threshold` histogram) and confirm that centroids are detected.
@@ -82,6 +82,7 @@ python Main.py
       - `Add GroupN`: Add detected points of group N to the center list.
       - `Show` / `Hide`: Per-group visibility toggle.
       - `Add ALL Group to List`: Add all groups to the center list.
+      - When `Number of Groups` or posterization level changes, custom group visibility (`Show`/`Hide`) is reset and all groups are shown.
 
   - Center (candidate table)
     - `Export XYZ`: Convert candidate points to stage coordinates (X,Y,Z) using the estimated transform and save as CSV.
@@ -155,9 +156,18 @@ python Main.py
     - `Maximum Area` — Maximum region area (px). Exclude regions that are too large.
     - `Boundary Offset` — Offset to avoid incomplete regions near the image boundary (e.g., exclude edges).
     - `Neck Separation` — Strength for separating touching particles (larger = stronger separation).
-    - `Shape Complexity` — Tuning parameter to suppress/split regions with complex shapes.
+    - `Shape Complexity` — Tuning parameter to suppress/split regions with complex shapes (default: `3`).
   - Tuning tips
     - First adjust `K` and `Grain Size Threshold`, then tune `Neck Separation` etc. only if many touching particles remain. Advanced parameters can be computationally expensive, so manual recalculation is recommended.
+
+- Centroid filter order (current spec)
+  1. Apply trim (`Boundary Offset`) to the binary mask.
+  2. Label connected components.
+  3. Early-reject components smaller than the minimum area threshold.
+  4. Apply neck separation splitting to remaining components.
+  5. Re-apply minimum/maximum area constraints to split components.
+  6. Apply shape complexity filter.
+  7. Compute/export centroid and boundary overlays for accepted components.
 - Residual visualization
   - Check the distribution using the GUI residual table and histogram.
   - Detect outliers using RMS or a median + MAD-based threshold.
@@ -187,12 +197,13 @@ python Main.py
 ## License and How to Cite
 
 - License: MIT
-- Citation example: Y. KON, PiXY v1.4.0. Zenodo:10.5281/zenodo.18174474
+- Citation example: Y. KON, PiXY v1.4.1. Zenodo:10.5281/zenodo.18174474
 
 ---
 
 ## Change Log (Excerpt)
 
+- v1.4.1 (2026-06-08): Improved middle-table width/scroll stability, synchronized center-row XYZ after extraction adds, improved large-number readability, and reset group visibility to all-visible when group count changes.
 - v1.4.0 (2026-05-28): Added Start/Finish Centroid Extraction workflow, mode-dependent display controls, and updated left-panel group operations.
 
 - v1.3.2 (2026-02-18): Windows EXE distribution, improved UI flip processing, added README

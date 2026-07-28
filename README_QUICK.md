@@ -3,7 +3,7 @@
 This quick manual shows the minimal steps to use PiXY for image-to-stage coordinate mapping.
 
 ## 1. Launch
-- Run the standalone Windows executable `PiXY_ver122.exe` (or run `py Main.py` for Python).
+- Run the standalone Windows executable `PiXY_ver142.exe` (or run `py Main.py` for Python).
 
 ## 2. Open an image
 - Click `Open Image` and select a BSE/optical image (example below).
@@ -34,7 +34,9 @@ This quick manual shows the minimal steps to use PiXY for image-to-stage coordin
 ## Licensing & Where to get help
 - License: MIT (see `LICENSE`).
 - Releases and prebuilt executables: GitHub Releases (see repository).
-- If you need a packaged ZIP for distribution, see `PiXY-v1.1.8-windows.zip` in the repository root.
+- For official v1.4.2 procedures, use:
+	- `InstructionManual_EN_v1.4.2.md` / `InstructionManual_JP_v1.4.2.md`
+	- `documentation/QuickManual_EN_v1.4.2.md` / `documentation/QuickManual_JP_v1.4.2.md`
 
 ---
 

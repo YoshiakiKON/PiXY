@@ -1,0 +1,38 @@
+18 February 2026
+
+
+Editors
+SoftwareX (Elsevier)
+Submission of “PiXY: Pixel-to-Stage XY(Z) Coordinate Converter for Offline Targeting in Microanalysis” as an Original Software Publication
+
+
+Dear Editor,
+
+
+We are pleased to submit our manuscript entitled “PiXY: Pixel-to-Stage XY(Z) Coordinate Converter for Offline Targeting in Microanalysis” for consideration as an Original Software Publication in SoftwareX.
+
+PiXY is open-source software that links image-based target selection with physical positioning on analytical-instrument stages (e.g., LA‑ICP‑MS, SIMS, EPMA, SEM‑EDS). It provides an integrated, GUI-based workflow from particle recognition (centroid extraction) on pre-acquired microscope/SEM images, through fiducial-based least-squares affine transformation (2D→3D), to instrument-ready export of stage coordinates. By enabling offline targeting before instrument time, PiXY reduces manual relocation workload, shortens non-measurement stage operations, and improves instrument utilization. Validation with real specimens (N = 100) shows that, with five fiducials, 50% of residuals are ≤ 3–4 μm (X/Y/Z) and 90% are ≤ 10/16/21 μm, demonstrating accuracy sufficient for practical oper
+
+
+Conflicts of interest:
+The author declares no competing interests.
+
+Funding:
+This work was supported by JSPS KAKENHI (Grant Number: 25H00682).
+
+Data and software availability:
+Source code and releases are available at https://github.com/YoshiakiKON/PiXY and archived at Zenodo (DOI above). Usage instructions and example data are included in the repository.
+
+Declaration:
+The author confirms that this manuscript is original, not under consideration elsewhere, and that all co-authors (if any) have approved the submission.
+
+Corresponding author:
+Yoshiaki KON
+Email: yoshiaki-kon@aist.go.jp
+Affiliation: Geological Survey of Japan (GSJ), National Institute of Advanced Industrial Science and Technology (AIST)
+
+Thank you for your consideration.
+
+Sincerely,
+
+Yoshiaki KON

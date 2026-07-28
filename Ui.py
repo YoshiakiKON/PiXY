@@ -1478,7 +1478,7 @@ class CentroidFinderWindow(QMainWindow):
         self.edit_min_area, self.slider_min_area = self._make_spin_slider('min_area', 50, 10, 5000, 1)
         self.edit_trim, self.slider_trim = self._make_spin_slider('trim', 0, 0, 10, 1)
         self.edit_neck_sep, self.slider_neck_sep = self._make_spin_slider('neck_separation', 0, 0, 10, 1)
-        self.edit_shape_complex, self.slider_shape_complex = self._make_spin_slider('shape_complexity', 0, 0, 10, 1)
+        self.edit_shape_complex, self.slider_shape_complex = self._make_spin_slider('shape_complexity', 3, 0, 10, 1)
 
         # PosterLevelの内部値（スライダー上限20を超えても保持）
         self.levels_value = self.slider_levels.value()
@@ -3547,9 +3547,9 @@ class CentroidFinderWindow(QMainWindow):
         except Exception:
             neck = 0
         try:
-            shape = int(getattr(self, 'slider_shape_complex', None).value() if hasattr(self, 'slider_shape_complex') else 0)
+            shape = int(getattr(self, 'slider_shape_complex', None).value() if hasattr(self, 'slider_shape_complex') else 3)
         except Exception:
-            shape = 0
+            shape = 3
 
         try:
             if getattr(self, 'area_hist', None) is not None:
@@ -4268,6 +4268,10 @@ class CentroidFinderWindow(QMainWindow):
         # スライダー操作は上限20まで。内部値も更新
         self.levels_value = int(v)
         self.edit_levels.setText(str(self.levels_value))
+        try:
+            self._reset_group_visibility_on_group_count_change()
+        except Exception:
+            pass
         self.schedule_update()
 
     # PosterLevel編集確定ハンドラ
@@ -4295,6 +4299,10 @@ class CentroidFinderWindow(QMainWindow):
             except Exception:
                 pass
         self.edit_levels.setText(str(self.levels_value))
+        try:
+            self._reset_group_visibility_on_group_count_change()
+        except Exception:
+            pass
         self.schedule_update(force=True)
 
     # PosterLevelの+/-ボタンで値を調整
@@ -4328,7 +4336,24 @@ class CentroidFinderWindow(QMainWindow):
                 self.slider_levels.setValue(v)
         except Exception:
             pass
+        try:
+            self._reset_group_visibility_on_group_count_change()
+        except Exception:
+            pass
         self.schedule_update()
+
+    def _reset_group_visibility_on_group_count_change(self):
+        """Reset per-group visibility filters when clustering group count changes."""
+        try:
+            self._set_all_groups_visible(True)
+        except Exception:
+            pass
+        try:
+            tog_all = getattr(self, 'toggle_show_all_groups', None)
+            if tog_all is not None:
+                tog_all.setCheckedIndex(0)
+        except Exception:
+            pass
 
     # Number of Groups の+/-ボタンで値を調整
     def _nudge_num_groups(self, delta):
@@ -4385,6 +4410,10 @@ class CentroidFinderWindow(QMainWindow):
                 self.slider_levels.blockSignals(False)
             except Exception:
                 pass
+        try:
+            self._reset_group_visibility_on_group_count_change()
+        except Exception:
+            pass
         # Single recompute trigger for num-groups adjustment.
         self.schedule_update(force=True)
 
@@ -4602,6 +4631,11 @@ class CentroidFinderWindow(QMainWindow):
             except Exception:
                 pass
 
+        try:
+            if key in ('num_groups', 'poster_level'):
+                self._reset_group_visibility_on_group_count_change()
+        except Exception:
+            pass
         self.schedule_update()
 
     # 編集ボックスからスライダーへ同期 (Enter確定)
@@ -4639,6 +4673,15 @@ class CentroidFinderWindow(QMainWindow):
             except Exception:
                 pass
 
+        try:
+            skey = getattr(slider, '_pixy_key', None)
+        except Exception:
+            skey = None
+        try:
+            if skey in ('num_groups', 'poster_level'):
+                self._reset_group_visibility_on_group_count_change()
+        except Exception:
+            pass
         self.schedule_update()
 
     def _nudge_min_area(self, delta):
@@ -4914,8 +4957,9 @@ class CentroidFinderWindow(QMainWindow):
         self._cache = {"img_id": id(self.proc_img), "levels": None, "min_area": None, "trim_px": None, "poster": None, "centroids": None}
         # 次回更新時に画像中心へスクロール
         self._initial_center_done = False
-        # New Project 時は最初から計算を実行（groups=2 で開始）
-        do_initial_detect = bool(auto_detect) or bool(reset_project_state)
+        # Replace Image in centroid extraction mode should refresh the K-means result
+        # so the displayed centroid list and rim pairing follow the new base image.
+        do_initial_detect = bool(auto_detect) or bool(reset_project_state) or bool(getattr(self, 'centroid_extraction_mode', False))
         self.schedule_update(force=True, recompute_centroids=bool(do_initial_detect))
         return True
 
@@ -5179,7 +5223,7 @@ class CentroidFinderWindow(QMainWindow):
             trim_px=self.slider_trim.value(),
             rim_offset_px=int(getattr(self, 'rim_offset_px', 3) or 3),
             neck_separation=int(getattr(self, 'slider_neck_sep', None).value() if hasattr(self, 'slider_neck_sep') else 0),
-            shape_complexity=int(getattr(self, 'slider_shape_complex', None).value() if hasattr(self, 'slider_shape_complex') else 0),
+            shape_complexity=int(getattr(self, 'slider_shape_complex', None).value() if hasattr(self, 'slider_shape_complex') else 3),
         )
         return params
 
@@ -5965,6 +6009,8 @@ class CentroidFinderWindow(QMainWindow):
                 force_visible_indices=ov['force_visible_indices'],
                 visible_groups=ov['visible_groups'],
                 label_texts=ov.get('label_texts'),
+                local_to_source=ov.get('local_to_source'),
+                local_to_pos=ov.get('local_to_pos'),
                 colors=None,
                 debug_ref_coords=True,
                 interp_mode=self.interp_mode,
@@ -5974,6 +6020,8 @@ class CentroidFinderWindow(QMainWindow):
             pm = None
             off_x = off_y = 0
             new_w = new_h = 0
+
+        center_full = self._capture_proc_view_center_full()
 
         if pm is None:
             self.img_label_proc.clear()
@@ -6322,6 +6370,8 @@ class CentroidFinderWindow(QMainWindow):
             force_visible_indices=ov['force_visible_indices'],
             visible_groups=ov['visible_groups'],
             label_texts=ov.get('label_texts'),
+            local_to_source=ov.get('local_to_source'),
+            local_to_pos=ov.get('local_to_pos'),
             colors=None,
             interp_mode=self.interp_mode,
             max_pixels=self._get_render_max_pixels(),
@@ -6917,6 +6967,7 @@ class CentroidFinderWindow(QMainWindow):
                 self.img_label_proc.resize(pm_selected.width(), pm_selected.height())
             except Exception:
                 pass
+            self._restore_proc_view_center_full(center_full)
         except Exception:
             self.img_label_proc.clear()
             try:
@@ -7544,6 +7595,34 @@ class CentroidFinderWindow(QMainWindow):
         vsb = self.proc_scroll.verticalScrollBar()
         hsb.setValue(max(hsb.minimum(), min(hsb.maximum(), int(round(sx)))))
         vsb.setValue(max(vsb.minimum(), min(vsb.maximum(), int(round(sy)))))
+
+    def _capture_proc_view_center_full(self):
+        try:
+            if getattr(self, 'proc_scroll', None) is None:
+                return None
+            vp = self.proc_scroll.viewport()
+            if vp is None:
+                return None
+            hsb = self.proc_scroll.horizontalScrollBar()
+            vsb = self.proc_scroll.verticalScrollBar()
+            center_pos = QPoint(
+                int(round(float(hsb.value()) + float(vp.width()) / 2.0)),
+                int(round(float(vsb.value()) + float(vp.height()) / 2.0)),
+            )
+            center_full = self._display_to_full(center_pos)
+            if center_full is None:
+                return None
+            return (float(center_full[0]), float(center_full[1]))
+        except Exception:
+            return None
+
+    def _restore_proc_view_center_full(self, center_full):
+        try:
+            if center_full is None:
+                return
+            self._ensure_full_pos_visible(float(center_full[0]), float(center_full[1]))
+        except Exception:
+            pass
 
     def _start_kinetic(self, vx, vy):
         # 慣性スクロール開始（vx,vy は px/秒、スクロール方向の速度）
@@ -11079,7 +11158,7 @@ class CentroidFinderWindow(QMainWindow):
         try:
             data["shape_complexity"] = int(self.slider_shape_complex.value())
         except Exception:
-            data["shape_complexity"] = 0
+            data["shape_complexity"] = 3
         try:
             data["neck_separation"] = int(self.slider_neck_sep.value())
         except Exception:
@@ -11258,7 +11337,7 @@ class CentroidFinderWindow(QMainWindow):
         for attr, key, default in [
             ('slider_min_area', 'min_area', 50),
             ('slider_trim', 'trim_px', 0),
-            ('slider_shape_complex', 'shape_complexity', 0),
+            ('slider_shape_complex', 'shape_complexity', 3),
             ('slider_neck_sep', 'neck_separation', 0),
         ]:
             try:

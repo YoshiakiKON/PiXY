@@ -1,4 +1,4 @@
-# クイックマニュアル — PiXY（日本語）
+# クイックマニュアル — PiXY（日本語, v1.4.1）
 
 短く、主要な操作をスクリーンショット付きで説明します。
 
@@ -26,6 +26,8 @@ python Main.py
 2) 重心抽出を開始する
 - `START Centroid Extraction` を押します。
 - 左パラメータを調整して重心を確認します。
+- 現行仕様では `Shape Complexity` の既定値は `3` です。
+- `Number of Groups` を変更すると、グループの `Show`/`Hide` 個別設定は解除され、全グループ表示に戻ります。
 
 ![Detect Centroids](images/quick_jp_2.png)
 
@@ -41,7 +43,7 @@ python Main.py
 ![Add Ref](images/quick_jp_3.png)
 
 5) 変換とエクスポート
-- フィデューシャルテーブルで画像座標 `u`/`v` と装置座標 `Stage X`/`Stage Y` を確認・編集してフィットを調整し、エクスポートでCSV出力できます。
+- フィデューシャルテーブルで画像座標 `u`/`v` と装置座標 `Stage X`/`Stage Y`/`Stage Z` を確認・編集してフィットを調整し、エクスポートでCSV出力できます。
 
 ![Export](images/quick_jp_4.png)
 

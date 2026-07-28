@@ -12,6 +12,8 @@ def build_zoomed_canvas(overlay_full_img, proc_zoom, view_padding,
                         force_visible_indices=None,
                         visible_groups=None,
                         label_texts=None,
+                        local_to_source=None,
+                        local_to_pos=None,
                         colors=None, interp_mode='auto', debug_ref_coords=False,
                         max_pixels=None):
     """
@@ -128,6 +130,7 @@ def build_zoomed_canvas(overlay_full_img, proc_zoom, view_padding,
     force_visible_set = set(force_visible_indices or [])
     visible_group_set = None if visible_groups is None else {int(g) for g in (visible_groups or set())}
     if centroids:
+        marker_positions = []
         for idx, (grp, xp, yp) in enumerate(centroids):
             is_forced_visible = idx in force_visible_set
             if not is_forced_visible:
@@ -138,6 +141,50 @@ def build_zoomed_canvas(overlay_full_img, proc_zoom, view_padding,
             xf = xp * scale_proc_to_full
             yf = yp * scale_proc_to_full
             # use display_scale for mapping full-image coords to physical pixels
+            xd = int(round(xf * display_scale)) + off_x
+            yd = int(round(yf * display_scale)) + off_y
+            marker_positions.append((idx, xd, yd))
+        pair_positions = {}
+        try:
+            src_list = list(local_to_source or [])
+        except Exception:
+            src_list = []
+        try:
+            pos_list = list(local_to_pos or [])
+        except Exception:
+            pos_list = []
+        for idx, xd, yd in marker_positions:
+            try:
+                src = int(src_list[idx]) if idx < len(src_list) else None
+            except Exception:
+                src = None
+            try:
+                ptag = str(pos_list[idx] if idx < len(pos_list) else 'c').lower().strip()
+            except Exception:
+                ptag = 'c'
+            if src is None or src < 0 or ptag not in ('c', 'r'):
+                continue
+            pair_positions.setdefault(src, {})[ptag] = (xd, yd)
+        if pair_positions:
+            painter.setPen(QPen(QColor(255, 255, 255, 220), 2))
+            for pair in pair_positions.values():
+                core_pt = pair.get('c')
+                rim_pt = pair.get('r')
+                if core_pt is None or rim_pt is None:
+                    continue
+                try:
+                    painter.drawLine(core_pt[0], core_pt[1], rim_pt[0], rim_pt[1])
+                except Exception:
+                    pass
+        for idx, grp, xp, yp in ((i, c[0], c[1], c[2]) for i, c in enumerate(centroids)):
+            is_forced_visible = idx in force_visible_set
+            if not is_forced_visible:
+                if idx in excluded_set:
+                    continue
+                if visible_group_set is not None and int(grp) not in visible_group_set:
+                    continue
+            xf = xp * scale_proc_to_full
+            yf = yp * scale_proc_to_full
             xd = int(round(xf * display_scale)) + off_x
             yd = int(round(yf * display_scale)) + off_y
             if selected_index is not None and idx == selected_index:

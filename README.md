@@ -53,8 +53,26 @@ Developer notes
 - The `SegmentControl` helper lives inside `Ui.py` and implements compact segmented buttons used throughout the UI.
 
 Versioning & citation
-- Current release: 1.3.3
+- Current release: 1.4.2
 - Please cite the software when used in published research (see `CITATION.cff`).
+
+Official v1.4.2 document set
+- Main manuals:
+	- `InstructionManual_EN_v1.4.2.md`
+	- `InstructionManual_JP_v1.4.2.md`
+- Quick manuals:
+	- `documentation/QuickManual_EN_v1.4.2.md`
+	- `documentation/QuickManual_JP_v1.4.2.md`
+- HTML manuals:
+	- `documentation/InstructionManual_EN_v1.4.2.html`
+	- `documentation/InstructionManual_JP_v1.4.2.html`
+- Release notes:
+	- `RELEASE_NOTES_v1.4.2.md`
+
+How to verify you are running the official 1.4.2 build
+- In the app footer, confirm `Ver. 1.4.2` is displayed.
+- Verify `pyproject.toml` has `version = "1.4.2"`.
+- Verify `CITATION.cff` has `version: "1.4.2"`.
 
 License
 - MIT — see `LICENSE`.
@@ -70,4 +88,3 @@ Contact
 If you want, I can also:
 - Update `README.md` with screenshots or a short animated GIF.
 - Add a concise `README-short.md` for PyPI.
-- Create a `CHANGELOG.md` entry for the `1.3.3` release.

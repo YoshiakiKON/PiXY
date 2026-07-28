@@ -1,4 +1,4 @@
-# Quick Manual — PiXY (English)
+# Quick Manual — PiXY (English, v1.4.1)
 
 Short, step-by-step guide with screenshots for common tasks.
 
@@ -24,6 +24,8 @@ python Main.py
 2) Start centroid extraction
 - Click `START Centroid Extraction`.
 - Tune extraction parameters on the left and verify detected centroids.
+- `Shape Complexity` default is `3` in the current spec.
+- If `Number of Groups` changes, previous per-group `Show/Hide` settings are reset and all groups become visible.
 
 ![Detect Centroids](images/quick_en_2.png)
 
@@ -39,7 +41,7 @@ python Main.py
 ![Add Ref](images/quick_en_3.png)
 
 5) Transform & export
-- Edit image coordinates (`u`/`v`) and stage coordinates (`Stage X`/`Stage Y`) in the reference table to refine the fit, then export to CSV.
+- Edit image coordinates (`u`/`v`) and stage coordinates (`Stage X`/`Stage Y`/`Stage Z`) in the reference table to refine the fit, then export to CSV.
 
 ![Export](images/quick_en_4.png)
 

@@ -9,7 +9,7 @@
 - リポジトリ: https://github.com/YoshiakiKON/PiXY
 - Zenodo DOI: 10.5281/zenodo.18174474
 - ライセンス: MIT
-- 最終更新: 2026-05-28
+- 最終更新: 2026-06-10（v1.4.1仕様）
 
 ---
 
@@ -45,7 +45,7 @@ python Main.py
 
 ## クイックスタート（最短手順）
 
-1. `PiXY_ver140.exe` を実行
+1. `PiXY_ver141.exe` を実行
 2. `New Project` をクリックし、解析対象の画像ファイルを選択して読み込む。
 3. `START Centroid Extraction` を押す。
 4. 抽出モードで左側パラメータ（`Number of Groups`, `Boundary Offset`, `Neck Separation`, `Shape Complexity`, `Grain Size Threshold` ヒストグラム）を調整し，粒子の重心が検出されているか確認．
@@ -82,6 +82,7 @@ python Main.py
       - `Add GroupN`: グループNの検出点を中カラムへ追加
       - `Show` / `Hide`: グループごとの表示切替
       - `Add ALL Group to List`: 全グループを中カラムへ追加
+      - `Number of Groups` またはポスタライズレベル変更時は、グループ表示の個別設定（`Show`/`Hide`）を解除し、全グループ表示へリセット
 
   - 中央（候補点テーブル）
     - `Export XYZ`: 推定した変換で候補点をステージ座標（X,Y,Z）へ変換し、CSVとして保存する。
@@ -156,9 +157,18 @@ python Main.py
     - `Maximum Area` — 最大領域面積（px）。大きすぎる領域を除外
     - `Boundary Offset` — 画像周縁の不完全領域の影響を避けるためのオフセット（端部の除外など）
     - `Neck Separation` — 接触粒子を分割する強さ（大きいほど分割が強い）
-    - `Shape Complexity` — 形状が複雑な領域を抑制/分割するための調整パラメータ
+    - `Shape Complexity` — 形状が複雑な領域を抑制/分割するための調整パラメータ（既定値: `3`）
   - 調整のコツ
     - まず `K` と `Grain Size Threshold` を合わせ、次に接触粒子が多い場合のみ `Neck Separation` 等で調整する．Advancedのパラメータを調整する際には，計算が重くなるので手動計算推奨．
+
+- 重心抽出フィルター適用順（現行仕様）
+  1. 二値マスクに trim（`Boundary Offset`）を適用
+  2. 連結成分ラベリング
+  3. 最小面積未満を早期除外
+  4. 残りに neck separation 分割を適用
+  5. 分割後コンポーネントに対し最小/最大面積を再適用
+  6. Shape Complexity フィルターを適用
+  7. 採用コンポーネントについて重心計算と境界オーバーレイを生成
 - 残差可視化
   - GUI の残差テーブルとヒストグラムで分布を確認
   - RMS または中央値＋MAD ベースの閾で外れ値を判定
@@ -188,12 +198,13 @@ python Main.py
 ## ライセンスと引用方法
 
 - ライセンス: MIT
-- 引用例: Y. KON, PiXY v1.4.0. Zenodo:10.5281/zenodo.18174474
+- 引用例: Y. KON, PiXY v1.4.1. Zenodo:10.5281/zenodo.18174474
 
 ---
 
 ## 変更履歴（抜粋）
 
+- v1.4.1 (2026-06-08): 中カラム幅/スクロール安定化、抽出追加点のXYZ同期、大きな数値表示の可読性改善、グループ数変更時の全表示リセットを追加。
 - v1.4.0 (2026-05-28): Start/Finish Centroid Extraction ワークフロー導入、モード依存表示制御、左パネルのグループ操作更新。
 
 - v1.3.2 (2026-02-18): Windows EXE 配布、UI フリップ処理改善、README 追加

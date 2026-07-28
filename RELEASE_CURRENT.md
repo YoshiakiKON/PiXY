@@ -1,0 +1,28 @@
+# PiXY Official Current Release Marker
+
+Current official release
+- Version: 1.4.2
+- Release date: 2026-07-28
+- Release notes: `RELEASE_NOTES_v1.4.2.md`
+
+Canonical files for v1.4.2
+- Metadata:
+  - `pyproject.toml`
+  - `CITATION.cff`
+- Manuals:
+  - `InstructionManual_EN_v1.4.2.md`
+  - `InstructionManual_JP_v1.4.2.md`
+  - `documentation/InstructionManual_EN_v1.4.2.html`
+  - `documentation/InstructionManual_JP_v1.4.2.html`
+- Quick manuals:
+  - `documentation/QuickManual_EN_v1.4.2.md`
+  - `documentation/QuickManual_JP_v1.4.2.md`
+
+Runtime verification checklist
+1. Launch PiXY and check the footer text shows `Ver. 1.4.2`.
+2. Confirm `pyproject.toml` contains `version = "1.4.2"`.
+3. Confirm `CITATION.cff` contains `version: "1.4.2"`.
+
+Notes
+- Treat this file as the single source of truth when multiple versioned documents coexist.
+- When next release is prepared, update this file first, then docs/metadata.

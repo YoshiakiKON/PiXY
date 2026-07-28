@@ -231,9 +231,9 @@ class CentroidProcessor:
         # Shape complexity filter strength (0-10).
         # 0 means "no filtering", 10 means "strongest filtering".
         try:
-            shape_complexity = int(params.get("shape_complexity", 0) if params is not None else 0)
+            shape_complexity = int(params.get("shape_complexity", 3) if params is not None else 3)
         except Exception:
-            shape_complexity = 0
+            shape_complexity = 3
 
         def _passes_shape_complexity(binary_mask_255: np.ndarray) -> bool:
             """Return True if the component shape is acceptable.
@@ -270,7 +270,8 @@ class CentroidProcessor:
         # because `poster` and masks are at proc resolution.
         trim_px_full = int(params.get("trim_px", 0) or 0)
         try:
-            trim_px_proc = int(round(float(trim_px_full) / max(1.0, float(self.scale_proc_to_full))))
+            # Use ceil so trim=1 in full-pixel units has a visible effect after downscaling.
+            trim_px_proc = int(np.ceil(float(trim_px_full) / max(1.0, float(self.scale_proc_to_full))))
         except Exception:
             trim_px_proc = int(trim_px_full)
         rim_offset_full = int(params.get("rim_offset_px", 3) or 0)

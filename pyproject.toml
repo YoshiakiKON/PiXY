@@ -1,6 +1,6 @@
 ﻿[project]
 name = "pixy"
-version = "1.4.1"
+version = "1.4.2"
 description = "PiXY: Centroid Finder GUI for image-based centroid extraction"
 authors = [{name = "Yoshiaki KON"}]
 licenses = [{file = "LICENSE"}]

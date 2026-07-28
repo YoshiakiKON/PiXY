@@ -21,7 +21,7 @@ bibliography: paper.bib
 repository: https://github.com/YoshiakiKON/PiXY
 archive_doi: 10.5281/zenodo.18174474
 license: MIT
-version: 1.3.3
+version: 1.4.2
 ---
 
 # Summary

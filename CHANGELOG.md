@@ -2,6 +2,19 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.4.2] - 2026-07-28
+### Centroid extraction workflow
+- Fixed Replace Image behavior in Centroid Extraction mode so K-means/centroid results are recomputed against the new image immediately.
+- Kept center-table values stable while refreshing the left-side detection results after image replacement.
+
+### Core/Rim visualization
+- Added white connector lines between paired Core and Rim points belonging to the same particle in centroid extraction overlays.
+- Passed overlay source/position mapping to the renderer to keep pairing consistent across left/center overlay sources.
+
+### Documentation and release metadata
+- Bumped project and citation metadata to version 1.4.2.
+- Added 1.4.2 release notes and versioned manual files (EN/JP, quick/manual variants).
+
 ## [1.4.1] - 2026-06-08
 ### Center table behavior and display
 - Fixed middle-table width ownership so final width is consistently decided by `_adjust_center_column_widths()`.

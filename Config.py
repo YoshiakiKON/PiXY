@@ -4,6 +4,8 @@
 処理パラメータやファイルパスの管理を行う。
 """
 
+import os
+
 # 設定や定数を記述
 PROC_TARGET_WIDTH = 640  # 処理用画像の目標幅 (ピクセル)
 
@@ -41,6 +43,13 @@ def load_last_image_path():
 
 # デバッグモード: True にするとターミナルへ動作ログを出力する
 DEBUG = False
+
+# ログモード: True のときのみ高頻度の INFO/DEBUG ログを有効化する。
+# DEBUG とは独立して使えるが、DEBUG=True の場合は自動的に有効。
+# 一時的に有効化するには環境変数 PIXY_LOG_MODE=1 でも指定可能。
+LOG_MODE = bool(DEBUG) or str(os.environ.get("PIXY_LOG_MODE", "")).strip().lower() in {
+    "1", "true", "yes", "on"
+}
 
 # Default upper limit for grain area (pixels) used for initial histogram selection
 DEFAULT_MAX_GRAIN_AREA = 2000

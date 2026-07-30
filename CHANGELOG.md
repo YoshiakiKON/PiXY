@@ -2,6 +2,21 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.4.3] - 2026-07-30
+### Center table consistency and interaction fixes
+- Unified center-table export/clipboard data path to the center numeric model so visible center rows and exported rows stay aligned.
+- Fixed stale middle-table rendering after Clear and Undo by forcing center-view refresh on destructive center actions.
+- Added guard logic so intentional center-model edits (Clear/Undo/Rename/Update u,v) are not reverted by extraction-mode left-side snapshot restoration.
+
+### Group naming workflow in centroid extraction mode
+- Added manual group-name input fields directly under each AddToList button in the extraction/offline group panels.
+- Connected manual group-name overrides to center auto-name generation while preserving explicit per-row custom names.
+- Persisted group-name overrides in project save/load.
+
+### Group-name inheritance across K-Means regrouping
+- Added automatic transfer of manual group names after successful recomputation by nearest group color.
+- When multiple old names map to one new group, now resolves collisions by prioritizing the source group with larger point count.
+
 ## [1.4.2] - 2026-07-28
 ### Centroid extraction workflow
 - Fixed Replace Image behavior in Centroid Extraction mode so K-means/centroid results are recomputed against the new image immediately.

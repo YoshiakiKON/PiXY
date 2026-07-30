@@ -1,11 +1,34 @@
 # -*- mode: python ; coding: utf-8 -*-
 
+import os
+
+_datas = [
+    ('DemoBSE.png', '.'),
+    ('pyproject.toml', '.'),
+    ('last_image_path.txt', '.'),
+    ('PiXY_splash.png', '.'),
+    ('PiXY_icon.ico', '.'),
+    ('PiXY_Pix.png', '.'),
+    ('PiXY_XY.png', '.'),
+    ('PiXY.png', '.'),
+]
+
+for _opt in (
+    'startup_image_guard.json',
+    'DemoBMP.bmp',
+    'DemoBMP.png',
+    'splash.ppm',
+    'app_icon.ppm',
+):
+    if os.path.exists(_opt):
+        _datas.append((_opt, '.'))
+
 
 a = Analysis(
     ['Main.py'],
     pathex=[],
     binaries=[],
-    datas=[('DemoBSE.png', '.'), ('pyproject.toml', '.'), ('last_image_path.txt', '.'), ('PiXY_splash.png', '.'), ('PiXY_icon.ico', '.'), ('PiXY_Pix.png', '.'), ('PiXY_XY.png', '.'), ('PiXY.png', '.')],
+    datas=_datas,
     hiddenimports=[],
     hookspath=[],
     hooksconfig={},

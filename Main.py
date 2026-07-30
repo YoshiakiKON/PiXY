@@ -17,7 +17,7 @@ import os
 import base64
 import json
 import time
-from qt_compat.QtWidgets import QApplication, QSplashScreen
+from qt_compat.QtWidgets import QApplication, QSplashScreen, QMessageBox
 from qt_compat.QtGui import QPixmap, QIcon
 from qt_compat.QtCore import Qt, QTimer
 # qInstallMessageHandler is useful to capture Qt warnings (diagnostic only)
@@ -307,16 +307,15 @@ if __name__ == "__main__":
         except Exception:
             pass
 
-        # Startup safety guard for auto-loading last image
-        STARTUP_MAX_LAST_IMAGE_MB = 120
-        STARTUP_MAX_LAST_IMAGE_LOAD_SEC = 3.0
-        STARTUP_BLOCK_HOURS = 24
+        # Startup warning thresholds (warning only, no blocking)
+        STARTUP_WARN_IMAGE_MB = 120
+        STARTUP_WARN_LOAD_SEC = 3.0
 
         if getattr(sys, 'frozen', False) and hasattr(sys, '_MEIPASS'):
             guard_dir = os.path.dirname(sys.executable)
         else:
             guard_dir = os.path.dirname(__file__)
-        startup_guard_file = os.path.join(guard_dir, "startup_image_guard.json")
+        startup_perf_file = os.path.join(guard_dir, "startup_image_guard.json")
 
         def _norm_path(p):
             try:
@@ -324,45 +323,54 @@ if __name__ == "__main__":
             except Exception:
                 return str(p)
 
-        def _load_startup_guard():
+        def _load_startup_perf():
             try:
-                if not os.path.isfile(startup_guard_file):
+                if not os.path.isfile(startup_perf_file):
                     return {}
-                with open(startup_guard_file, 'r', encoding='utf-8') as f:
+                with open(startup_perf_file, 'r', encoding='utf-8') as f:
                     data = json.load(f)
                 return data if isinstance(data, dict) else {}
             except Exception:
                 return {}
 
-        def _save_startup_guard(data):
+        def _save_startup_perf(data):
             try:
-                with open(startup_guard_file, 'w', encoding='utf-8') as f:
+                with open(startup_perf_file, 'w', encoding='utf-8') as f:
                     json.dump(data, f, ensure_ascii=False, indent=2)
+            except Exception:
+                pass
+
+        def _warn_startup_load(path, messages):
+            try:
+                if not messages:
+                    return
+                try:
+                    base = os.path.basename(str(path or ''))
+                except Exception:
+                    base = str(path or '')
+                warn_txt = "\n".join([str(m) for m in messages if m])
+                title = "Startup Image Warning"
+                body = (
+                    f"Startup image may take time to load:\n{base}\n\n"
+                    f"{warn_txt}\n\n"
+                    "Loading will continue automatically."
+                )
+                try:
+                    QMessageBox.warning(win, title, body)
+                except Exception:
+                    pass
+                try:
+                    win.ui_footer.showMessage(f"Warning: loading startup image {base} may take time.")
+                except Exception:
+                    pass
             except Exception:
                 pass
 
         def _load_startup_default_or_prompt():
             loaded = False
-            guard = _load_startup_guard()
-            now_ts = float(time.time())
-            changed_guard = False
+            perf = _load_startup_perf()
+            changed_perf = False
             last_norm = _norm_path(startup_last_path) if startup_last_path else ""
-
-            # cleanup expired guard entries
-            try:
-                stale = []
-                for gp, meta in guard.items():
-                    try:
-                        until_ts = float((meta or {}).get('blocked_until', 0))
-                    except Exception:
-                        until_ts = 0.0
-                    if until_ts <= now_ts:
-                        stale.append(gp)
-                for gp in stale:
-                    guard.pop(gp, None)
-                    changed_guard = True
-            except Exception:
-                pass
 
             for p in default_candidates:
                 try:
@@ -370,27 +378,35 @@ if __name__ == "__main__":
                         p_norm = _norm_path(p)
                         is_last_candidate = bool(last_norm and p_norm == last_norm)
 
-                        # Safety conditions for auto-loading the last opened image
-                        if is_last_candidate:
-                            meta = guard.get(p_norm, {}) if isinstance(guard, dict) else {}
-                            try:
-                                blocked_until = float((meta or {}).get('blocked_until', 0))
-                            except Exception:
-                                blocked_until = 0.0
-                            if blocked_until > now_ts:
-                                continue
+                        warn_msgs = []
+                        try:
+                            sz = int(os.path.getsize(p))
+                        except Exception:
+                            sz = 0
 
+                        if sz > int(STARTUP_WARN_IMAGE_MB * 1024 * 1024):
                             try:
-                                sz = int(os.path.getsize(p))
+                                mb = float(sz) / (1024.0 * 1024.0)
                             except Exception:
-                                sz = 0
-                            if sz > int(STARTUP_MAX_LAST_IMAGE_MB * 1024 * 1024):
-                                guard[p_norm] = {
-                                    'blocked_until': now_ts + float(STARTUP_BLOCK_HOURS * 3600),
-                                    'reason': f'too_large>{STARTUP_MAX_LAST_IMAGE_MB}MB',
-                                }
-                                changed_guard = True
-                                continue
+                                mb = 0.0
+                            warn_msgs.append(f"Large image size ({mb:.1f} MB) may slow startup.")
+
+                        if is_last_candidate:
+                            try:
+                                meta = perf.get(p_norm, {}) if isinstance(perf, dict) else {}
+                            except Exception:
+                                meta = {}
+                            try:
+                                prev_sec = float((meta or {}).get('last_load_sec', 0.0) or 0.0)
+                            except Exception:
+                                prev_sec = 0.0
+                            if prev_sec > float(STARTUP_WARN_LOAD_SEC):
+                                warn_msgs.append(
+                                    f"Previous startup load time was {prev_sec:.2f}s (> {STARTUP_WARN_LOAD_SEC:.1f}s)."
+                                )
+
+                        if warn_msgs:
+                            _warn_startup_load(p, warn_msgs)
 
                         t0 = time.perf_counter()
                         ok = win._open_image_from_path(
@@ -400,20 +416,30 @@ if __name__ == "__main__":
                         )
                         dt = float(time.perf_counter() - t0)
 
-                        if is_last_candidate and (not bool(ok) or dt > float(STARTUP_MAX_LAST_IMAGE_LOAD_SEC)):
-                            guard[p_norm] = {
-                                'blocked_until': now_ts + float(STARTUP_BLOCK_HOURS * 3600),
-                                'reason': 'load_failed' if not bool(ok) else f'slow_startup>{STARTUP_MAX_LAST_IMAGE_LOAD_SEC:.1f}s ({dt:.2f}s)',
-                            }
-                            changed_guard = True
+                        if is_last_candidate:
+                            try:
+                                perf[p_norm] = {
+                                    'last_ok': bool(ok),
+                                    'last_load_sec': float(dt),
+                                    'last_size_bytes': int(sz),
+                                    'updated_at': float(time.time()),
+                                }
+                                changed_perf = True
+                            except Exception:
+                                pass
 
                         if bool(ok):
+                            if dt > float(STARTUP_WARN_LOAD_SEC):
+                                _warn_startup_load(
+                                    p,
+                                    [f"This startup load took {dt:.2f}s (> {STARTUP_WARN_LOAD_SEC:.1f}s)."],
+                                )
                             loaded = True
                             break
                 except Exception:
                     continue
-            if changed_guard:
-                _save_startup_guard(guard)
+            if changed_perf:
+                _save_startup_perf(perf)
             if not loaded:
                 try:
                     win._show_open_image_prompt_message()

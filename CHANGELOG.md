@@ -1,6 +1,9 @@
-# Changelog
+﻿# Changelog
 
 All notable changes to this project will be documented in this file.
+
+## [1.4.4] - 2026-08-04
+- Release stabilization and UI layout balancing updates for center control rows.
 
 ## [1.4.3] - 2026-07-30
 ### Center table consistency and interaction fixes
@@ -163,3 +166,4 @@ All notable changes to this project will be documented in this file.
 - Export now prompts save location; posterization column added
 - Boundary rendering adjusted for visual parity at trim_px==0
 - Misc. table/column width and header alignment tweaks
+

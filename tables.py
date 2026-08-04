@@ -188,8 +188,8 @@ def populate_tables(
                 func(ALIGN_CENTER)
         except Exception:
             pass
-        # 列見出しは太字の数字
-        table_ref.setHorizontalHeaderLabels([str(i + 1) for i in range(total_cols)])
+        # 列見出しは Fiducial 表記で統一
+        table_ref.setHorizontalHeaderLabels([f"Fiducial {i + 1}" for i in range(total_cols)])
         # 左テーブルの水平ヘッダーはデフォルトの外観を維持（スタイルシートは適用しない）
         # Data starts from row 2 to preserve pseudo-header rows 0-1
         DATA_ROW_OFFSET = 2
@@ -483,8 +483,11 @@ def populate_tables(
                 model_xyz = None
 
         # 出力の丸め桁を推定（入力の小数桁から決定）
-        dp_x = max_decimal_places(obs_x_vals_xy) if obs_x_vals_xy else 0
-        dp_y = max_decimal_places(obs_y_vals_xy) if obs_y_vals_xy else 0
+        # X/Y は同じ桁数に揃え、Z は別判定にする。
+        dp_xy = max(
+            max_decimal_places(obs_x_vals_xy) if obs_x_vals_xy else 0,
+            max_decimal_places(obs_y_vals_xy) if obs_y_vals_xy else 0,
+        )
         dp_z = max_decimal_places(obs_z_vals_xyz) if obs_z_vals_xyz else 0
 
         # 変換適用（優先: XYZモデル、なければXYモデル）
@@ -509,13 +512,13 @@ def populate_tables(
                     pred = np.c_[pred_xy, np.full((pred_xy.shape[0],), np.nan, dtype=float)]  # (n,3)
 
                 # 丸め
-                pred_x = round_to_decimals(pred[:, 0], dp_x)
-                pred_y = round_to_decimals(pred[:, 1], dp_y)
+                pred_x = round_to_decimals(pred[:, 0], dp_xy)
+                pred_y = round_to_decimals(pred[:, 1], dp_xy)
                 pred_z = round_to_decimals(pred[:, 2], dp_z) if has_z else None
 
                 for c in range(n):
-                    cx = QTableWidgetItem(str(pred_x[c]).rstrip('0').rstrip('.') if dp_x > 0 else str(int(round(pred_x[c]))))
-                    cy = QTableWidgetItem(str(pred_y[c]).rstrip('0').rstrip('.') if dp_y > 0 else str(int(round(pred_y[c]))))
+                    cx = QTableWidgetItem(str(pred_x[c]).rstrip('0').rstrip('.') if dp_xy > 0 else str(int(round(pred_x[c]))))
+                    cy = QTableWidgetItem(str(pred_y[c]).rstrip('0').rstrip('.') if dp_xy > 0 else str(int(round(pred_y[c]))))
                     cz_text = ""
                     if has_z and pred_z is not None and np.isfinite(pred_z[c]):
                         cz_text = str(pred_z[c]).rstrip('0').rstrip('.') if dp_z > 0 else str(int(round(pred_z[c])))

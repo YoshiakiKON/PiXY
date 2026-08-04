@@ -55,6 +55,7 @@ from ctypes import wintypes
 TABLE_HEADER_ROW0_HEIGHT = 24
 TABLE_HEADER_ROW1_HEIGHT = 20
 TABLE_DEFAULT_ROW_HEIGHT = 24
+LEFT_COLUMN_MIN_WIDTH = 550
 
 
 class SegmentControl(QWidget):
@@ -769,10 +770,10 @@ class TitleBar(QWidget):
         try:
             self.setAutoFillBackground(True)
             pal = self.palette()
-            pal.setColor(QPalette.Window, QColor(160, 15, 15))
+            pal.setColor(QPalette.Window, self._stage_title_color())
             self.setPalette(pal)
         except Exception:
-            self.setStyleSheet('#titleBar { background-color: rgb(160,15,15); }')
+            self.setStyleSheet(f'#titleBar {{ background-color: {self._stage_title_color().name()}; }}')
 
         hl = QHBoxLayout(self)
         hl.setContentsMargins(8, 0, 0, 0)
@@ -815,6 +816,13 @@ class TitleBar(QWidget):
         self.btn_max.clicked.connect(self._on_max_restore)
 
         self._drag_pos = None
+
+    def _stage_title_color(self):
+        try:
+            stage_n = str(getattr(self.window(), 'workflow_stage', 'offline') or 'offline').lower().strip()
+        except Exception:
+            stage_n = 'offline'
+        return QColor(24, 96, 80) if stage_n == 'online' else QColor(160, 15, 15)
 
     def mouseDoubleClickEvent(self, ev):
         # Double-click on the title bar toggles maximize/restore (like native)
@@ -897,12 +905,12 @@ class TitleBar(QWidget):
     def paintEvent(self, event):
         # Ensure title bar background is painted solid (avoid stylesheet inheritance issues)
         painter = QPainter(self)
-        painter.fillRect(self.rect(), QColor(160, 15, 15))
+        painter.fillRect(self.rect(), self._stage_title_color())
 
     def paintEvent(self, event):
         """Force paint background to ensure color is applied."""
         painter = QPainter(self)
-        painter.fillRect(self.rect(), QColor(160, 15, 15))
+        painter.fillRect(self.rect(), self._stage_title_color())
 
 
 class Footer(QWidget):
@@ -1182,6 +1190,8 @@ class CentroidFinderWindow(QMainWindow):
         self._offline_group_sort_desc = False
         self._offline_group_sort_state = {}  # grp -> {'key': 'u'|'v', 'desc': bool}
         self.center_group_name_overrides = {}  # grp -> manual display name (offline AddToList panel)
+        self.swap_left_center_columns = False  # stage-driven layout: keep fiducial controls on left in online stage
+        self.workflow_stage = 'offline'  # 'offline' | 'online'
         self._center_sort_key = 'no'      # no|u|v|x|y|z
         self._center_sort_desc = False
         self._center_sort_secondary_key = 'no'   # backward-compat (unused)
@@ -1217,6 +1227,8 @@ class CentroidFinderWindow(QMainWindow):
         self.overlay_mode = 'Original'  # Overlay display mode: Original / Posterized
         self._centroid_extraction_overlay_mode = 'Posterized'  # CentroidExtraction時の既定/記憶値
         self._centroid_extraction_show_boundaries = True
+        self._normal_overlay_mode_before_centroid = 'Original'
+        self._normal_show_boundaries_before_centroid = False
         try:
             self._load_centroid_extraction_preferences()
         except Exception:
@@ -1234,7 +1246,7 @@ class CentroidFinderWindow(QMainWindow):
             'trim': 'Boundary Offset (pix)'
         }
         self.levels_value = 4          # PosterLevel の内部値
-        self.show_boundaries = True    # 境界線表示フラグ
+        self.show_boundaries = False   # 通常モード既定: 境界線は非表示
         self.view_orientation = 'Image'  # Coordinate (Image/Stage)
 
         # Stage座標表示の符号（Stageモード時のみ表示に反映）
@@ -1419,6 +1431,10 @@ class CentroidFinderWindow(QMainWindow):
 
         # 表示する参照点列数 (起動時は3列)
         self.visible_ref_cols = 3
+        try:
+            self.table_ref.setHorizontalHeaderLabels([f"Fiducial {i + 1}" for i in range(self.table_ref.columnCount())])
+        except Exception:
+            pass
 
         # 左テーブル垂直ヘッダ設定 (行ラベル表示、太字、右揃え)
         self.table_ref.verticalHeader().setVisible(True)
@@ -1489,7 +1505,7 @@ class CentroidFinderWindow(QMainWindow):
         try:
             # Store initial button sizes
             try:
-                self._action_btn_base_w = 100  # Default base width
+                self._action_btn_base_w = 120  # Default base width
                 self._action_btn_base_h = 56   # Default base height (increased for better visibility)
                 # Try to measure from Add button if available
                 add_btn = getattr(self, 'btn_add_ref', None)
@@ -1498,7 +1514,7 @@ class CentroidFinderWindow(QMainWindow):
                         w = int(add_btn.width() or 0)
                         h = int(add_btn.height() or 0)
                         if w > 0:
-                            self._action_btn_base_w = max(100, w)
+                            self._action_btn_base_w = max(120, w)
                         if h > 0:
                             self._action_btn_base_h = max(56, h)
                     except Exception:
@@ -1643,14 +1659,13 @@ class CentroidFinderWindow(QMainWindow):
         self.btn_filter = QPushButton("Filter")
         self.btn_filter.setFixedHeight(40)
         self.btn_filter.clicked.connect(self._show_group_filter_popup)
-        self.btn_add_target = QPushButton("Add Target")
+        self.btn_add_target = QPushButton("Add Target Point")
         self.btn_add_target.setFixedHeight(40)
         self.btn_add_target.clicked.connect(self._on_add_target_point)
-        self.edit_add_target_name_prefix = QLineEdit("Name")
+        self.edit_add_target_name_prefix = QLineEdit()
         self.edit_add_target_name_prefix.setFixedHeight(40)
-        self.edit_add_target_name_prefix.setText("Name")
         self.edit_add_target_name_prefix.setPlaceholderText("Name")
-        self.edit_add_target_name_prefix.setFixedWidth(180)
+        self.edit_add_target_name_prefix.setFixedWidth(260)
         self.edit_add_target_name_seq = QLineEdit("001")
         self.edit_add_target_name_seq.setFixedHeight(40)
         self.edit_add_target_name_seq.setAlignment(Qt.AlignCenter)
@@ -1740,7 +1755,7 @@ class CentroidFinderWindow(QMainWindow):
 
         # 画像右上用の「境界線」トグルボタン（先に生成しておく）
         # 画像右上用の「境界線」トグル（Show/Hide の2択）
-        self.show_boundaries = True
+        self.show_boundaries = False
         try:
             self.boundary_toggle = SegmentControl(["Show", "Hide"], checked_index=0, btn_w=64, btn_h=27)
             # connect change: index 0 => show True, index 1 => show False
@@ -1936,90 +1951,79 @@ class CentroidFinderWindow(QMainWindow):
             self.overlay_mode_controls = None
             pass
 
-        # Boundary / Display Mode は左詰めで配置（Openの右側）
-        try:
-            if getattr(self, 'boundary_controls', None) is not None:
-                img_header.addWidget(self.boundary_controls, 0, Qt.AlignLeft | Qt.AlignVCenter)
-            elif getattr(self, 'boundary_toggle', None) is not None:
-                img_header.addWidget(self.boundary_toggle, 0, Qt.AlignLeft | Qt.AlignVCenter)
-        except Exception:
-            pass
-
-        # Display Mode（Original/Posterized）も左詰め
-        try:
-            if overlay_ctrl is not None:
-                try:
-                    # spacing between boundary and overlay
-                    if getattr(self, 'boundary_controls', None) is not None or getattr(self, 'boundary_toggle', None) is not None:
-                        img_header.addSpacing(12)
-                except Exception:
-                    pass
-                try:
-                    img_header.addWidget(overlay_ctrl, 0, Qt.AlignLeft | Qt.AlignVCenter)
-                except Exception:
-                    img_header.addWidget(overlay_ctrl)
-        except Exception:
-            pass
-
-        # Push any remaining space to the right so the above controls stay left-aligned
+        # 1段目はボタン専用にして潰れを防ぐ
         img_header.addStretch(1)
 
         img_layout.addLayout(img_header, 0)
 
-        # 2段目: Coordinate / Image Rotate / Normal/Flip（Stage時はMagnification/X/Y/Z）
+        # 2段目: Coordinate / Boundary / Display Mode（重心抽出中だけ表示する追加行）
         try:
-            midbar = QWidget()
-            midbar.setFixedHeight(36)
-            mb = QHBoxLayout(midbar)
-            mb.setContentsMargins(6, 0, 6, 0)
-            mb.setSpacing(10)
-
-            # Coordinate toggle on the left of the 2nd row
+            param_row_top = QWidget()
+            self._image_param_top_row = param_row_top
+            prt = QHBoxLayout(param_row_top)
+            prt.setContentsMargins(6, 0, 6, 0)
+            prt.setSpacing(10)
             try:
                 if getattr(self, 'view_orientation_controls', None) is not None:
-                    mb.addWidget(self.view_orientation_controls, 0, Qt.AlignVCenter)
-                    mb.addSpacing(10)
+                    prt.addWidget(self.view_orientation_controls, 0, Qt.AlignVCenter)
             except Exception:
                 pass
-
-            # --- Axis sign controls (Stage only)
-            self._mid_axis_controls = QWidget()
             try:
-                ahl = QHBoxLayout(self._mid_axis_controls)
-                ahl.setContentsMargins(0, 0, 0, 0)
-                ahl.setSpacing(8)
-
-                lbl_xa = QLabel("Right")
-                try:
-                    f = lbl_xa.font(); f.setBold(True); lbl_xa.setFont(f)
-                except Exception:
-                    pass
-                try:
-                    self.axis_toggle_x = SegmentControl(["+X", "-X"], checked_index=0, btn_w=44, btn_h=27)
-                    self.axis_toggle_x.set_on_changed(lambda idx: self._on_stage_axis_changed('x', int(idx)))
-                except Exception:
-                    self.axis_toggle_x = None
-
-                lbl_ya = QLabel("Top")
-                try:
-                    f = lbl_ya.font(); f.setBold(True); lbl_ya.setFont(f)
-                except Exception:
-                    pass
-                try:
-                    self.axis_toggle_y = SegmentControl(["+Y", "-Y"], checked_index=0, btn_w=44, btn_h=27)
-                    self.axis_toggle_y.set_on_changed(lambda idx: self._on_stage_axis_changed('y', int(idx)))
-                except Exception:
-                    self.axis_toggle_y = None
-
-                ahl.addWidget(lbl_xa)
-                if self.axis_toggle_x is not None:
-                    ahl.addWidget(self.axis_toggle_x)
-                ahl.addSpacing(10)
-                ahl.addWidget(lbl_ya)
-                if self.axis_toggle_y is not None:
-                    ahl.addWidget(self.axis_toggle_y)
+                if getattr(self, 'boundary_controls', None) is not None:
+                    prt.addWidget(self.boundary_controls, 0, Qt.AlignVCenter)
+                elif getattr(self, 'boundary_toggle', None) is not None:
+                    prt.addWidget(self.boundary_toggle, 0, Qt.AlignVCenter)
             except Exception:
                 pass
+            try:
+                if overlay_ctrl is not None:
+                    prt.addWidget(overlay_ctrl, 0, Qt.AlignVCenter)
+            except Exception:
+                pass
+            prt.addStretch(1)
+            img_layout.addWidget(param_row_top, 0)
+        except Exception:
+            pass
+
+        # 3段目: Image Rotate / Normal/Flip（重心抽出中だけ追加表示）
+        midbar = QWidget()
+        mb = QHBoxLayout(midbar)
+        mb.setContentsMargins(6, 0, 6, 0)
+        mb.setSpacing(10)
+
+        # --- Axis sign controls (Stage only)
+        self._mid_axis_controls = QWidget()
+        try:
+            ahl = QHBoxLayout(self._mid_axis_controls)
+            ahl.setContentsMargins(0, 0, 0, 0)
+            ahl.setSpacing(8)
+
+            try:
+                self.axis_toggle_x = SegmentControl(["+X", "-X"], checked_index=0, btn_w=44, btn_h=27)
+                self.axis_toggle_x.set_on_changed(lambda idx: self._on_stage_axis_changed('x', int(idx)))
+            except Exception:
+                self.axis_toggle_x = None
+
+            lbl_ya = QLabel("Top")
+            try:
+                f = lbl_ya.font(); f.setBold(True); lbl_ya.setFont(f)
+            except Exception:
+                pass
+            try:
+                self.axis_toggle_y = SegmentControl(["+Y", "-Y"], checked_index=0, btn_w=44, btn_h=27)
+                self.axis_toggle_y.set_on_changed(lambda idx: self._on_stage_axis_changed('y', int(idx)))
+            except Exception:
+                self.axis_toggle_y = None
+
+            ahl.addWidget(lbl_xa)
+            if self.axis_toggle_x is not None:
+                ahl.addWidget(self.axis_toggle_x)
+            ahl.addSpacing(10)
+            ahl.addWidget(lbl_ya)
+            if self.axis_toggle_y is not None:
+                ahl.addWidget(self.axis_toggle_y)
+        except Exception:
+            pass
 
             # Build 3 groups so we can toggle visibility cleanly by Coordinate.
             self._mid_rotate_controls = QWidget()
@@ -2180,7 +2184,7 @@ class CentroidFinderWindow(QMainWindow):
             except Exception:
                 pass
 
-            img_layout.addWidget(midbar, 0)
+            img_layout.insertWidget(1, midbar, 0)
         except Exception:
             pass
         img_layout.addWidget(self.proc_scroll, 1)
@@ -2197,8 +2201,8 @@ class CentroidFinderWindow(QMainWindow):
         # make rows a little taller / more airy so controls don't feel cramped
         try:
             # Reduce vertical gaps so labels feel tighter
-            sliders_layout.setSpacing(0)
-            sliders_layout.setContentsMargins(6, 2, 6, 2)
+            sliders_layout.setSpacing(6)
+            sliders_layout.setContentsMargins(6, 6, 6, 6)
         except Exception:
             pass
 
@@ -2423,6 +2427,7 @@ class CentroidFinderWindow(QMainWindow):
         self.btn_center_rim_offset_plus = QPushButton("+")
         self.lbl_center_rim_offset = QLabel("Rim Offset")
         self.edit_center_rim_offset = QLineEdit()
+        self.slider_center_rim_offset = QSlider(Qt.Horizontal)
         self.btn_center_add_core.setCheckable(True)
         self.btn_center_add_rim.setCheckable(True)
         self.btn_center_add_core.setChecked(bool(getattr(self, 'center_add_core_enabled', True)))
@@ -2442,6 +2447,14 @@ class CentroidFinderWindow(QMainWindow):
             self.btn_center_rim_offset_minus.setStyleSheet("padding:0px; margin:0px;")
             self.btn_center_rim_offset_plus.setStyleSheet("padding:0px; margin:0px;")
             self.lbl_center_rim_offset.setFont(ctrl_font)
+            self.lbl_center_rim_offset.setFixedWidth(180)
+            self.lbl_center_rim_offset.setAlignment(Qt.AlignVCenter | Qt.AlignLeft)
+            self.slider_center_rim_offset.setRange(0, 50)
+            self.slider_center_rim_offset.setSingleStep(1)
+            self.slider_center_rim_offset.setPageStep(5)
+            self.slider_center_rim_offset.setFixedHeight(28)
+            self.slider_center_rim_offset.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
+            self.slider_center_rim_offset.setStyleSheet("margin:0px; padding:0px;")
         except Exception:
             pass
         self.btn_add_ref = QPushButton(STR.BUTTON_ADD_REF)
@@ -2453,8 +2466,13 @@ class CentroidFinderWindow(QMainWindow):
         self.btn_center_rim_offset_minus.clicked.connect(lambda: self._nudge_rim_offset(-1))
         self.btn_center_rim_offset_plus.clicked.connect(lambda: self._nudge_rim_offset(+1))
         self.edit_center_rim_offset.returnPressed.connect(self._on_rim_offset_edit_finished)
+        self.slider_center_rim_offset.valueChanged.connect(self._on_rim_offset_slider_changed)
         try:
             self._update_rim_offset_label()
+        except Exception:
+            pass
+        try:
+            self._update_rim_offset_enabled_state()
         except Exception:
             pass
         self.btn_add_ref.clicked.connect(self._on_add_ref_point)
@@ -2473,6 +2491,7 @@ class CentroidFinderWindow(QMainWindow):
         # Compose main content: left column contains ReferencePoints and sliders,
         # center is image, right is centroid table
         main_row = QHBoxLayout()
+        self.main_row_layout = main_row
         # Left column (vertical): image on top, sliders, then a transposed view
         # of the reference table (we keep the original table_ref as the data
         # backend and present `table_ref_view` to the user transposed).
@@ -2542,9 +2561,14 @@ class CentroidFinderWindow(QMainWindow):
             # ユーザー側の左カラム表示は行方向で選択する（列方向ではなく）
             self.table_ref_view.setSelectionBehavior(QAbstractItemView.SelectRows)
             self.table_ref_view.setSelectionMode(QAbstractItemView.SingleSelection)
+            try:
+                # We render a custom 2-row pseudo header; hide Qt native horizontal header.
+                self.table_ref_view.horizontalHeader().setVisible(False)
+            except Exception:
+                pass
             self.table_ref_view.setVerticalScrollMode(QAbstractItemView.ScrollPerPixel)
             self.table_ref_view.setHorizontalScrollMode(QAbstractItemView.ScrollPerPixel)
-            self.table_ref_view.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Expanding)
+            self.table_ref_view.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Fixed)
             # Keep scrollbar presence stable so widths don't jitter after Add/update
             try:
                 self.table_ref_view.setVerticalScrollBarPolicy(Qt.ScrollBarAlwaysOn)
@@ -2615,6 +2639,11 @@ class CentroidFinderWindow(QMainWindow):
         self.table_between = QTableWidget()
         try:
             self.table_between.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Expanding)
+            try:
+                # We render a custom 2-row pseudo header; hide Qt native horizontal header.
+                self.table_between.horizontalHeader().setVisible(False)
+            except Exception:
+                pass
             # Keep startup schema aligned with middle-table builder:
             # No, Name, u, v, X, Y, Z, Show.
             try:
@@ -2630,6 +2659,18 @@ class CentroidFinderWindow(QMainWindow):
                 sb_mid = self.table_between.verticalScrollBar()
                 if sb_mid is not None:
                     sb_mid.setMinimumWidth(14)
+                    try:
+                        sb_mid.setSingleStep(1)
+                    except Exception:
+                        pass
+            except Exception:
+                pass
+            try:
+                self.table_between.setStyleSheet(
+                    "QScrollBar:vertical { width: 14px; background: #efefef; }"
+                    "QScrollBar::handle:vertical { background: #9c9c9c; min-height: 24px; border-radius: 6px; }"
+                    "QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical { height: 0px; }"
+                )
             except Exception:
                 pass
             try:
@@ -2677,14 +2718,20 @@ class CentroidFinderWindow(QMainWindow):
             pass
 
         left_col = QVBoxLayout()
+        self.left_col_layout = left_col
+        try:
+            left_col.setContentsMargins(0, 0, 0, 0)
+            left_col.setSpacing(0)
+        except Exception:
+            pass
         left_col.addWidget(self.left_top_image, 0, Qt.AlignTop)
 
-        # Save / Load Project ボタン（ロゴの下、Add Fiducial の上）
+        # Project buttons are created here and relocated to the top image header.
         try:
             self.left_project_row = QWidget()
             try:
                 self.left_project_row.setObjectName('leftProjectRow')
-                self.left_project_row.setStyleSheet('#leftProjectRow { border-bottom: 1px solid #c6c6c6; }')
+                self.left_project_row.setStyleSheet('#leftProjectRow { border: none; }')
             except Exception:
                 pass
             _proj_row = QHBoxLayout(self.left_project_row)
@@ -2695,16 +2742,32 @@ class CentroidFinderWindow(QMainWindow):
             self.btn_load_project = QPushButton("Load Project")
             self.btn_left_settings = QPushButton("Setting")
             for _btn in (self.btn_new_project, self.btn_save_project, self.btn_load_project, self.btn_left_settings):
-                _btn.setFixedHeight(28)
+                _btn.setFixedHeight(40)
             self.btn_new_project.clicked.connect(self.open_image)
             self.btn_save_project.clicked.connect(self.save_project)
             self.btn_load_project.clicked.connect(self.load_project)
             self.btn_left_settings.clicked.connect(self._on_open_left_add_settings)
-            _proj_row.addWidget(self.btn_new_project)
-            _proj_row.addWidget(self.btn_save_project)
-            _proj_row.addWidget(self.btn_load_project)
-            _proj_row.addWidget(self.btn_left_settings)
+
+            # Place project buttons on the top bar:
+            # New/Save/Load to the left of Export Image, Setting next to Replace Image.
+            try:
+                if 'img_header' in locals() and img_header is not None:
+                    img_header.insertWidget(0, self.btn_new_project, 0, Qt.AlignLeft | Qt.AlignVCenter)
+                    img_header.insertWidget(1, self.btn_save_project, 0, Qt.AlignLeft | Qt.AlignVCenter)
+                    img_header.insertWidget(2, self.btn_load_project, 0, Qt.AlignLeft | Qt.AlignVCenter)
+                    try:
+                        _rep_idx = int(img_header.indexOf(self.btn_replace_image))
+                    except Exception:
+                        _rep_idx = -1
+                    if _rep_idx >= 0:
+                        img_header.insertWidget(_rep_idx + 1, self.btn_left_settings, 0, Qt.AlignLeft | Qt.AlignVCenter)
+                    else:
+                        img_header.addWidget(self.btn_left_settings, 0, Qt.AlignLeft | Qt.AlignVCenter)
+            except Exception:
+                pass
+
             _proj_row.addStretch(1)
+            self.left_project_row.setVisible(False)
             left_col.addWidget(self.left_project_row, 0)
         except Exception:
             self.left_project_row = None
@@ -2712,6 +2775,77 @@ class CentroidFinderWindow(QMainWindow):
             self.btn_save_project = None
             self.btn_load_project = None
             self.btn_left_settings = None
+
+        # Workflow stage toggle: centered under the top-left logo.
+        try:
+            self.left_stage_controls = QWidget()
+            _stage_row = QHBoxLayout(self.left_stage_controls)
+            _stage_row.setContentsMargins(0, 2, 0, 0)
+            _stage_row.setSpacing(6)
+            _stage_row.addStretch(1)
+            self.toggle_workflow_stage = SegmentControl(["Offline targeting", "Online alignment"], checked_index=0, btn_w=170, btn_h=28)
+            try:
+                self.toggle_workflow_stage.set_on_changed(lambda idx: self._on_toggle_workflow_stage(int(idx)))
+            except Exception:
+                pass
+            _stage_row.addWidget(self.toggle_workflow_stage, 0)
+            _stage_row.addStretch(1)
+            left_col.addWidget(self.left_stage_controls, 0)
+            try:
+                left_col.insertWidget(1, self.left_stage_controls, 0)
+            except Exception:
+                pass
+
+            # Stage-specific hints shown under the Offline/Online toggle.
+            self.left_stage_hint = QWidget()
+            _stage_hint_col = QVBoxLayout(self.left_stage_hint)
+            _stage_hint_col.setContentsMargins(0, 0, 0, 0)
+            _stage_hint_col.setSpacing(0)
+
+            self.lbl_stage_hint_offline = QLabel('Create a "New Project" and "Add Target Points" on an image.')
+            self.lbl_stage_hint_online = QLabel('"Add fiducial point" and enter stage XYZ coordinates.')
+            for _lbl in (self.lbl_stage_hint_offline, self.lbl_stage_hint_online):
+                try:
+                    _lbl.setAlignment(Qt.AlignHCenter | Qt.AlignVCenter)
+                    _lbl.setWordWrap(False)
+                    try:
+                        _f = _lbl.font()
+                        _f.setBold(True)
+                        _lbl.setFont(_f)
+                    except Exception:
+                        pass
+                    try:
+                        _lbl.setStyleSheet('font-weight: bold;')
+                    except Exception:
+                        pass
+                    try:
+                        _lbl.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
+                        _lbl.setFixedHeight(max(20, int(_lbl.sizeHint().height())))
+                    except Exception:
+                        pass
+                    _stage_hint_col.addWidget(_lbl, 0, Qt.AlignHCenter)
+                except Exception:
+                    pass
+            try:
+                self.left_stage_hint.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
+            except Exception:
+                pass
+            try:
+                self.lbl_stage_hint_online.setVisible(False)
+            except Exception:
+                pass
+            left_col.addWidget(self.left_stage_hint, 0)
+            try:
+                left_col.insertWidget(2, self.left_stage_hint, 0)
+            except Exception:
+                pass
+        except Exception:
+            self.left_stage_controls = None
+            self.left_stage_hint = None
+            self.lbl_workflow_stage = None
+            self.toggle_workflow_stage = None
+            self.lbl_stage_hint_offline = None
+            self.lbl_stage_hint_online = None
 
         # Build Grain Identification block (to be placed below ref table)
         try:
@@ -2856,6 +2990,10 @@ class CentroidFinderWindow(QMainWindow):
             self.left_tabs.setObjectName('leftWorkflowTabs')
             self.left_tabs.setTabPosition(QTabWidget.North)
             try:
+                self.left_tabs.setContentsMargins(0, 0, 0, 0)
+            except Exception:
+                pass
+            try:
                 # Improve readability: slightly wider tabs and stronger selected/inactive contrast.
                 self.left_tabs.tabBar().setExpanding(False)
                 self.left_tabs.tabBar().setElideMode(Qt.ElideNone)
@@ -2864,8 +3002,10 @@ class CentroidFinderWindow(QMainWindow):
             self.left_tabs.setStyleSheet(
                 """
                 QTabWidget#leftWorkflowTabs::pane {
-                    border: 1px solid #b8b8b8;
-                    top: -1px;
+                    border: none;
+                    top: 0px;
+                    margin-top: 0px;
+                    padding-top: 0px;
                     background: #f4f4f4;
                 }
                 QTabWidget#leftWorkflowTabs QTabBar::tab {
@@ -2894,40 +3034,17 @@ class CentroidFinderWindow(QMainWindow):
             # Off-line Targeting tab: Auto-detect (Auxiliary)
             self.tab_offline = QWidget()
             offline_col = QVBoxLayout(self.tab_offline)
-            offline_col.setContentsMargins(0, 5, 0, 0)
-            offline_col.setSpacing(6)
-            try:
-                offline_overlay_row = QHBoxLayout()
-                offline_overlay_row.setContentsMargins(0, 0, 0, 0)
-                offline_overlay_row.setSpacing(6)
-                self.lbl_overlay_source = QLabel("Overlay Points")
-                try:
-                    fov = self.lbl_overlay_source.font()
-                    fov.setBold(True)
-                    self.lbl_overlay_source.setFont(fov)
-                except Exception:
-                    pass
-                offline_overlay_row.addWidget(self.lbl_overlay_source, 0)
-                offline_overlay_row.addStretch(1)
-                self.toggle_overlay_source = SegmentControl(["Left List", "Center List"], checked_index=0, btn_w=108, btn_h=27)
-                try:
-                    if str(getattr(self, 'overlay_point_source', 'left')) == 'center':
-                        self.toggle_overlay_source.setCheckedIndex(1)
-                except Exception:
-                    pass
-                try:
-                    self.toggle_overlay_source.set_on_changed(lambda idx: self._on_toggle_overlay_source(int(idx)))
-                except Exception:
-                    pass
-                offline_overlay_row.addWidget(self.toggle_overlay_source, 0)
-                offline_col.addLayout(offline_overlay_row, 0)
-            except Exception:
-                self.lbl_overlay_source = None
-                self.toggle_overlay_source = None
+            offline_col.setContentsMargins(0, 0, 0, 0)
+            offline_col.setSpacing(0)
+            self.offline_col_layout = offline_col
+            self.offline_overlay_controls = None
+            self.lbl_overlay_source = None
+            self.toggle_overlay_source = None
             if getattr(self, 'grain_section', None) is not None:
                 offline_col.addWidget(self.grain_section, 0)
             try:
-                offline_global_row = QHBoxLayout()
+                self.offline_global_controls = QWidget()
+                offline_global_row = QHBoxLayout(self.offline_global_controls)
                 offline_global_row.setContentsMargins(0, 0, 0, 0)
                 offline_global_row.setSpacing(6)
                 self.btn_add_all_grp_list = QPushButton("Add ALL Group to List")
@@ -2941,8 +3058,9 @@ class CentroidFinderWindow(QMainWindow):
                     pass
                 offline_global_row.addWidget(self.toggle_show_all_groups, 0)
                 offline_global_row.addStretch(1)
-                offline_col.addLayout(offline_global_row, 0)
+                offline_col.addWidget(self.offline_global_controls, 0)
             except Exception:
+                self.offline_global_controls = None
                 self.btn_add_all_grp_list = None
                 self.toggle_show_all_groups = None
             try:
@@ -2951,7 +3069,7 @@ class CentroidFinderWindow(QMainWindow):
                 self.offline_group_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAsNeeded)
                 self.offline_group_scroll.setVerticalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
                 self.offline_group_scroll.setFrameShape(QScrollArea.NoFrame)
-                self.offline_group_scroll.setMinimumHeight(220)
+                self.offline_group_scroll.setMinimumHeight(320)
                 try:
                     self.offline_group_scroll.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
                 except Exception:
@@ -2959,8 +3077,8 @@ class CentroidFinderWindow(QMainWindow):
 
                 self.offline_group_inner = QWidget()
                 self.offline_group_layout = QHBoxLayout(self.offline_group_inner)
-                self.offline_group_layout.setContentsMargins(4, 2, 4, 2)
-                self.offline_group_layout.setSpacing(8)
+                self.offline_group_layout.setContentsMargins(0, 0, 0, 0)
+                self.offline_group_layout.setSpacing(6)
                 self.offline_group_scroll.setWidget(self.offline_group_inner)
                 offline_col.addWidget(self.offline_group_scroll, 1)
             except Exception:
@@ -2974,25 +3092,37 @@ class CentroidFinderWindow(QMainWindow):
             online_col = QVBoxLayout(self.tab_online)
             online_col.setContentsMargins(0, 0, 0, 0)
             online_col.setSpacing(6)
+            self.online_col_layout = online_col
             self.left_tabs.addTab(self.tab_online, 'On-line Alignment')
             try:
-                self.left_tabs.tabBar().hide()
+                tb = self.left_tabs.tabBar()
+                tb.hide()
+                tb.setFixedHeight(0)
+                tb.setContentsMargins(0, 0, 0, 0)
             except Exception:
                 pass
-            self.left_tabs.setCurrentIndex(1)
+            # 起動時は Off-line を既定にする
+            self.left_tabs.setCurrentIndex(0)
         except Exception:
             self.left_tabs = None
             self.tab_offline = None
             self.tab_online = None
+            self.offline_col_layout = None
+            self.online_col_layout = None
             self.offline_group_scroll = None
             self.offline_group_inner = None
             self.offline_group_layout = None
+            self.offline_overlay_controls = None
+            self.offline_global_controls = None
             offline_col = None
             online_col = None
 
-        # Centroid Extraction切替ボタンは左カラム直下に置き、Off-line表示中も常に見えるようにする
+        # Centroid Extraction controls:
+        # - Start/Finish button stays in left-bottom.
+        # - Core/Rim/Offset options stay in the left column.
         try:
-            start_extract_row = QHBoxLayout()
+            self.left_extract_controls = QWidget()
+            start_extract_row = QHBoxLayout(self.left_extract_controls)
             start_extract_row.setContentsMargins(0, 5, 0, 0)
             start_extract_row.setSpacing(6)
             try:
@@ -3000,35 +3130,92 @@ class CentroidFinderWindow(QMainWindow):
             except Exception:
                 pass
             try:
-                start_extract_row.addWidget(self.btn_center_add_core)
-            except Exception:
-                pass
-            try:
-                start_extract_row.addWidget(self.btn_center_add_rim)
-            except Exception:
-                pass
-            try:
-                start_extract_row.addWidget(self.lbl_center_rim_offset)
-            except Exception:
-                pass
-            try:
-                start_extract_row.addWidget(self.btn_center_rim_offset_minus)
-            except Exception:
-                pass
-            try:
-                start_extract_row.addWidget(self.edit_center_rim_offset)
-            except Exception:
-                pass
-            try:
-                start_extract_row.addWidget(self.btn_center_rim_offset_plus)
-            except Exception:
-                pass
-            try:
                 start_extract_row.addStretch(1)
             except Exception:
                 pass
-            left_col.addLayout(start_extract_row, 0)
         except Exception:
+            self.left_extract_controls = None
+            pass
+
+        try:
+            self.extract_mode_options_controls = QWidget()
+            ext_opts_col = QVBoxLayout(self.extract_mode_options_controls)
+            ext_opts_col.setContentsMargins(0, 0, 0, 2)
+            ext_opts_col.setSpacing(6)
+            core_rim_row = QHBoxLayout()
+            core_rim_row.setContentsMargins(0, 0, 0, 0)
+            core_rim_row.setSpacing(10)
+            try:
+                self.lbl_core_rim_title = QLabel("Targeting Region")
+                try:
+                    ff = self.lbl_core_rim_title.font()
+                    ff.setBold(True)
+                    self.lbl_core_rim_title.setFont(ff)
+                except Exception:
+                    pass
+                core_rim_row.addWidget(self.lbl_core_rim_title)
+            except Exception:
+                self.lbl_core_rim_title = None
+            try:
+                core_rim_row.addWidget(self.btn_center_add_core)
+            except Exception:
+                pass
+            try:
+                core_rim_row.addWidget(self.btn_center_add_rim)
+            except Exception:
+                pass
+            try:
+                core_rim_row.addStretch(1)
+            except Exception:
+                pass
+            try:
+                ext_opts_col.addLayout(core_rim_row)
+            except Exception:
+                pass
+
+            rim_offset_row = QHBoxLayout()
+            rim_offset_row.setContentsMargins(0, 0, 0, 0)
+            rim_offset_row.setSpacing(6)
+            try:
+                rim_offset_row.addWidget(self.lbl_center_rim_offset)
+            except Exception:
+                pass
+            rim_offset_box = QWidget()
+            try:
+                rim_offset_box.setFixedWidth(self.control_area_width)
+            except Exception:
+                pass
+            rim_offset_box_l = QHBoxLayout(rim_offset_box)
+            rim_offset_box_l.setContentsMargins(0, 0, 0, 0)
+            rim_offset_box_l.setSpacing(0)
+            try:
+                rim_offset_box_l.addWidget(self.btn_center_rim_offset_minus)
+            except Exception:
+                pass
+            rim_offset_box_l.addSpacing(5)
+            try:
+                rim_offset_box_l.addWidget(self.edit_center_rim_offset)
+            except Exception:
+                pass
+            rim_offset_box_l.addSpacing(45)
+            try:
+                rim_offset_box_l.addWidget(self.btn_center_rim_offset_plus)
+            except Exception:
+                pass
+            try:
+                rim_offset_row.addWidget(rim_offset_box)
+            except Exception:
+                pass
+            try:
+                rim_offset_row.addWidget(self.slider_center_rim_offset, 1)
+            except Exception:
+                pass
+            try:
+                ext_opts_col.addLayout(rim_offset_row)
+            except Exception:
+                pass
+        except Exception:
+            self.extract_mode_options_controls = None
             pass
 
         # 左カラムの表の上に Add/Update/Clear ボタンを配置
@@ -3121,6 +3308,12 @@ class CentroidFinderWindow(QMainWindow):
             except Exception:
                 pass
             try:
+                # Fixed header exists, so keep duplicated in-table pseudo header rows hidden.
+                self.table_ref_view.setRowHidden(0, True)
+                self.table_ref_view.setRowHidden(1, True)
+            except Exception:
+                pass
+            try:
                 # Sync horizontal scrolling between main view and fixed header
                 try:
                     self.table_ref_view.horizontalScrollBar().valueChanged.connect(
@@ -3141,7 +3334,26 @@ class CentroidFinderWindow(QMainWindow):
             self.table_ref_view_header = None
 
         if online_col is not None:
-            online_col.addWidget(self.table_ref_view, 1)
+            online_col.addWidget(self.table_ref_view, 0)
+            try:
+                self.online_export_controls = QWidget()
+                _on_exp_row = QHBoxLayout(self.online_export_controls)
+                _on_exp_row.setContentsMargins(0, 0, 0, 0)
+                _on_exp_row.setSpacing(6)
+                self.btn_online_export = QPushButton("Export XYZ")
+                self.btn_online_export.setFixedHeight(40)
+                self.btn_online_export.clicked.connect(self.export_centroids)
+                self.btn_online_clipboard = QPushButton("Clipboard")
+                self.btn_online_clipboard.setFixedHeight(40)
+                self.btn_online_clipboard.clicked.connect(self._copy_centroids_to_clipboard)
+                _on_exp_row.addWidget(self.btn_online_export, 0)
+                _on_exp_row.addWidget(self.btn_online_clipboard, 0)
+                _on_exp_row.addStretch(1)
+                online_col.addWidget(self.online_export_controls, 0)
+            except Exception:
+                self.online_export_controls = None
+                self.btn_online_export = None
+                self.btn_online_clipboard = None
         else:
             left_col.addWidget(self.table_ref_view, 1)
 
@@ -3151,18 +3363,60 @@ class CentroidFinderWindow(QMainWindow):
                 self._set_centroid_extraction_mode(False)
             except Exception:
                 pass
+            try:
+                # 起動時は常に Off-line で開始
+                self._set_workflow_stage('offline', sync_toggle=True, allow_mode_side_effects=False)
+            except Exception:
+                pass
+        try:
+            if getattr(self, 'left_extract_controls', None) is not None:
+                # START Centroid Extraction 行を左カラム内容の直下に配置
+                left_col.addWidget(self.left_extract_controls, 0)
+        except Exception:
+            pass
         # Wrap left column layout in a QWidget and cap its maximum width so it doesn't grow too wide
         self.left_container = QWidget()
         self.left_container.setLayout(left_col)
         try:
-            # 初期幅 (動的に再計算される)
-            self.left_container.setFixedWidth(500)
+            # 左カラム最小幅（必要時はこの値を調整）
+            min_left_w = int(getattr(self, 'left_column_min_width', LEFT_COLUMN_MIN_WIDTH) or LEFT_COLUMN_MIN_WIDTH)
+            self.left_column_min_width = min_left_w
+            # 起動時は最小幅で開始し、その後は再計算側で必要に応じて拡張する
+            self.left_container.setMinimumWidth(min_left_w)
+            self.left_container.setFixedWidth(min_left_w)
         except Exception:
             try:
-                self.left_container.setMaximumWidth(500)
+                self.left_container.setMinimumWidth(LEFT_COLUMN_MIN_WIDTH)
             except Exception:
                 pass
         main_row.addWidget(self.left_container, 0)
+        # Middle panel dedicated to centroid-extraction parameter controls.
+        try:
+            self.middle_extract_panel = QWidget()
+            self.middle_extract_layout = QVBoxLayout(self.middle_extract_panel)
+            self.middle_extract_layout.setContentsMargins(0, 0, 0, 0)
+            self.middle_extract_layout.setSpacing(10)
+            try:
+                self.lbl_middle_extract_mode = QLabel("Crntroid Extraction Mode")
+                try:
+                    f = self.lbl_middle_extract_mode.font()
+                    f.setBold(True)
+                    try:
+                        f.setPointSize(max(12, int(f.pointSize()) + 1))
+                    except Exception:
+                        pass
+                    self.lbl_middle_extract_mode.setFont(f)
+                except Exception:
+                    pass
+                self.lbl_middle_extract_mode.setFixedHeight(28)
+            except Exception:
+                self.lbl_middle_extract_mode = None
+            self.middle_extract_panel.setVisible(False)
+            self.middle_extract_panel.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Expanding)
+            main_row.addWidget(self.middle_extract_panel, 0)
+        except Exception:
+            self.middle_extract_panel = None
+            self.middle_extract_layout = None
         # Center area: place the transposed bottom table between left and image
         # Create a center column layout for the table_between
         try:
@@ -3174,46 +3428,76 @@ class CentroidFinderWindow(QMainWindow):
                 center_col.setSpacing(6)
             except Exception:
                 pass
+            self.center_extract_controls_host = None
+            self.center_extract_controls_layout = None
             # Fixed 2-row header (does not scroll vertically) for the middle transposed table.
             try:
                 # Add Export/Clipboard buttons above center table (aligned vertically with Open Image)
                 try:
                     center_btn_grid = QGridLayout()
                     center_btn_grid.setContentsMargins(0, 0, 0, 0)
-                    center_btn_grid.setHorizontalSpacing(6)
+                    center_btn_grid.setHorizontalSpacing(4)
                     center_btn_grid.setVerticalSpacing(6)
                     try:
                         self.btn_filter.setVisible(False)
                     except Exception:
                         pass
                     try:
-                        center_btn_grid.addWidget(self.btn_export, 0, 0)
-                        center_btn_grid.addWidget(self.btn_clipboard, 0, 1)
+                        # 1行目: Add Target Point + name fields
+                        center_btn_grid.addWidget(self.btn_add_target, 0, 0)
+                        add_prefix_wrap = QWidget()
+                        add_prefix_wrap_l = QHBoxLayout(add_prefix_wrap)
+                        add_prefix_wrap_l.setContentsMargins(24, 0, 0, 0)
+                        add_prefix_wrap_l.setSpacing(0)
+                        add_prefix_wrap_l.addStretch(1)
+                        add_prefix_wrap_l.addWidget(self.edit_add_target_name_prefix, 0, Qt.AlignRight | Qt.AlignVCenter)
+                        center_btn_grid.addWidget(add_prefix_wrap, 0, 1)
+                        add_seq_row = QHBoxLayout()
+                        add_seq_row.setContentsMargins(0, 0, 0, 0)
+                        add_seq_row.setSpacing(0)
+                        try:
+                            self.lbl_add_target_name_sep.setFixedWidth(8)
+                            self.lbl_add_target_name_sep.setStyleSheet("padding:0px; margin:0px;")
+                        except Exception:
+                            pass
+                        add_seq_row.addWidget(self.lbl_add_target_name_sep, 0)
+                        try:
+                            self.edit_add_target_name_seq.setTextMargins(0, 0, 0, 0)
+                        except Exception:
+                            pass
+                        add_seq_row.addWidget(self.edit_add_target_name_seq, 0)
+                        center_btn_grid.addLayout(add_seq_row, 0, 2)
+                        center_btn_grid.addWidget(self.btn_center_undo, 0, 3)
+
+                        # 2行目: Name Filter / Update u, v / Clear Selected / Clear ALL
                         center_btn_grid.addWidget(self.btn_center_name_filter, 1, 0)
                         center_btn_grid.addWidget(self.btn_update_target_uv, 1, 1)
                         center_btn_grid.addWidget(self.btn_clear_target, 1, 2)
                         center_btn_grid.addWidget(self.btn_clear_target_all, 1, 3)
-                        center_btn_grid.addWidget(self.btn_add_target, 2, 0)
-                        add_name_row = QHBoxLayout()
-                        add_name_row.setContentsMargins(0, 0, 0, 0)
-                        add_name_row.setSpacing(6)
-                        add_name_row.addWidget(self.edit_add_target_name_prefix, 0)
-                        add_name_row.addWidget(self.lbl_add_target_name_sep, 0)
-                        add_name_row.addWidget(self.edit_add_target_name_seq, 0)
-                        add_name_row.addStretch(1)
-                        center_btn_grid.addLayout(add_name_row, 2, 1, 1, 2)
-                        center_btn_grid.addWidget(self.btn_center_undo, 2, 3)
                     except Exception:
                         pass
-                    for cc in range(4):
+                    try:
+                        center_btn_grid.setColumnStretch(0, 0)
+                        center_btn_grid.setColumnStretch(1, 0)
+                        center_btn_grid.setColumnStretch(2, 0)
+                        center_btn_grid.setColumnStretch(3, 1)
+                    except Exception:
+                        pass
+
+                    # ManualInput controls belong to Offline targeting (left tab).
+                    # Keep a wrapper widget so we can place the same controls in one place.
+                    self.offline_manual_controls = QWidget()
+                    self.offline_manual_controls.setLayout(center_btn_grid)
+                    if offline_col is not None:
                         try:
-                            center_btn_grid.setColumnStretch(cc, 1)
+                            offline_col.insertWidget(1, self.offline_manual_controls, 0)
                         except Exception:
-                            pass
-                    center_col.addLayout(center_btn_grid, 0)
+                            offline_col.addWidget(self.offline_manual_controls, 0)
+                    else:
+                        center_col.addWidget(self.offline_manual_controls, 0)
 
                 except Exception:
-                    pass
+                    self.offline_manual_controls = None
 
                 self.table_between_header = QTableWidget()
                 hdr_mid = self.table_between_header
@@ -3422,7 +3706,46 @@ class CentroidFinderWindow(QMainWindow):
                 self.center_container.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Expanding)
             except Exception:
                 pass
-            main_row.addWidget(self.center_container, 0)
+            if bool(getattr(self, 'swap_left_center_columns', False)):
+                try:
+                    # Keep logo/project row on left, and move old left content to middle.
+                    self.center_swap_container = QWidget()
+                    swap_col = QVBoxLayout(self.center_swap_container)
+                    swap_col.setContentsMargins(0, 0, 0, 0)
+                    swap_col.setSpacing(6)
+
+                    try:
+                        if getattr(self, 'left_extract_controls', None) is not None:
+                            left_col.removeWidget(self.left_extract_controls)
+                            swap_col.addWidget(self.left_extract_controls, 0)
+                    except Exception:
+                        pass
+                    try:
+                        if getattr(self, 'left_tabs', None) is not None:
+                            left_col.removeWidget(self.left_tabs)
+                            swap_col.addWidget(self.left_tabs, 1)
+                    except Exception:
+                        pass
+
+                    # Place former center content under left logo/project area.
+                    left_col.addWidget(self.center_container, 1)
+
+                    try:
+                        self.center_swap_container.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Expanding)
+                        try:
+                            ref_w = int(getattr(self, 'table_ref_view', None).width() or 0)
+                        except Exception:
+                            ref_w = 0
+                        if ref_w <= 0:
+                            ref_w = 500
+                        self.center_swap_container.setFixedWidth(max(240, int(ref_w)))
+                    except Exception:
+                        pass
+                    main_row.addWidget(self.center_swap_container, 0)
+                except Exception:
+                    main_row.addWidget(self.center_container, 0)
+            else:
+                main_row.addWidget(self.center_container, 0)
         except Exception:
             # fallback to previous placement
             main_row.addWidget(self.table_between, 0)
@@ -4105,43 +4428,9 @@ class CentroidFinderWindow(QMainWindow):
                     pass
         except Exception:
             pass
-        # Update left_top_image based on coordinate selection
+        # Keep left logo tied to workflow stage, not coordinate mode.
         try:
-            if getattr(self, 'left_top_image', None) is not None:
-                # Look for resource in frozen bundle first (sys._MEIPASS),
-                # then fall back to the source directory.
-                base_dirs = []
-                try:
-                    if getattr(sys, 'frozen', False) and hasattr(sys, '_MEIPASS'):
-                        base_dirs.append(sys._MEIPASS)
-                except Exception:
-                    pass
-                base_dirs.append(os.path.dirname(__file__))
-
-                if self.coordinate == 'Image':
-                    names = ['PiXY_Pix.png', 'PiXY.png']
-                else:
-                    names = ['PiXY_XY.png', 'PiXY.png']
-                pm = None
-                for bd in base_dirs:
-                    for name in names:
-                        img_path = os.path.join(bd, name)
-                        try:
-                            candidate = QPixmap(img_path)
-                            if candidate is not None and not candidate.isNull():
-                                pm = candidate
-                                break
-                        except Exception:
-                            continue
-                    if pm is not None:
-                        break
-                try:
-                    if pm is not None:
-                        target_w, target_h = 450, 200
-                        self._left_top_pix = pm.scaled(target_w, target_h, Qt.KeepAspectRatio, Qt.SmoothTransformation)
-                        self.left_top_image.setPixmap(self._left_top_pix)
-                except Exception:
-                    pass
+            self._update_workflow_stage_logo()
         except Exception:
             pass
         # Mid toolbar visibility by Coordinate:
@@ -4763,11 +5052,22 @@ class CentroidFinderWindow(QMainWindow):
                 except Exception:
                     pass
                 try:
-                    self._refresh_transposed_views(refresh_center_view=False)
+                    self._sync_center_numeric_rows_xyz_from_table()
+                except Exception:
+                    pass
+                try:
+                    # Also refresh TargetPoints (middle table) right after Fiducial XYZ edits.
+                    self._refresh_transposed_views(refresh_center_view=True)
                 except Exception:
                     pass
                 try:
                     self._apply_proc_zoom()
+                except Exception:
+                    pass
+                try:
+                    # Fiducial(Stage XYZ) edits must immediately refresh transform outputs
+                    # even when heavy centroid recompute is gated/manual.
+                    self.schedule_update(force=True, recompute_centroids=False)
                 except Exception:
                     pass
 
@@ -4794,11 +5094,20 @@ class CentroidFinderWindow(QMainWindow):
             except Exception:
                 pass
             try:
+                self._sync_center_numeric_rows_xyz_from_table()
+            except Exception:
+                pass
+            try:
                 self._apply_proc_zoom()
             except Exception:
                 pass
             try:
-                self._refresh_transposed_views(refresh_center_view=False)
+                # Keep behavior consistent with deferred path.
+                self.schedule_update(force=True, recompute_centroids=False)
+            except Exception:
+                pass
+            try:
+                self._refresh_transposed_views(refresh_center_view=True)
             except Exception:
                 pass
 
@@ -5299,9 +5608,17 @@ class CentroidFinderWindow(QMainWindow):
             DWMWCP_DONOTROUND = 1
 
             # COLORREF values are 0x00BBGGRR (BGR). RGB(160,15,15) => 0x000F0FA0
-            caption_color = ctypes.c_uint(0x000F0FA0)
+            try:
+                stage_n = str(getattr(self, 'workflow_stage', 'offline') or 'offline').lower().strip()
+            except Exception:
+                stage_n = 'offline'
+            if stage_n == 'online':
+                caption_color = ctypes.c_uint(0x00506018)  # RGB(24,96,80)
+                border_color = ctypes.c_uint(0x00506018)
+            else:
+                caption_color = ctypes.c_uint(0x000F0FA0)
+                border_color = ctypes.c_uint(0x000F0FA0)
             text_color = ctypes.c_uint(0x00FFFFFF)
-            border_color = ctypes.c_uint(0x000F0FA0)
             dark_mode = ctypes.c_int(1)
             corner_pref = ctypes.c_int(DWMWCP_DONOTROUND)
 
@@ -5342,6 +5659,9 @@ class CentroidFinderWindow(QMainWindow):
             self._rebuild_center_name_max_len_from_rows()
         except Exception:
             pass
+            extra_row = getattr(self, '_image_param_extra_row', None)
+            if extra_row is not None:
+                extra_row.setVisible(bool(is_image and bool(getattr(self, 'centroid_extraction_mode', False))))
         """
         # Optional debug: trace heavy recomputation triggers.
         # Enable by setting environment variable PIXY_UPDATE_TRACE=1.
@@ -7529,13 +7849,14 @@ class CentroidFinderWindow(QMainWindow):
         except Exception:
             return int(6144 * 6144)
 
-    def _stage_input_decimal_digits(self):
+    def _stage_input_decimal_digits_xy_z(self):
         try:
-            max_digits = 0
+            max_xy_digits = 0
+            max_z_digits = 0
             for ro in (getattr(self, 'ref_obs', None) or []):
                 if not ro:
                     continue
-                for key in ('x', 'y', 'z'):
+                for key in ('x', 'y'):
                     try:
                         raw = ro.get(key, '')
                     except Exception:
@@ -7555,15 +7876,48 @@ class CentroidFinderWindow(QMainWindow):
                             digits = 0
                     elif '.' in s:
                         try:
-                            frac = s.split('.', 1)[1].rstrip('0')
+                            frac = s.split('.', 1)[1]
                             digits = max(0, len(frac))
                         except Exception:
                             digits = 0
                     else:
                         digits = 0
-                    if digits > max_digits:
-                        max_digits = digits
-            return int(max_digits)
+                    if digits > max_xy_digits:
+                        max_xy_digits = digits
+
+                try:
+                    raw = ro.get('z', '')
+                except Exception:
+                    raw = ''
+                if raw is not None:
+                    s = str(raw).strip().replace(',', '')
+                    if s:
+                        low = s.lower()
+                        if 'e' in low:
+                            try:
+                                from decimal import Decimal
+                                d = Decimal(s)
+                                digits = int(max(0, -int(d.as_tuple().exponent)))
+                            except Exception:
+                                digits = 0
+                        elif '.' in s:
+                            try:
+                                frac = s.split('.', 1)[1]
+                                digits = max(0, len(frac))
+                            except Exception:
+                                digits = 0
+                        else:
+                            digits = 0
+                        if digits > max_z_digits:
+                            max_z_digits = digits
+            return int(max_xy_digits), int(max_z_digits)
+        except Exception:
+            return 0, 0
+
+    def _stage_input_decimal_digits(self):
+        try:
+            xy_digits, z_digits = self._stage_input_decimal_digits_xy_z()
+            return int(max(int(xy_digits), int(z_digits)))
         except Exception:
             return 0
 
@@ -7683,9 +8037,9 @@ class CentroidFinderWindow(QMainWindow):
 
             try:
                 t_xy = info.get('t', None)
-                dec_digits = int(self._stage_input_decimal_digits())
-                tx = self._format_stage_numeric(t_xy[0] if t_xy is not None else None, dec_digits)
-                ty = self._format_stage_numeric(t_xy[1] if t_xy is not None else None, dec_digits)
+                dec_xy, _dec_z = self._stage_input_decimal_digits_xy_z()
+                tx = self._format_stage_numeric(t_xy[0] if t_xy is not None else None, dec_xy)
+                ty = self._format_stage_numeric(t_xy[1] if t_xy is not None else None, dec_xy)
             except Exception:
                 tx, ty = "-", "-"
 
@@ -7764,12 +8118,13 @@ class CentroidFinderWindow(QMainWindow):
             except Exception:
                 pass
 
-            dec_digits = int(self._stage_input_decimal_digits())
+            dec_xy, dec_z = self._stage_input_decimal_digits_xy_z()
             def _fmt_stage(v):
-                return self._format_stage_numeric(v, dec_digits)
+                return self._format_stage_numeric(v, dec_xy)
 
             line1 = f"Image (u, v) = ({u_img}, {v_img})"
-            line2 = f"Stage (X, Y, Z) = ({_fmt_stage(stage_x)}, {_fmt_stage(stage_y)}, {_fmt_stage(stage_z)})"
+            stage_z_txt = self._format_stage_numeric(stage_z, dec_z)
+            line2 = f"Stage (X, Y, Z) = ({_fmt_stage(stage_x)}, {_fmt_stage(stage_y)}, {stage_z_txt})"
             overlay.setText(f"{line1}\n{line2}")
             try:
                 overlay.adjustSize()
@@ -8790,10 +9145,12 @@ class CentroidFinderWindow(QMainWindow):
                     nm = ''
                 if len(nm) > max_len:
                     max_len = len(nm)
-            self._center_name_max_len = int(max_len)
         except Exception:
             self._center_name_max_len = 0
-
+        try:
+            self._center_name_max_len = int(max_len)
+        except Exception:
+            pass
     def _center_name_column_width_hint(self, table=None):
         """Return a cached width hint for the middle-table Name column."""
         try:
@@ -10912,9 +11269,34 @@ class CentroidFinderWindow(QMainWindow):
         except Exception:
             self.center_add_rim_enabled = True
         try:
+            self._update_rim_offset_enabled_state()
+        except Exception:
+            pass
+        try:
             self.schedule_update(force=True, recompute_centroids=False)
         except Exception:
             pass
+
+    def _update_rim_offset_enabled_state(self):
+        """Enable Rim Offset controls only when Rim selection is active."""
+        try:
+            rim_btn = getattr(self, 'btn_center_add_rim', None)
+            rim_on = bool(rim_btn.isChecked()) if rim_btn is not None else bool(getattr(self, 'center_add_rim_enabled', True))
+        except Exception:
+            rim_on = True
+        for name in (
+            'lbl_center_rim_offset',
+            'btn_center_rim_offset_minus',
+            'edit_center_rim_offset',
+            'btn_center_rim_offset_plus',
+            'slider_center_rim_offset',
+        ):
+            try:
+                w = getattr(self, name, None)
+                if w is not None:
+                    w.setEnabled(bool(rim_on))
+            except Exception:
+                pass
 
     def _update_centroid_extraction_button(self):
         try:
@@ -10931,10 +11313,12 @@ class CentroidFinderWindow(QMainWindow):
             except Exception:
                 target_w = 0
             if bool(getattr(self, 'centroid_extraction_mode', False)):
-                btn.setText('Finish')
+                btn.setText('FINISH Centroid Extraction')
                 try:
-                    if target_w > 0:
-                        btn.setFixedWidth(int(target_w))
+                    self._ensure_start_ce_button_width()
+                    fw = int(getattr(self, '_btn_start_ce_fixed_width', 0) or 0)
+                    if fw > 0:
+                        btn.setFixedWidth(int(fw))
                 except Exception:
                     pass
                 try:
@@ -11040,6 +11424,14 @@ class CentroidFinderWindow(QMainWindow):
             except Exception:
                 off = 3
             edit.setText(str(int(off)))
+            try:
+                sld = getattr(self, 'slider_center_rim_offset', None)
+                if sld is not None:
+                    sld.blockSignals(True)
+                    sld.setValue(int(off))
+                    sld.blockSignals(False)
+            except Exception:
+                pass
         except Exception:
             pass
 
@@ -11066,6 +11458,35 @@ class CentroidFinderWindow(QMainWindow):
                 self._update_rim_offset_label()
             except Exception:
                 pass
+            return
+        try:
+            self.rim_offset_px = int(v)
+        except Exception:
+            return
+        try:
+            self._update_rim_offset_label()
+        except Exception:
+            pass
+        try:
+            self._manual_recompute_request = True
+        except Exception:
+            pass
+        try:
+            self.schedule_update(force=True, recompute_centroids=True)
+        except Exception:
+            pass
+
+    def _on_rim_offset_slider_changed(self, value):
+        try:
+            v = int(value)
+        except Exception:
+            return
+        v = max(0, min(50, int(v)))
+        try:
+            cur = int(getattr(self, 'rim_offset_px', 3) or 3)
+        except Exception:
+            cur = 3
+        if int(v) == int(cur):
             return
         try:
             self.rim_offset_px = int(v)
@@ -11127,6 +11548,7 @@ class CentroidFinderWindow(QMainWindow):
             'btn_center_rim_offset_plus',
             'lbl_center_rim_offset',
             'edit_center_rim_offset',
+            'slider_center_rim_offset',
         ):
             try:
                 w = getattr(self, name, None)
@@ -11134,6 +11556,10 @@ class CentroidFinderWindow(QMainWindow):
                     w.setVisible(bool(show))
             except Exception:
                 pass
+        try:
+            self._update_rim_offset_enabled_state()
+        except Exception:
+            pass
 
     def _ensure_start_ce_button_width(self):
         """Compute and keep a stable width for Start/Finish Centroid Extraction button."""
@@ -11146,7 +11572,7 @@ class CentroidFinderWindow(QMainWindow):
                 try:
                     fm = btn.fontMetrics()
                     w_start = int(fm.horizontalAdvance('START Centroid Extraction'))
-                    w_finish = int(fm.horizontalAdvance('Finish Centroid Extraction'))
+                    w_finish = int(fm.horizontalAdvance('FINISH Centroid Extraction'))
                     fw = max(w_start, w_finish) + 36
                 except Exception:
                     fw = 240
@@ -11268,6 +11694,13 @@ class CentroidFinderWindow(QMainWindow):
         except Exception:
             pass
         try:
+            if bool(active) and (not bool(prev)):
+                try:
+                    self._normal_overlay_mode_before_centroid = str(getattr(self, 'overlay_mode', 'Original') or 'Original')
+                    self._normal_show_boundaries_before_centroid = bool(getattr(self, 'show_boundaries', True))
+                except Exception:
+                    self._normal_overlay_mode_before_centroid = 'Original'
+                    self._normal_show_boundaries_before_centroid = True
             if (not bool(active)) and bool(prev):
                 # Finish時の設定を次回CentroidExtraction開始の既定値として記憶
                 mode_now = str(getattr(self, 'overlay_mode', 'Posterized') or 'Posterized')
@@ -11284,8 +11717,30 @@ class CentroidFinderWindow(QMainWindow):
                 show_pref = bool(getattr(self, '_centroid_extraction_show_boundaries', True))
                 self._apply_overlay_boundary_state(mode_pref, show_pref)
             else:
-                # 通常モードは常に Boundary非表示 + Original 固定
-                self._apply_overlay_boundary_state('Original', False)
+                # Finish後は抽出前の通常オーバーレイへ戻す
+                mode_prev = str(getattr(self, '_normal_overlay_mode_before_centroid', 'Original') or 'Original')
+                if mode_prev not in ('Original', 'Posterized'):
+                    mode_prev = 'Original'
+                show_prev = bool(getattr(self, '_normal_show_boundaries_before_centroid', True))
+                self._apply_overlay_boundary_state(mode_prev, show_prev)
+        except Exception:
+            pass
+        try:
+            stage_n = str(getattr(self, 'workflow_stage', 'offline') or 'offline').lower().strip()
+        except Exception:
+            stage_n = 'offline'
+        try:
+            show_left_block = bool(stage_n == 'offline' and not bool(active))
+            for name in ('left_stage_controls', 'offline_manual_controls', 'table_ref_view', 'table_ref_view_header'):
+                w = getattr(self, name, None)
+                if w is not None:
+                    w.setVisible(show_left_block)
+        except Exception:
+            pass
+        try:
+            center_container = getattr(self, 'center_container', None)
+            if center_container is not None:
+                center_container.setVisible(bool(not active))
         except Exception:
             pass
         try:
@@ -11311,9 +11766,13 @@ class CentroidFinderWindow(QMainWindow):
         except Exception:
             pass
         try:
-            tabs = getattr(self, 'left_tabs', None)
-            if tabs is not None:
-                tabs.setCurrentIndex(0 if bool(active) else 1)
+            if bool(active):
+                self._set_workflow_stage('offline', sync_toggle=True, allow_mode_side_effects=False)
+            else:
+                stage_now = str(getattr(self, 'workflow_stage', 'online') or 'online').lower().strip()
+                if stage_now not in ('offline', 'online'):
+                    stage_now = 'online'
+                self._set_workflow_stage(stage_now, sync_toggle=True, allow_mode_side_effects=False)
         except Exception:
             pass
         try:
@@ -11364,6 +11823,17 @@ class CentroidFinderWindow(QMainWindow):
                 # Finishing extraction: keep only overlay redraw.
                 # Middle-table rebuild is intentionally skipped.
                 try:
+                    self._last_overlay_full = None
+                    self._last_overlay_full_poster = None
+                    self._last_overlay_mode = ''
+                    self._last_show_boundaries = False
+                except Exception:
+                    pass
+                try:
+                    self.schedule_update(force=True, recompute_centroids=False)
+                except Exception:
+                    pass
+                try:
                     self._apply_proc_zoom()
                 except Exception:
                     pass
@@ -11373,6 +11843,581 @@ class CentroidFinderWindow(QMainWindow):
     def _on_toggle_centroid_extraction_mode(self):
         try:
             self._set_centroid_extraction_mode(not bool(getattr(self, 'centroid_extraction_mode', False)))
+        except Exception:
+            pass
+
+    def _set_middle_column_visible(self, visible: bool):
+        try:
+            vis = bool(visible)
+        except Exception:
+            vis = True
+        try:
+            host = getattr(self, 'center_container', None)
+            if host is not None:
+                host.setVisible(vis)
+        except Exception:
+            pass
+
+    def _set_online_fiducial_rows_fixed(self, rows: int = 5):
+        try:
+            n = max(1, int(rows))
+        except Exception:
+            n = 5
+        try:
+            tbl = getattr(self, 'table_ref_view', None)
+            if tbl is None:
+                return
+            base_row = 2 if tbl.rowCount() > 2 else 0
+            try:
+                rh = int(tbl.rowHeight(base_row) or 0)
+            except Exception:
+                rh = 0
+            if rh <= 0:
+                try:
+                    rh = int(tbl.verticalHeader().defaultSectionSize() or TABLE_DEFAULT_ROW_HEIGHT)
+                except Exception:
+                    rh = TABLE_DEFAULT_ROW_HEIGHT
+            try:
+                frame_w = int(tbl.frameWidth() or 1) * 2
+            except Exception:
+                frame_w = 2
+            target_h = int((rh * n) + frame_w + 2)
+            try:
+                tbl.setFixedHeight(max(80, target_h))
+            except Exception:
+                pass
+        except Exception:
+            pass
+
+    def _sync_table_ref_view_height(self):
+        """Set the left TargetPoint table height to its visible content height."""
+        try:
+            tbl = getattr(self, 'table_ref_view', None)
+            if tbl is None:
+                return
+
+            total_h = 0
+            try:
+                vh = tbl.verticalHeader()
+                default_rh = int(vh.defaultSectionSize() or TABLE_DEFAULT_ROW_HEIGHT) if vh is not None else TABLE_DEFAULT_ROW_HEIGHT
+            except Exception:
+                default_rh = TABLE_DEFAULT_ROW_HEIGHT
+
+            try:
+                for r in range(tbl.rowCount()):
+                    try:
+                        if tbl.isRowHidden(r):
+                            continue
+                    except Exception:
+                        pass
+                    try:
+                        rh = int(tbl.rowHeight(r) or 0)
+                    except Exception:
+                        rh = 0
+                    if rh <= 0:
+                        rh = default_rh
+                    total_h += rh
+            except Exception:
+                total_h = 0
+
+            try:
+                hh = tbl.horizontalHeader()
+                header_h = int(hh.height() or 0) if hh is not None and hh.isVisible() else 0
+            except Exception:
+                header_h = 0
+
+            try:
+                frame_h = int(tbl.frameWidth() or 1) * 2
+            except Exception:
+                frame_h = 2
+
+            target_h = int(total_h + header_h + frame_h + 4)
+            target_h = max(120, target_h)
+            try:
+                tbl.setFixedHeight(target_h)
+            except Exception:
+                try:
+                    tbl.setMinimumHeight(target_h)
+                    tbl.setMaximumHeight(target_h)
+                except Exception:
+                    pass
+        except Exception:
+            pass
+
+    def _move_center_container_to_online(self):
+        try:
+            center = getattr(self, 'center_container', None)
+            online_col = getattr(self, 'online_col_layout', None)
+            main_row = getattr(self, 'main_row_layout', None)
+            if center is None or online_col is None:
+                return
+            try:
+                if main_row is not None:
+                    main_row.removeWidget(center)
+            except Exception:
+                pass
+            try:
+                online_col.removeWidget(center)
+            except Exception:
+                pass
+            try:
+                online_col.addWidget(center, 1)
+            except Exception:
+                pass
+            try:
+                center.setVisible(True)
+            except Exception:
+                pass
+        except Exception:
+            pass
+
+    def _move_center_container_to_offline(self):
+        try:
+            center = getattr(self, 'center_container', None)
+            offline_col = getattr(self, 'offline_col_layout', None)
+            online_col = getattr(self, 'online_col_layout', None)
+            main_row = getattr(self, 'main_row_layout', None)
+            if center is None or offline_col is None:
+                return
+            try:
+                if main_row is not None:
+                    main_row.removeWidget(center)
+            except Exception:
+                pass
+            try:
+                if online_col is not None:
+                    online_col.removeWidget(center)
+            except Exception:
+                pass
+            try:
+                offline_col.removeWidget(center)
+            except Exception:
+                pass
+            try:
+                offline_col.addWidget(center, 1)
+            except Exception:
+                pass
+            try:
+                center.setVisible(True)
+            except Exception:
+                pass
+        except Exception:
+            pass
+
+    def _move_center_container_to_main(self):
+        try:
+            center = getattr(self, 'center_container', None)
+            offline_col = getattr(self, 'offline_col_layout', None)
+            online_col = getattr(self, 'online_col_layout', None)
+            main_row = getattr(self, 'main_row_layout', None)
+            if center is None or main_row is None:
+                return
+            try:
+                if offline_col is not None:
+                    offline_col.removeWidget(center)
+            except Exception:
+                pass
+            try:
+                if online_col is not None:
+                    online_col.removeWidget(center)
+            except Exception:
+                pass
+            try:
+                if main_row.indexOf(center) < 0:
+                    main_row.insertWidget(1, center, 0)
+            except Exception:
+                pass
+            try:
+                center.setVisible(True)
+            except Exception:
+                pass
+        except Exception:
+            pass
+
+    def _update_workflow_stage_logo(self):
+        try:
+            stage_n = str(getattr(self, 'workflow_stage', 'offline') or 'offline').lower().strip()
+        except Exception:
+            stage_n = 'offline'
+        if stage_n not in ('offline', 'online'):
+            stage_n = 'offline'
+
+        img = getattr(self, 'left_top_image', None)
+        if img is None:
+            return
+
+        try:
+            if stage_n == 'offline':
+                preferred = [
+                    r"C:\Python\PiX\PiXY_Pix.png",
+                    r"C:\Python\PiXY\PiXY_Pix.png",
+                    os.path.join(os.path.dirname(__file__), 'PiXY_Pix.png'),
+                    os.path.join(os.path.dirname(__file__), 'PiXY.png'),
+                ]
+            else:
+                preferred = [
+                    r"C:\Python\PiXY\PiXY_XY.png",
+                    os.path.join(os.path.dirname(__file__), 'PiXY_XY.png'),
+                    os.path.join(os.path.dirname(__file__), 'PiXY.png'),
+                ]
+            pm = None
+            for pth in preferred:
+                try:
+                    cand = QPixmap(pth)
+                    if cand is not None and not cand.isNull():
+                        pm = cand
+                        break
+                except Exception:
+                    continue
+            if pm is not None:
+                try:
+                    target_w, target_h = 450, 200
+                    self._left_top_pix = pm.scaled(target_w, target_h, Qt.KeepAspectRatio, Qt.SmoothTransformation)
+                    img.setPixmap(self._left_top_pix)
+                except Exception:
+                    self._left_top_pix = pm
+                    img.setPixmap(pm)
+        except Exception:
+            pass
+
+    def _update_workflow_layout_visibility(self):
+        try:
+            stage_n = str(getattr(self, 'workflow_stage', 'offline') or 'offline').lower().strip()
+        except Exception:
+            stage_n = 'offline'
+        if stage_n not in ('offline', 'online'):
+            stage_n = 'offline'
+
+        extraction_on = bool(getattr(self, 'centroid_extraction_mode', False))
+        is_online = bool(stage_n == 'online')
+        center_extract_mode = bool((not is_online) and extraction_on)
+
+        try:
+            self._relocate_extraction_controls_to_center(center_extract_mode)
+        except Exception:
+            pass
+        try:
+            # Relocated controls may require a wider center column.
+            QTimer.singleShot(0, lambda: self._adjust_center_column_widths())
+        except Exception:
+            pass
+
+        if is_online:
+            try:
+                self._set_online_fiducial_rows_fixed(5)
+            except Exception:
+                pass
+            try:
+                self._move_center_container_to_online()
+            except Exception:
+                pass
+            try:
+                self._set_middle_column_visible(True)
+            except Exception:
+                pass
+            try:
+                mp = getattr(self, 'middle_extract_panel', None)
+                if mp is not None:
+                    mp.setVisible(False)
+            except Exception:
+                pass
+        else:
+            # Keep TargetPoint table on the left (Offline tab) in both normal/extraction modes.
+            try:
+                self._move_center_container_to_offline()
+            except Exception:
+                pass
+            try:
+                # During centroid extraction, TargetPoint table is not used.
+                self._set_middle_column_visible(not bool(extraction_on))
+            except Exception:
+                pass
+            try:
+                mp = getattr(self, 'middle_extract_panel', None)
+                if mp is not None:
+                    mp.setVisible(False)
+                    try:
+                        mp.setMinimumHeight(0)
+                    except Exception:
+                        pass
+            except Exception:
+                pass
+
+        try:
+            extra_row = getattr(self, '_image_param_extra_row', None)
+            if extra_row is not None:
+                is_image = str(getattr(self, 'coordinate', 'Image') or 'Image') == 'Image'
+                extra_row.setVisible(bool(is_image))
+        except Exception:
+            pass
+        try:
+            top_row = getattr(self, '_image_param_top_row', None)
+            if top_row is not None:
+                is_image = str(getattr(self, 'coordinate', 'Image') or 'Image') == 'Image'
+                top_row.setVisible(bool(is_image and extraction_on))
+        except Exception:
+            pass
+
+        try:
+            tabs = getattr(self, 'left_tabs', None)
+            if tabs is not None:
+                tabs.setCurrentIndex(0 if stage_n == 'offline' else 1)
+        except Exception:
+            pass
+
+        try:
+            w = getattr(self, 'left_extract_controls', None)
+            if w is not None:
+                w.setVisible(stage_n == 'offline')
+        except Exception:
+            pass
+
+        try:
+            w = getattr(self, 'left_stage_controls', None)
+            if w is not None:
+                # Keep stage toggle available in both Offline/Online.
+                # Hide only while centroid extraction mode is active.
+                w.setVisible(bool(not extraction_on))
+        except Exception:
+            pass
+        try:
+            hint_box = getattr(self, 'left_stage_hint', None)
+            if hint_box is not None:
+                hint_box.setVisible(bool(not extraction_on))
+            h_off = getattr(self, 'lbl_stage_hint_offline', None)
+            h_on = getattr(self, 'lbl_stage_hint_online', None)
+            if h_off is not None:
+                h_off.setVisible(bool((not extraction_on) and (not is_online)))
+            if h_on is not None:
+                h_on.setVisible(bool((not extraction_on) and is_online))
+            if hint_box is not None:
+                hh = 0
+                try:
+                    if h_off is not None and h_off.isVisible():
+                        hh = max(hh, int(h_off.sizeHint().height()))
+                except Exception:
+                    pass
+                try:
+                    if h_on is not None and h_on.isVisible():
+                        hh = max(hh, int(h_on.sizeHint().height()))
+                except Exception:
+                    pass
+                hint_box.setFixedHeight(max(0, int(hh)))
+        except Exception:
+            pass
+
+        try:
+            w = getattr(self, 'left_top_image', None)
+            if w is not None:
+                # In centroid extraction mode, free left-column space for controls.
+                w.setVisible(bool(not extraction_on))
+        except Exception:
+            pass
+
+        # Offline tab internals (centroid-extraction contents) are shown only while
+        # centroid extraction mode is active.
+        show_offline_extract_details = bool((not is_online) and extraction_on)
+        # Hide TargetPoint controls and table while extraction mode is active.
+        show_offline_targetpoint = bool((not is_online) and (not extraction_on))
+        # Fiducial table must be visible in Online mode.
+        show_fiducial_table = bool(is_online or show_offline_targetpoint)
+        try:
+            w = getattr(self, 'offline_manual_controls', None)
+            if w is not None:
+                # TargetPoint buttons are not needed during centroid extraction.
+                w.setVisible(show_offline_targetpoint)
+        except Exception:
+            pass
+        try:
+            w = getattr(self, 'table_ref_view', None)
+            if w is not None:
+                w.setVisible(show_fiducial_table)
+        except Exception:
+            pass
+        try:
+            w = getattr(self, 'table_ref_view_header', None)
+            if w is not None:
+                w.setVisible(show_fiducial_table)
+        except Exception:
+            pass
+        try:
+            w = getattr(self, 'grain_section', None)
+            if w is not None:
+                w.setVisible(show_offline_extract_details)
+        except Exception:
+            pass
+        try:
+            w = getattr(self, 'offline_group_scroll', None)
+            if w is not None:
+                w.setVisible(show_offline_extract_details)
+        except Exception:
+            pass
+        try:
+            w = getattr(self, 'extract_mode_options_controls', None)
+            if w is not None:
+                w.setVisible(show_offline_extract_details)
+        except Exception:
+            pass
+        try:
+            w = getattr(self, 'btn_add_all_grp_list', None)
+            if w is not None:
+                w.setVisible(show_offline_extract_details)
+        except Exception:
+            pass
+        try:
+            w = getattr(self, 'toggle_show_all_groups', None)
+            if w is not None:
+                w.setVisible(show_offline_extract_details)
+        except Exception:
+            pass
+        try:
+            oc = getattr(self, 'offline_col_layout', None)
+            if oc is not None:
+                oc.setSpacing(4 if show_offline_extract_details else 0)
+        except Exception:
+            pass
+
+        try:
+            online_ctrl = getattr(self, 'online_export_controls', None)
+            if online_ctrl is not None:
+                online_ctrl.setVisible(is_online)
+        except Exception:
+            pass
+
+    def _set_workflow_stage(self, stage: str, sync_toggle: bool = True, allow_mode_side_effects: bool = True):
+        try:
+            stage_n = str(stage or 'offline').lower().strip()
+        except Exception:
+            stage_n = 'offline'
+        if stage_n not in ('offline', 'online'):
+            stage_n = 'offline'
+
+        try:
+            self.workflow_stage = stage_n
+        except Exception:
+            pass
+
+        try:
+            tog = getattr(self, 'toggle_workflow_stage', None)
+            if sync_toggle and tog is not None:
+                tog.setCheckedIndex(0 if stage_n == 'offline' else 1)
+        except Exception:
+            pass
+
+        try:
+            self._update_workflow_stage_logo()
+        except Exception:
+            pass
+        try:
+            QTimer.singleShot(0, self._apply_button_styles)
+        except Exception:
+            pass
+        try:
+            QTimer.singleShot(0, self._apply_windows_titlebar_style)
+        except Exception:
+            pass
+
+        try:
+            self._update_workflow_layout_visibility()
+        except Exception:
+            pass
+        try:
+            # Repaint transposed ref view immediately on stage toggle so Online stage-input
+            # tint is visible before any Add Fiducial action.
+            self._refresh_transposed_views(update_ref_view=True, refresh_offline_lists=False, refresh_center_view=False)
+        except Exception:
+            pass
+
+        try:
+            # Going to On-line should always finish centroid extraction mode.
+            if bool(allow_mode_side_effects) and stage_n == 'online' and bool(getattr(self, 'centroid_extraction_mode', False)):
+                self._set_centroid_extraction_mode(False)
+        except Exception:
+            pass
+
+    def _on_toggle_workflow_stage(self, idx):
+        try:
+            ii = int(idx)
+        except Exception:
+            ii = 1
+        if ii == 0:
+            self._set_workflow_stage('offline', sync_toggle=False, allow_mode_side_effects=True)
+        else:
+            self._set_workflow_stage('online', sync_toggle=False, allow_mode_side_effects=True)
+
+    def _relocate_extraction_controls_to_center(self, to_center: bool):
+        """Keep centroid-extraction parameter widgets in the offline/left column."""
+        try:
+            enable_center = bool(to_center)
+        except Exception:
+            enable_center = False
+
+        offline_col = getattr(self, 'offline_col_layout', None)
+        left_col = getattr(self, 'left_col_layout', None)
+        center_host = getattr(self, 'middle_extract_panel', None)
+        center_layout = getattr(self, 'middle_extract_layout', None)
+        if offline_col is None or center_host is None or center_layout is None:
+            return
+
+        left_extract = getattr(self, 'left_extract_controls', None)
+
+        # Keep everything in the left/offline column; center panel is no longer used.
+        widgets = [
+            getattr(self, 'grain_section', None),
+            getattr(self, 'extract_mode_options_controls', None),
+            getattr(self, 'offline_global_controls', None),
+            getattr(self, 'offline_group_scroll', None),
+        ]
+
+        try:
+            while center_layout.count() > 0:
+                it = center_layout.takeAt(0)
+                if it is None:
+                    continue
+                try:
+                    ww = it.widget()
+                except Exception:
+                    ww = None
+                if ww is not None:
+                    try:
+                        ww.setParent(None)
+                    except Exception:
+                        pass
+        except Exception:
+            pass
+
+        for w in widgets:
+            if w is None:
+                continue
+            try:
+                center_layout.removeWidget(w)
+            except Exception:
+                pass
+            try:
+                offline_col.removeWidget(w)
+            except Exception:
+                pass
+            try:
+                offline_col.addWidget(w, 0)
+            except Exception:
+                pass
+
+        try:
+            if left_extract is not None and left_col is not None:
+                center_layout.removeWidget(left_extract)
+                offline_col.removeWidget(left_extract)
+                left_col.removeWidget(left_extract)
+                left_col.addWidget(left_extract, 0)
+        except Exception:
+            pass
+
+        try:
+            center_host.setVisible(False)
+        except Exception:
+            pass
+        try:
+            if left_extract is not None and left_col is not None:
+                left_extract.setVisible(True)
         except Exception:
             pass
 
@@ -11410,7 +12455,14 @@ class CentroidFinderWindow(QMainWindow):
                         eff = None
                 if eff is not None:
                     try:
-                        eff.setOpacity(1.0 if en else 0.42)
+                        # In centroid-extraction offline mode, center area now hosts
+                        # extraction controls, so keep it fully opaque.
+                        center_extract_mode = bool(
+                            (not bool(en))
+                            and bool(getattr(self, 'centroid_extraction_mode', False))
+                            and str(getattr(self, 'workflow_stage', 'offline') or 'offline').lower().strip() == 'offline'
+                        )
+                        eff.setOpacity(1.0 if (en or center_extract_mode) else 0.42)
                     except Exception:
                         pass
         except Exception:
@@ -12384,14 +13436,25 @@ class CentroidFinderWindow(QMainWindow):
                         p = None
                 return False
 
-            red_btns = set()
+            accent_btns = set()
             for nm in (
                 'btn_add_ref',
+                'btn_export',
+                'btn_online_export',
+                'btn_open',
+                'btn_new_project',
+            ):
+                try:
+                    b = getattr(self, nm, None)
+                    if b is not None:
+                        accent_btns.add(b)
+                except Exception:
+                    pass
+
+            red_btns = set()
+            for nm in (
                 'btn_add_target',
                 'btn_start_centroid_extraction',
-                'btn_open',
-                'btn_export',
-                'btn_new_project',
             ):
                 try:
                     b = getattr(self, nm, None)
@@ -12415,7 +13478,30 @@ class CentroidFinderWindow(QMainWindow):
                     except Exception:
                         pass
                     b.setEnabled(False)
-                    if b in red_btns:
+                    if b in accent_btns:
+                        try:
+                            stage_n = str(getattr(self, 'workflow_stage', 'offline') or 'offline').lower().strip()
+                        except Exception:
+                            stage_n = 'offline'
+                        if stage_n == 'online':
+                            b.setStyleSheet(
+                                "QPushButton {"
+                                "background-color: rgb(176,220,212);"
+                                "color: rgb(250,250,250);"
+                                "border: none;"
+                                "border-radius: 8px;"
+                                "}"
+                            )
+                        else:
+                            b.setStyleSheet(
+                                "QPushButton {"
+                                "background-color: rgb(236,176,176);"
+                                "color: rgb(250,250,250);"
+                                "border: none;"
+                                "border-radius: 8px;"
+                                "}"
+                            )
+                    elif b in red_btns:
                         b.setStyleSheet(
                             "QPushButton {"
                             "background-color: rgb(236,176,176);"
@@ -13783,7 +14869,7 @@ class CentroidFinderWindow(QMainWindow):
         except Exception:
             pass
         try:
-            self.show_boundaries = bool(data.get("show_boundaries", True))
+            self.show_boundaries = bool(data.get("show_boundaries", False))
         except Exception:
             pass
         try:
@@ -14596,9 +15682,9 @@ class CentroidFinderWindow(QMainWindow):
                     target_btn = self.btn_add_ref
                     wait_text = 'Finish'
                     wait_style = (
-                        f"QPushButton {{ background-color: rgb(225,120,120); color: white; border: none; border-radius: {radius}px; }}"
-                        f"QPushButton:hover {{ background-color: rgb(220,110,110); }}"
-                        f"QPushButton:pressed {{ background-color: rgb(210,100,100); }}"
+                        f"QPushButton {{ background-color: rgb(24,96,80); color: white; border: none; border-radius: {radius}px; }}"
+                        f"QPushButton:hover {{ background-color: rgb(40,112,96); }}"
+                        f"QPushButton:pressed {{ background-color: rgb(8,80,64); }}"
                     )
                 elif mode == 'update':
                     target_btn = getattr(self, 'btn_update_xy', None)
@@ -14686,6 +15772,10 @@ class CentroidFinderWindow(QMainWindow):
                 return
             radius = 8
             try:
+                original_style = str(btn.styleSheet() or '')
+            except Exception:
+                original_style = ''
+            try:
                 h0 = int(btn.height() or 0)
             except Exception:
                 h0 = 0
@@ -14694,7 +15784,31 @@ class CentroidFinderWindow(QMainWindow):
             except Exception:
                 w0 = 0
 
-            if str(role).lower() == 'red':
+            role_l = str(role).lower()
+            try:
+                stage_n = str(getattr(self, 'workflow_stage', 'offline') or 'offline').lower().strip()
+            except Exception:
+                stage_n = 'offline'
+            if role_l == 'accent':
+                if stage_n == 'online':
+                    style = (
+                        f"QPushButton {{ background-color: rgb(24,96,80); color: white; border: none; border-radius: {radius}px; }}"
+                        f"QPushButton:hover {{ background-color: rgb(40,112,96); }}"
+                        f"QPushButton:pressed {{ background-color: rgb(8,80,64); }}"
+                    )
+                else:
+                    style = (
+                        f"QPushButton {{ background-color: rgb(225,120,120); color: white; border: none; border-radius: {radius}px; }}"
+                        f"QPushButton:hover {{ background-color: rgb(220,110,110); }}"
+                        f"QPushButton:pressed {{ background-color: rgb(210,100,100); }}"
+                    )
+            elif role_l == 'green':
+                style = (
+                    f"QPushButton {{ background-color: rgb(24,96,80); color: white; border: none; border-radius: {radius}px; }}"
+                    f"QPushButton:hover {{ background-color: rgb(40,112,96); }}"
+                    f"QPushButton:pressed {{ background-color: rgb(8,80,64); }}"
+                )
+            elif str(role).lower() == 'red':
                 style = (
                     f"QPushButton {{ background-color: rgb(225,120,120); color: white; border: none; border-radius: {radius}px; }}"
                     f"QPushButton:hover {{ background-color: rgb(220,110,110); }}"
@@ -14713,9 +15827,33 @@ class CentroidFinderWindow(QMainWindow):
                 pass
 
             try:
-                QTimer.singleShot(int(ms), self._restore_button_visual_states)
+                def _restore_this_button(b=btn, s=original_style, hh=h0, ww=w0):
+                    try:
+                        b.setStyleSheet(s)
+                    except Exception:
+                        pass
+                    try:
+                        if int(hh) > 0:
+                            b.setFixedHeight(int(hh))
+                    except Exception:
+                        pass
+                    try:
+                        if int(ww) > 0:
+                            b.setFixedWidth(int(ww))
+                    except Exception:
+                        pass
+                    try:
+                        if str(getattr(self, 'pick_mode', '') or '') in ('add', 'update', 'target_add', 'target_update', 'center_uv_update'):
+                            self._apply_pick_mode_wait_button_style()
+                    except Exception:
+                        pass
+
+                QTimer.singleShot(int(ms), _restore_this_button)
             except Exception:
-                self._restore_button_visual_states()
+                try:
+                    btn.setStyleSheet(original_style)
+                except Exception:
+                    pass
         except Exception:
             pass
 
@@ -14747,13 +15885,14 @@ class CentroidFinderWindow(QMainWindow):
             except Exception:
                 pass
 
-        # Red-themed buttons
-        _bind(getattr(self, 'btn_add_ref', None), 'red')
+        # Accent buttons: red offline / green online
+        _bind(getattr(self, 'btn_add_ref', None), 'accent')
         _bind(getattr(self, 'btn_add_target', None), 'red')
         _bind(getattr(self, 'btn_start_centroid_extraction', None), 'red')
-        _bind(getattr(self, 'btn_open', None), 'red')
-        _bind(getattr(self, 'btn_export', None), 'red')
-        _bind(getattr(self, 'btn_new_project', None), 'red')
+        _bind(getattr(self, 'btn_open', None), 'accent')
+        _bind(getattr(self, 'btn_export', None), 'accent')
+        _bind(getattr(self, 'btn_online_export', None), 'accent')
+        _bind(getattr(self, 'btn_new_project', None), 'accent')
 
         # Gray-themed buttons
         _bind(getattr(self, 'btn_update_xy', None), 'gray')
@@ -14765,6 +15904,7 @@ class CentroidFinderWindow(QMainWindow):
         _bind(getattr(self, 'btn_center_undo', None), 'gray')
         _bind(getattr(self, 'btn_center_name_filter', None), 'gray')
         _bind(getattr(self, 'btn_clipboard', None), 'gray')
+        _bind(getattr(self, 'btn_online_clipboard', None), 'gray')
         _bind(getattr(self, 'btn_filter', None), 'gray')
         _bind(getattr(self, 'btn_replace_image', None), 'gray')
         _bind(getattr(self, 'btn_save_project', None), 'gray')
@@ -14812,7 +15952,7 @@ class CentroidFinderWindow(QMainWindow):
         try:
             btn_tadd = getattr(self, 'btn_add_target', None)
             if btn_tadd is not None:
-                btn_tadd.setText("Add Target")
+                btn_tadd.setText("Add Target Point")
         except Exception:
             pass
         try:
@@ -15229,10 +16369,10 @@ class CentroidFinderWindow(QMainWindow):
                                 src_row_offset = 2
                                 if t.columnCount() <= int(idx):
                                     t.setColumnCount(int(idx) + 1)
-                                    try:
-                                        t.setHorizontalHeaderLabels([str(i + 1) for i in range(t.columnCount())])
-                                    except Exception:
-                                        pass
+                                try:
+                                    t.setHorizontalHeaderLabels([f"Fiducial {i + 1}" for i in range(t.columnCount())])
+                                except Exception:
+                                    pass
                                 if t.rowCount() >= (src_row_offset + 2):
                                     itx = t.item(src_row_offset + 0, int(idx))
                                     if itx is None:
@@ -15609,10 +16749,10 @@ class CentroidFinderWindow(QMainWindow):
                                 self.table_ref.setRowCount(src_r + 1)
                             if src_c >= self.table_ref.columnCount():
                                 self.table_ref.setColumnCount(src_c + 1)
-                                try:
-                                    self.table_ref.setHorizontalHeaderLabels([str(i + 1) for i in range(self.table_ref.columnCount())])
-                                except Exception:
-                                    pass
+                            try:
+                                self.table_ref.setHorizontalHeaderLabels([f"Fiducial {i + 1}" for i in range(self.table_ref.columnCount())])
+                            except Exception:
+                                pass
                             src_item = self.table_ref.item(src_r, src_c)
                             if src_item is None:
                                 src_item = QTableWidgetItem(txt)
@@ -15847,6 +16987,15 @@ class CentroidFinderWindow(QMainWindow):
             # Reinstall pseudo-headers after populate (data might overwrite them)
             try:
                 self._setup_pseudo_headers_ref(self.table_ref)
+            except Exception:
+                pass
+            # Keep the left TargetPoint table tight to its content so it doesn't leave a blank block.
+            try:
+                self._sync_table_ref_view_height()
+            except Exception:
+                pass
+            try:
+                self._sync_table_ref_view_height()
             except Exception:
                 pass
             # Sync frozen headers after populate completes
@@ -16297,6 +17446,11 @@ class CentroidFinderWindow(QMainWindow):
                     sub_labels_ref = ["u", "v", "X", "Y", "Z", "X", "Y", "Z", ""]
                     data_cols = len(sub_labels_ref)
                     excl_col_idx = data_cols - 1
+                    try:
+                        stage_n = str(getattr(self, 'workflow_stage', 'offline') or 'offline').lower().strip()
+                    except Exception:
+                        stage_n = 'offline'
+                    is_online_stage = bool(stage_n == 'online')
                     dst.blockSignals(True)
                     try:
                         try:
@@ -16320,6 +17474,12 @@ class CentroidFinderWindow(QMainWindow):
                         try:
                             dst.setVerticalScrollBarPolicy(_Qt.ScrollBarAlwaysOn)
                             dst.setHorizontalScrollBarPolicy(_Qt.ScrollBarAlwaysOff)
+                            try:
+                                sb = dst.verticalScrollBar()
+                                if sb is not None:
+                                    sb.setMinimumWidth(14)
+                            except Exception:
+                                pass
                         except Exception:
                             pass
 
@@ -16328,8 +17488,17 @@ class CentroidFinderWindow(QMainWindow):
                             hlabels = []
                             for i in range(src.columnCount()):
                                 hi = src.horizontalHeaderItem(i)
-                                hlabels.append(hi.text() if hi is not None else str(i + 1))
-                            dst.setVerticalHeaderLabels(["", ""] + hlabels)
+                                hlabels.append(hi.text() if hi is not None else f"Fiducial {i + 1}")
+
+                            # Ensure label count matches data_rows exactly.
+                            # If labels are short, Qt keeps stale/numeric leftovers, which scrambles numbering.
+                            fid_labels = []
+                            for i in range(data_rows):
+                                if i < len(hlabels) and str(hlabels[i] or '').strip() != '':
+                                    fid_labels.append(str(hlabels[i]))
+                                else:
+                                    fid_labels.append(f"Fiducial {i + 1}")
+                            dst.setVerticalHeaderLabels(["", ""] + fid_labels)
                         except Exception:
                             pass
 
@@ -16374,6 +17543,12 @@ class CentroidFinderWindow(QMainWindow):
                                 try:
                                     if c in (2, 3, 4):
                                         f = it.font(); f.setBold(True); it.setFont(f)
+                                except Exception:
+                                    pass
+                                # Online table: highlight Stage(input) XYZ fields.
+                                try:
+                                    if is_online_stage and c in (2, 3, 4):
+                                        it.setBackground(QColor(226, 245, 226))
                                 except Exception:
                                     pass
                                 # Show column: toggle widget (not checkbox)
@@ -16668,11 +17843,11 @@ class CentroidFinderWindow(QMainWindow):
                         except Exception:
                             pass
 
-                        # In-cell header (No + Name + Image/Stage)
-                        group_configs = [(0, 1, "No."), (1, 1, "Name"), (2, 2, "Image"), (4, 3, "Stage"), (7, 1, "")]
+                        # In-cell header (top No/Name area is intentionally blank)
+                        group_configs = [(0, 1, ""), (1, 1, ""), (2, 2, "Image"), (4, 3, "Stage"), (7, 1, "")]
                         sub_labels = [
-                            self._center_label_with_sort('no', ''),
-                            "Name",
+                            self._center_label_with_sort('no', 'No.'),
+                            "Target Point",
                             self._center_label_with_sort('u', 'u'),
                             self._center_label_with_sort('v', 'v'),
                             self._center_label_with_sort('x', 'X'),
@@ -16764,6 +17939,10 @@ class CentroidFinderWindow(QMainWindow):
                 QTimer.singleShot(0, lambda: self._adjust_center_column_widths())
             except Exception:
                 pass
+            try:
+                QTimer.singleShot(0, lambda: self._set_online_fiducial_rows_fixed(5))
+            except Exception:
+                pass
         except Exception:
             pass
 
@@ -16832,21 +18011,28 @@ class CentroidFinderWindow(QMainWindow):
                                 pass
                             margin = 4  # frame border
                             new_w = col_total + vh_w + sb_w + margin
-                            new_w = max(200, new_w)
+                            min_left_w = int(getattr(self, 'left_column_min_width', LEFT_COLUMN_MIN_WIDTH) or LEFT_COLUMN_MIN_WIDTH)
+                            new_w = max(min_left_w, max(370, new_w))
                             tbl.setFixedWidth(new_w)
-                            # ヘッダー・コンテナ・画像の幅も同期
-                            lc = getattr(self, 'left_container', None)
+                            # ヘッダー・コンテナ幅の同期先はスワップ有無で切り替える
+                            if bool(getattr(self, 'swap_left_center_columns', False)):
+                                lc = getattr(self, 'center_swap_container', None)
+                            else:
+                                lc = getattr(self, 'left_container', None)
                             if lc is not None:
                                 try:
+                                    lc.setMinimumWidth(min_left_w)
                                     lc.setFixedWidth(new_w)
                                 except Exception:
                                     pass
-                            img = getattr(self, 'left_top_image', None)
-                            if img is not None:
-                                try:
-                                    img.setFixedWidth(new_w)
-                                except Exception:
-                                    pass
+                            # 左ロゴ幅は通常レイアウト時のみ left table に同期する。
+                            if not bool(getattr(self, 'swap_left_center_columns', False)):
+                                img = getattr(self, 'left_top_image', None)
+                                if img is not None:
+                                    try:
+                                        img.setFixedWidth(new_w)
+                                    except Exception:
+                                        pass
                         except Exception:
                             pass
                 except Exception:
@@ -16876,7 +18062,9 @@ class CentroidFinderWindow(QMainWindow):
                     ref_tbl = getattr(self, 'table_ref_view', None)
                     for i in range(cnt2):
                         try:
-                            if i == (cnt2 - 1):
+                            if i == 0:
+                                w = 64
+                            elif i == (cnt2 - 1):
                                 w = 48
                             elif i == 1 and int(name_col_width) > 0:
                                 w = int(name_col_width)
@@ -16998,8 +18186,13 @@ class CentroidFinderWindow(QMainWindow):
             if vp is None:
                 return
             avail = int(vp.height())
-            h = int(avail - 34)
-            h = max(140, min(560, h))
+            h = int(avail - 18)
+            h = max(120, min(520, h))
+            try:
+                if bool(getattr(self, 'centroid_extraction_mode', False)):
+                    h = max(96, min(220, h))
+            except Exception:
+                pass
             self._offline_group_table_h_cached = int(h)
         except Exception:
             pass
@@ -17028,8 +18221,13 @@ class CentroidFinderWindow(QMainWindow):
                 return 190
             avail = int(vp.height())
             # Reserve header/margins and keep a practical range.
-            h = int(avail - 34)
-            h = max(140, min(560, h))
+            h = int(avail - 18)
+            h = max(120, min(520, h))
+            try:
+                if bool(getattr(self, 'centroid_extraction_mode', False)):
+                    h = max(96, min(220, h))
+            except Exception:
+                pass
             return h
         except Exception:
             return 190
@@ -17085,9 +18283,9 @@ class CentroidFinderWindow(QMainWindow):
             try:
                 header_h = 27
                 grp_toggle_h = 27
-                body_h = max(120, int(table_h))
+                body_h = max(96, int(table_h))
                 # Add List行を廃止した分、Show/Hideトグル上下の余白を詰める。
-                panel_h = header_h + grp_toggle_h + body_h + 4
+                panel_h = header_h + grp_toggle_h + body_h + 10
             except Exception:
                 body_h = 190
                 panel_h = 248
@@ -17129,7 +18327,7 @@ class CentroidFinderWindow(QMainWindow):
                 panel = QWidget()
                 pv = QVBoxLayout(panel)
                 pv.setContentsMargins(0, 0, 0, 0)
-                pv.setSpacing(0)
+                pv.setSpacing(4)
 
                 try:
                     grp_visible = self._is_group_visible(int(grp))
@@ -17149,15 +18347,19 @@ class CentroidFinderWindow(QMainWindow):
                     txt_color = 'black' if lum >= 150.0 else 'white'
                 except Exception:
                     txt_color = 'white'
-                head = QPushButton(f"{self._center_group_display_name(int(grp))} ▶ List")
+                head = QPushButton(f"Add Group {int(grp)}\nto Target List")
                 try:
-                    head.setFixedHeight(27)
+                    head.setFixedHeight(44)
                     head.setStyleSheet(
                         f"background-color: rgb({cr},{cg},{cb}); color: {txt_color};"
                         "font-weight: bold; border: none; border-radius: 4px;"
                     )
                     try:
                         head.clicked.connect(lambda _=False, g=int(grp): self._add_group_to_center_list(g))
+                    except Exception:
+                        pass
+                    try:
+                        head.clicked.connect(lambda _=False, b=head: self._flash_button_feedback(b, 'gray', 450))
                     except Exception:
                         pass
                 except Exception:
@@ -17634,39 +18836,76 @@ class CentroidFinderWindow(QMainWindow):
                             sb_w = sb.width()
                         if sb_w <= 0:
                             sb_w = 17
-                        sb_w = max(14, int(sb_w))
+                        sb_w = max(16, int(sb_w))
                 except Exception:
                     sb_w = 17
-                margin = 0  # frame / border padding (+extra for scrollbar clipping safety)
+                margin = 4  # frame / border padding (+extra for scrollbar clipping safety)
                 new_w = col_total + vh_w + sb_w + margin
                 new_w = max(64, new_w)
 
-                # Keep enough width for the 4-column control grid at startup.
+                # Keep enough width for the 4-column offline control grid at startup.
                 try:
-                    btn_rows = [
-                        [getattr(self, 'btn_export', None), getattr(self, 'btn_clipboard', None), getattr(self, 'btn_add_target', None), getattr(self, 'btn_select_all', None)],
-                        [getattr(self, 'btn_center_name_filter', None), getattr(self, 'btn_update_target_uv', None), getattr(self, 'btn_clear_target', None), getattr(self, 'btn_center_undo', None)],
-                        [getattr(self, 'btn_clear_target_all', None), None, None, None],
-                    ]
-                    col_widths = [0, 0, 0, 0]
-                    for row in btn_rows:
-                        for ci, btn in enumerate(row):
-                            if btn is None:
-                                continue
+                    def _w(widget):
+                        if widget is None:
+                            return 0
+                        try:
+                            ww = int(widget.width() or 0)
+                        except Exception:
+                            ww = 0
+                        if ww <= 0:
                             try:
-                                bw = int(btn.width() or 0)
+                                ww = int(widget.sizeHint().width() or 0)
                             except Exception:
-                                bw = 0
-                            if bw <= 0:
-                                try:
-                                    bw = int(btn.sizeHint().width())
-                                except Exception:
-                                    bw = 0
-                            col_widths[ci] = max(int(col_widths[ci]), int(bw))
-                    grid_min_w = sum(col_widths) + (6 * 3)
+                                ww = 0
+                        return max(0, int(ww))
+
+                    # Row-1 actual composition:
+                    # AddTarget | (left margin 24 + Name prefix) | ('-' + seq, inner spacing 4) | Undo
+                    w_add = _w(getattr(self, 'btn_add_target', None))
+                    w_prefix = _w(getattr(self, 'edit_add_target_name_prefix', None))
+                    w_sep = _w(getattr(self, 'lbl_add_target_name_sep', None))
+                    w_seq = _w(getattr(self, 'edit_add_target_name_seq', None))
+                    w_undo = _w(getattr(self, 'btn_center_undo', None))
+                    grid_gap = 4
+                    first_row_min = w_add + grid_gap + (24 + w_prefix) + grid_gap + (w_sep + 4 + w_seq) + grid_gap + w_undo
+
+                    # Row-2: Name Filter / Update u,v / Clear Selected / Clear ALL
+                    w_name_filter = _w(getattr(self, 'btn_center_name_filter', None))
+                    w_update_t = _w(getattr(self, 'btn_update_target_uv', None))
+                    w_clear_t = _w(getattr(self, 'btn_clear_target', None))
+                    w_clear_all_t = _w(getattr(self, 'btn_clear_target_all', None))
+                    second_row_min = w_name_filter + grid_gap + w_update_t + grid_gap + w_clear_t + grid_gap + w_clear_all_t
+
+                    grid_min_w = max(int(first_row_min), int(second_row_min))
                     new_w = max(int(new_w), int(grid_min_w), 430)
                 except Exception:
                     new_w = max(int(new_w), 430)
+
+                # In centroid-extraction offline mode, keep enough width for relocated
+                # extraction-parameter controls hosted above the center table.
+                try:
+                    stage_n = str(getattr(self, 'workflow_stage', 'offline') or 'offline').lower().strip()
+                except Exception:
+                    stage_n = 'offline'
+                try:
+                    extraction_on = bool(getattr(self, 'centroid_extraction_mode', False))
+                except Exception:
+                    extraction_on = False
+                if (stage_n == 'offline') and extraction_on:
+                    try:
+                        host = getattr(self, 'middle_extract_panel', None)
+                        if host is not None and host.isVisible():
+                            host_w = int(host.sizeHint().width() or 0)
+                            if host_w <= 0:
+                                host_w = int(host.minimumSizeHint().width() or 0)
+                            if host_w > 0:
+                                new_w = max(int(new_w), int(host_w) + 8)
+                    except Exception:
+                        pass
+                    try:
+                        new_w = max(int(new_w), int(getattr(self, 'left_column_min_width', LEFT_COLUMN_MIN_WIDTH) or LEFT_COLUMN_MIN_WIDTH))
+                    except Exception:
+                        new_w = max(int(new_w), LEFT_COLUMN_MIN_WIDTH)
         except Exception:
             new_w = 350  # ultimate fallback
 
@@ -17697,6 +18936,21 @@ class CentroidFinderWindow(QMainWindow):
             except Exception:
                 try:
                     col.setMinimumWidth(container_target_w)
+                except Exception:
+                    pass
+
+            # Left/Center スワップ時は、左ロゴ列の幅を center table 側に合わせる。
+            if bool(getattr(self, 'swap_left_center_columns', False)):
+                try:
+                    lc = getattr(self, 'left_container', None)
+                    if lc is not None:
+                        lc.setFixedWidth(container_target_w)
+                except Exception:
+                    pass
+                try:
+                    img = getattr(self, 'left_top_image', None)
+                    if img is not None:
+                        img.setFixedWidth(container_target_w)
                 except Exception:
                     pass
 
@@ -18103,7 +19357,10 @@ class CentroidFinderWindow(QMainWindow):
         except Exception:
             pass
 
-        red = "rgb(160,15,15)"    # Add button color
+        red = "rgb(160,15,15)"    # Add Target / extraction warning color
+        green = "rgb(24,96,80)"   # Logo-derived green from PiXY_XY.png
+        green_hover = "rgb(40,112,96)"
+        green_pressed = "rgb(8,80,64)"
         blue = "#757575"          # Update/Clear/Export/Clipboard color (gray)
         radius = 8
         
@@ -18122,7 +19379,7 @@ class CentroidFinderWindow(QMainWindow):
         except Exception:
             prev_base_w = 100
         
-        base_w = max(110, prev_base_w)
+        base_w = max(120, prev_base_w)
 
         # Make all buttons bold + rounded corners
         try:
@@ -18144,12 +19401,16 @@ class CentroidFinderWindow(QMainWindow):
 
         # Apply color-specific styles and widths
         try:
-            # Add Ref. Point: dark red, wide width (1.5x)
+            # Add Ref. Point: logo green, wide width (1.5x)
             add_btn = getattr(self, 'btn_add_ref', None)
             add_target_btn = getattr(self, 'btn_add_target', None)
             if add_btn is not None:
                 try:
-                    style_add = f"QPushButton {{ background-color: {red}; color: white; border: none; border-radius: {radius}px; }}"
+                    style_add = (
+                        f"QPushButton {{ background-color: {green}; color: white; border: none; border-radius: {radius}px; }}"
+                        f"QPushButton:hover {{ background-color: {green_hover}; }}"
+                        f"QPushButton:pressed {{ background-color: {green_pressed}; }}"
+                    )
                     add_btn.setStyleSheet(style_add)
                 except Exception:
                     pass
@@ -18164,7 +19425,7 @@ class CentroidFinderWindow(QMainWindow):
                 except Exception:
                     pass
                 try:
-                    add_target_btn.setFixedWidth(int(base_w) + 10)
+                    add_target_btn.setFixedWidth(int(base_w) + 40)
                 except Exception:
                     pass
 
@@ -18215,6 +19476,8 @@ class CentroidFinderWindow(QMainWindow):
             # Export + Clipboard + Open Image (+ Flip): base style (blue) and widths
             exp_btn = getattr(self, 'btn_export', None)
             clip_btn = getattr(self, 'btn_clipboard', None)
+            online_exp_btn = getattr(self, 'btn_online_export', None)
+            online_clip_btn = getattr(self, 'btn_online_clipboard', None)
             filter_btn = getattr(self, 'btn_filter', None)
             add_all_grp_btn = getattr(self, 'btn_add_all_grp_list', None)
             open_btn = getattr(self, 'btn_open', None)
@@ -18230,7 +19493,7 @@ class CentroidFinderWindow(QMainWindow):
             rim_btn = getattr(self, 'btn_center_add_rim', None)
             rim_off_minus_btn = getattr(self, 'btn_center_rim_offset_minus', None)
             rim_off_plus_btn = getattr(self, 'btn_center_rim_offset_plus', None)
-            for btn in (exp_btn, clip_btn, filter_btn, add_all_grp_btn, open_btn, replace_img_btn, flip_btn, save_btn, load_btn, left_settings_btn, core_btn, rim_btn):
+            for btn in (clip_btn, online_clip_btn, filter_btn, add_all_grp_btn, open_btn, replace_img_btn, flip_btn, save_btn, load_btn, left_settings_btn, core_btn, rim_btn):
                 if btn is not None:
                     try:
                         style_blue = f"QPushButton {{ background-color: {blue}; color: white; border: none; border-radius: {radius}px; }}"
@@ -18264,25 +19527,63 @@ class CentroidFinderWindow(QMainWindow):
                     except Exception:
                         pass
 
-            # Open Image / Export / New Project: make them red like "Add Ref. Point"
+            try:
+                stage_n = str(getattr(self, 'workflow_stage', 'offline') or 'offline').lower().strip()
+            except Exception:
+                stage_n = 'offline'
+            accent_is_green = (stage_n == 'online')
+            accent_bg = green if accent_is_green else red
+            accent_hover_bg = green_hover if accent_is_green else 'rgb(220,110,110)'
+            accent_pressed_bg = green_pressed if accent_is_green else 'rgb(210,100,100)'
+
+            # Open Image / New Project / Export: keep one accent palette that flips with stage.
             if open_btn is not None:
                 try:
-                    style_red = f"QPushButton {{ background-color: {red}; color: white; border: none; border-radius: {radius}px; }}"
-                    open_btn.setStyleSheet(style_red)
+                    open_btn.setStyleSheet(
+                        f"QPushButton {{ background-color: {accent_bg}; color: white; border: none; border-radius: {radius}px; }}"
+                        f"QPushButton:hover {{ background-color: {accent_hover_bg}; }}"
+                        f"QPushButton:pressed {{ background-color: {accent_pressed_bg}; }}"
+                    )
                 except Exception:
                     pass
 
             if exp_btn is not None:
                 try:
-                    style_red = f"QPushButton {{ background-color: {red}; color: white; border: none; border-radius: {radius}px; }}"
-                    exp_btn.setStyleSheet(style_red)
+                    style_green = (
+                        f"QPushButton {{ background-color: {green}; color: white; border: none; border-radius: {radius}px; }}"
+                        f"QPushButton:hover {{ background-color: {green_hover}; }}"
+                        f"QPushButton:pressed {{ background-color: {green_pressed}; }}"
+                    )
+                    exp_btn.setStyleSheet(style_green)
+                except Exception:
+                    pass
+                try:
+                    exp_btn.setFixedWidth(int(base_w) + 10)
+                except Exception:
+                    pass
+
+            if online_exp_btn is not None:
+                try:
+                    style_green = (
+                        f"QPushButton {{ background-color: {green}; color: white; border: none; border-radius: {radius}px; }}"
+                        f"QPushButton:hover {{ background-color: {green_hover}; }}"
+                        f"QPushButton:pressed {{ background-color: {green_pressed}; }}"
+                    )
+                    online_exp_btn.setStyleSheet(style_green)
+                except Exception:
+                    pass
+                try:
+                    online_exp_btn.setFixedWidth(int(base_w) + 10)
                 except Exception:
                     pass
 
             if new_btn is not None:
                 try:
-                    style_red = f"QPushButton {{ background-color: {red}; color: white; border: none; border-radius: {radius}px; }}"
-                    new_btn.setStyleSheet(style_red)
+                    new_btn.setStyleSheet(
+                        f"QPushButton {{ background-color: {accent_bg}; color: white; border: none; border-radius: {radius}px; }}"
+                        f"QPushButton:hover {{ background-color: {accent_hover_bg}; }}"
+                        f"QPushButton:pressed {{ background-color: {accent_pressed_bg}; }}"
+                    )
                 except Exception:
                     pass
                 try:
@@ -18321,19 +19622,29 @@ class CentroidFinderWindow(QMainWindow):
                 except Exception:
                     pass
 
-            if replace_img_btn is not None:
+            # Keep top image-header action buttons aligned to identical size.
+            try:
+                top_btn_w = int(base_w) + 10
+            except Exception:
+                top_btn_w = 120
+            for btn in (new_btn, save_btn, load_btn, open_btn, replace_img_btn, left_settings_btn):
+                if btn is None:
+                    continue
                 try:
-                    # Keep existing base width relation and make it +30pt wider.
-                    replace_img_btn.setFixedWidth(int(base_w) + 40)
+                    btn.setFixedWidth(int(top_btn_w))
+                except Exception:
+                    pass
+                try:
+                    btn.setFixedHeight(40)
                 except Exception:
                     pass
 
-            # Store the base width for future calls.
+            # Store the unscaled base width for future calls.
             # NOTE: Do not add padding here; _apply_button_styles may run many times
             # (e.g. after Update/Add pick-mode), and adding here would grow widths
             # cumulatively on every call.
             try:
-                self._action_btn_base_w = int(base_w)
+                self._action_btn_base_w = int(raw_base_w)
             except Exception:
                 pass
             # Style combobox similarly (rounded right corner + down-arrow area)
@@ -18724,15 +20035,15 @@ class CentroidFinderWindow(QMainWindow):
 
             if ncols >= 8:
                 group_configs = [
-                    (0, 1, "No."),
-                    (1, 1, "Name"),
+                    (0, 1, ""),
+                    (1, 1, ""),
                     (2, 2, "Image"),
                     (4, 3, "Stage"),
                     (7, 1, ""),
                 ]
                 sub_labels = [
-                    self._center_label_with_sort('no', ''),
-                    "Name",
+                    self._center_label_with_sort('no', 'No.'),
+                    "Target Point",
                     self._center_label_with_sort('u', 'u'),
                     self._center_label_with_sort('v', 'v'),
                     self._center_label_with_sort('x', 'X'),
@@ -18748,7 +20059,7 @@ class CentroidFinderWindow(QMainWindow):
                     (6, 1, ""),
                 ]
                 sub_labels = [
-                    self._center_label_with_sort('no', ''),
+                    self._center_label_with_sort('no', 'No.'),
                     self._center_label_with_sort('u', 'u'),
                     self._center_label_with_sort('v', 'v'),
                     self._center_label_with_sort('x', 'X'),

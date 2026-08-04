@@ -2,6 +2,8 @@
 
 Release date: 2026-08-04
 
+Positioning: This is a pre-release build for the upcoming v1.5 series.
+
 ## Highlights
 
 - Refined middle control-row spacing and alignment around `Name`, `-`, and sequence fields.

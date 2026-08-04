@@ -4,6 +4,7 @@ Current official release
 - Version: 1.4.4
 - Release date: 2026-08-04
 - Release notes: `RELEASE_NOTES_v1.4.4.md`
+- Positioning: Pre-release for the upcoming v1.5 line.
 
 Canonical files for v1.4.4
 - Metadata:

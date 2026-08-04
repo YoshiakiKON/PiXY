@@ -4,6 +4,7 @@ All notable changes to this project will be documented in this file.
 
 ## [1.4.4] - 2026-08-04
 - Release stabilization and UI layout balancing updates for center control rows.
+- Positioning: pre-release for the upcoming 1.5 series.
 
 ## [1.4.3] - 2026-07-30
 ### Center table consistency and interaction fixes

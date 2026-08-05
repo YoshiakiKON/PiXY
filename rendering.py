@@ -106,12 +106,12 @@ def build_zoomed_canvas(overlay_full_img, proc_zoom, view_padding,
     cfg = {
         'pen_width': 2,
         'centroid_fill': QColor(64, 64, 64),
-        'core_fill': QColor(220, 50, 50),
-        'manual_fill': QColor(0, 170, 0),
+        'core_fill': QColor(64, 64, 64),
+        'manual_fill': QColor(220, 50, 50),
         'centroid_radius': 4,
         'selected_fill': QColor(0, 102, 255),
         'selected_radius': 6,
-        'ref_fill': QColor(255, 0, 0),
+        'ref_fill': QColor(0, 170, 0),
         'ref_radius': 6,
     }
     if colors:

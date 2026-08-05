@@ -1192,6 +1192,7 @@ class CentroidFinderWindow(QMainWindow):
         self.center_group_name_overrides = {}  # grp -> manual display name (offline AddToList panel)
         self.swap_left_center_columns = False  # stage-driven layout: keep fiducial controls on left in online stage
         self.workflow_stage = 'offline'  # 'offline' | 'online'
+        self.online_image_grid_mode = 'uv'  # Online+Image grid: 'uv' | 'xy'
         self._center_sort_key = 'no'      # no|u|v|x|y|z
         self._center_sort_desc = False
         self._center_sort_secondary_key = 'no'   # backward-compat (unused)
@@ -1337,6 +1338,21 @@ class CentroidFinderWindow(QMainWindow):
             pass
         self.stage_info_overlay.hide()
 
+        # Online(Image) grid-mode toggle overlay (u,v / X,Y)
+        self.toggle_online_grid_mode = None
+        try:
+            self.toggle_online_grid_mode = SegmentControl(
+                ["u,v Grid", "X,Y Grid"],
+                parent=self.proc_scroll.viewport(),
+                checked_index=0,
+                btn_w=92,
+                btn_h=24,
+            )
+            self.toggle_online_grid_mode.set_on_changed(lambda idx: self._on_toggle_online_grid_mode(int(idx)))
+            self.toggle_online_grid_mode.setVisible(False)
+        except Exception:
+            self.toggle_online_grid_mode = None
+
         # center_uv_update navigation buttons (shown only while override message is visible)
         self.btn_center_uv_next = QPushButton("Next", self.proc_scroll.viewport())
         self.btn_center_uv_back = QPushButton("Back", self.proc_scroll.viewport())
@@ -1398,6 +1414,10 @@ class CentroidFinderWindow(QMainWindow):
         self.cursor_info_overlay.hide()
         try:
             self._reposition_viewport_overlays()
+        except Exception:
+            pass
+        try:
+            QTimer.singleShot(0, self._update_online_stage_controls_overlay_visibility)
         except Exception:
             pass
 
@@ -1807,7 +1827,7 @@ class CentroidFinderWindow(QMainWindow):
                 bcl.addWidget(self.boundary_toggle)
                 # Coordinate  トグル（Image / Stage）を右隣に追加
                 try:
-                    self.view_orientation_toggle = SegmentControl(["Image", "Stage"], checked_index=0, btn_w=69, btn_h=27)
+                    self.view_orientation_toggle = SegmentControl(["Image (u, v)", "Stage (X, Y)"], checked_index=0, btn_w=128, btn_h=27)
                     try:
                         # Handler name is `_on_toggle_coordinate` (label is "Coordinate"), keep wiring consistent.
                         self.view_orientation_toggle.set_on_changed(lambda idx: self._on_toggle_coordinate(int(idx)))
@@ -1991,12 +2011,121 @@ class CentroidFinderWindow(QMainWindow):
         mb.setContentsMargins(6, 0, 6, 0)
         mb.setSpacing(10)
 
-        # --- Axis sign controls (Stage only)
+        # Build 3 groups so we can toggle visibility cleanly by Coordinate.
+        self._mid_rotate_controls = QWidget()
+        self._mid_flip_controls = QWidget()
         self._mid_axis_controls = QWidget()
+        self._mid_stats_controls = QWidget()
+
+        try:
+            if getattr(self, 'view_orientation_controls', None) is not None:
+                mb.addWidget(self.view_orientation_controls, 0, Qt.AlignVCenter)
+        except Exception:
+            pass
+
+        # --- Rotate group (Image only)
+        try:
+            rhl = QHBoxLayout(self._mid_rotate_controls)
+            rhl.setContentsMargins(0, 0, 0, 0)
+            rhl.setSpacing(10)
+
+            lbl_rot = QLabel("Image Rotate")
+            try:
+                f = lbl_rot.font()
+                f.setBold(True)
+                lbl_rot.setFont(f)
+            except Exception:
+                pass
+
+            self.slider_img_rotate = ClickableSlider(Qt.Horizontal)
+            try:
+                self.slider_img_rotate.setMinimum(-180)
+                self.slider_img_rotate.setMaximum(180)
+                self.slider_img_rotate.setSingleStep(10)
+                self.slider_img_rotate.setPageStep(10)
+                self.slider_img_rotate.setTickInterval(30)
+                self.slider_img_rotate.setTickPosition(QSlider.TicksBelow)
+                self.slider_img_rotate._wheel_wrap = True
+                self.slider_img_rotate._use_custom_ticks = False
+                self.slider_img_rotate.setFixedWidth(260)
+                try:
+                    self.slider_img_rotate.setFixedHeight(28)
+                except Exception:
+                    pass
+                self.slider_img_rotate.setValue(int(self.manual_image_rotation_deg))
+            except Exception:
+                pass
+
+            self.lbl_rot_val = QLabel("0°")
+            self.lbl_rot_val.setFixedWidth(38)
+            self.lbl_rot_val.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
+            try:
+                self.slider_img_rotate.valueChanged.connect(self._on_manual_image_rotation_changed)
+            except Exception:
+                pass
+
+            rhl.addWidget(lbl_rot)
+            slider_container = QWidget()
+            try:
+                svl = QVBoxLayout(slider_container)
+                svl.setContentsMargins(0, 0, 0, 0)
+                svl.setSpacing(0)
+                svl.setAlignment(self.slider_img_rotate, Qt.AlignVCenter)
+                svl.addWidget(self.slider_img_rotate)
+            except Exception:
+                try:
+                    rhl.addWidget(self.slider_img_rotate)
+                except Exception:
+                    pass
+            try:
+                rhl.addWidget(slider_container, 0, Qt.AlignVCenter)
+            except Exception:
+                try:
+                    rhl.addWidget(self.slider_img_rotate)
+                except Exception:
+                    pass
+            rhl.addWidget(self.lbl_rot_val)
+        except Exception:
+            pass
+
+        # --- Flip group (Image only)
+        try:
+            fhl = QHBoxLayout(self._mid_flip_controls)
+            fhl.setContentsMargins(0, 0, 0, 0)
+            fhl.setSpacing(6)
+            try:
+                self.flip_toggle_image = SegmentControl(["Normal", "Flip"], checked_index=0, btn_w=77, btn_h=27)
+                self.flip_toggle_image.set_on_changed(lambda idx: self._on_flip_changed('image', int(idx)))
+            except Exception:
+                self.flip_toggle_image = None
+            try:
+                self.flip_toggle_stage = SegmentControl(["Auto", "Normal", "Flip"], checked_index=0, btn_w=77, btn_h=27)
+                self.flip_toggle_stage.set_on_changed(lambda idx: self._on_flip_changed('stage', int(idx)))
+                self.flip_toggle_stage.setVisible(False)
+            except Exception:
+                self.flip_toggle_stage = None
+            if self.flip_toggle_image is not None:
+                fhl.addWidget(self.flip_toggle_image)
+        except Exception:
+            pass
+
+        # --- Axis sign controls (Stage only)
         try:
             ahl = QHBoxLayout(self._mid_axis_controls)
             ahl.setContentsMargins(0, 0, 0, 0)
             ahl.setSpacing(8)
+
+            lbl_right = QLabel("Right")
+            try:
+                f = lbl_right.font(); f.setBold(True); lbl_right.setFont(f)
+            except Exception:
+                pass
+
+            lbl_top = QLabel("Top")
+            try:
+                f = lbl_top.font(); f.setBold(True); lbl_top.setFont(f)
+            except Exception:
+                pass
 
             try:
                 self.axis_toggle_x = SegmentControl(["+X", "-X"], checked_index=0, btn_w=44, btn_h=27)
@@ -2004,189 +2133,82 @@ class CentroidFinderWindow(QMainWindow):
             except Exception:
                 self.axis_toggle_x = None
 
-            lbl_ya = QLabel("Top")
-            try:
-                f = lbl_ya.font(); f.setBold(True); lbl_ya.setFont(f)
-            except Exception:
-                pass
             try:
                 self.axis_toggle_y = SegmentControl(["+Y", "-Y"], checked_index=0, btn_w=44, btn_h=27)
                 self.axis_toggle_y.set_on_changed(lambda idx: self._on_stage_axis_changed('y', int(idx)))
             except Exception:
                 self.axis_toggle_y = None
 
-            ahl.addWidget(lbl_xa)
+            ahl.addWidget(lbl_right)
             if self.axis_toggle_x is not None:
                 ahl.addWidget(self.axis_toggle_x)
             ahl.addSpacing(10)
-            ahl.addWidget(lbl_ya)
+            ahl.addWidget(lbl_top)
             if self.axis_toggle_y is not None:
                 ahl.addWidget(self.axis_toggle_y)
         except Exception:
             pass
 
-            # Build 3 groups so we can toggle visibility cleanly by Coordinate.
-            self._mid_rotate_controls = QWidget()
-            self._mid_flip_controls = QWidget()
-            self._mid_stats_controls = QWidget()
+        # --- Stats group (Stage only)
+        try:
+            shl = QHBoxLayout(self._mid_stats_controls)
+            shl.setContentsMargins(0, 0, 0, 0)
+            shl.setSpacing(10)
 
-            # --- Rotate group (Image only)
-            try:
-                rhl = QHBoxLayout(self._mid_rotate_controls)
-                rhl.setContentsMargins(0, 0, 0, 0)
-                rhl.setSpacing(10)
-
-                lbl_rot = QLabel("Image Rotate")
+            def _mk_stat(label_text, min_width=0):
+                box = QWidget()
+                hb = QHBoxLayout(box)
+                hb.setContentsMargins(0, 0, 0, 0)
+                hb.setSpacing(4)
+                lbl = QLabel(label_text)
+                val = QLabel("-")
                 try:
-                    f = lbl_rot.font()
-                    f.setBold(True)
-                    lbl_rot.setFont(f)
+                    if int(min_width) > 0:
+                        val.setMinimumWidth(int(min_width))
+                    val.setAlignment(Qt.AlignLeft | Qt.AlignVCenter)
                 except Exception:
                     pass
+                hb.addWidget(lbl)
+                hb.addWidget(val)
+                return box, val
 
-                self.slider_img_rotate = ClickableSlider(Qt.Horizontal)
-                try:
-                    self.slider_img_rotate.setMinimum(-180)
-                    self.slider_img_rotate.setMaximum(180)
-                    self.slider_img_rotate.setSingleStep(10)
-                    # Clicking on the groove uses pageStep in many styles; keep it 10 deg.
-                    self.slider_img_rotate.setPageStep(10)
-                    # Use only Qt standard ticks at 30-degree intervals.
-                    self.slider_img_rotate.setTickInterval(30)
-                    self.slider_img_rotate.setTickPosition(QSlider.TicksBelow)
-                    # Allow continuous wheel rotation by wrapping at ±180.
-                    self.slider_img_rotate._wheel_wrap = True
-                    # Disable custom tick overlay for this slider (Qt standard ticks only).
-                    self.slider_img_rotate._use_custom_ticks = False
-                    # Make slider wider and taller so tick marks can be drawn below it
-                    self.slider_img_rotate.setFixedWidth(260)
-                    try:
-                        self.slider_img_rotate.setFixedHeight(28)
-                    except Exception:
-                        pass
-                    self.slider_img_rotate.setValue(int(self.manual_image_rotation_deg))
-                except Exception:
-                    pass
+            w_s, self.lbl_scale_val = _mk_stat("Magnification:", min_width=56)
+            w_rot, self.lbl_angle_val = _mk_stat("Rotation:", min_width=56)
+            w_flip, self.lbl_flip_val = _mk_stat("Flip:", min_width=44)
+            w_tx, self.lbl_tx_val = _mk_stat("Shift X:", min_width=46)
+            w_ty, self.lbl_ty_val = _mk_stat("Shift Y:", min_width=46)
+            w_pitch, self.lbl_pitch_val = _mk_stat("Pitch:", min_width=46)
+            w_roll, self.lbl_roll_val = _mk_stat("Roll:", min_width=46)
 
-                self.lbl_rot_val = QLabel("0°")
-                self.lbl_rot_val.setFixedWidth(38)
-                self.lbl_rot_val.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
-                try:
-                    self.slider_img_rotate.valueChanged.connect(self._on_manual_image_rotation_changed)
-                except Exception:
-                    pass
-
-                rhl.addWidget(lbl_rot)
-                # Wrap slider in a small vertical container so we can nudge it downward
-                slider_container = QWidget()
-                try:
-                    svl = QVBoxLayout(slider_container)
-                    svl.setContentsMargins(0, 0, 0, 0)
-                    svl.setSpacing(0)
-                    # vertically center the slider so its groove aligns with the label
-                    svl.setAlignment(self.slider_img_rotate, Qt.AlignVCenter)
-                    svl.addWidget(self.slider_img_rotate)
-                except Exception:
-                    # fallback: add slider directly if layout creation fails
-                    try:
-                        rhl.addWidget(self.slider_img_rotate)
-                    except Exception:
-                        pass
-                try:
-                    rhl.addWidget(slider_container, 0, Qt.AlignVCenter)
-                except Exception:
-                    try:
-                        rhl.addWidget(self.slider_img_rotate)
-                    except Exception:
-                        pass
-                rhl.addWidget(self.lbl_rot_val)
-            except Exception:
-                pass
-
-            # --- Flip group (Image only per latest request)
-            try:
-                fhl = QHBoxLayout(self._mid_flip_controls)
-                fhl.setContentsMargins(0, 0, 0, 0)
-                fhl.setSpacing(6)
-                try:
-                    self.flip_toggle_image = SegmentControl(["Normal", "Flip"], checked_index=0, btn_w=77, btn_h=27)
-                    self.flip_toggle_image.set_on_changed(lambda idx: self._on_flip_changed('image', int(idx)))
-                except Exception:
-                    self.flip_toggle_image = None
-                # Keep stage flip toggle object for backward compatibility, but do not show it here.
-                try:
-                    self.flip_toggle_stage = SegmentControl(["Auto", "Normal", "Flip"], checked_index=0, btn_w=77, btn_h=27)
-                    self.flip_toggle_stage.set_on_changed(lambda idx: self._on_flip_changed('stage', int(idx)))
-                    self.flip_toggle_stage.setVisible(False)
-                except Exception:
-                    self.flip_toggle_stage = None
-                if self.flip_toggle_image is not None:
-                    fhl.addWidget(self.flip_toggle_image)
-            except Exception:
-                pass
-
-            # --- Stats group (Stage only)
-            try:
-                shl = QHBoxLayout(self._mid_stats_controls)
-                shl.setContentsMargins(0, 0, 0, 0)
-                shl.setSpacing(10)
-
-                def _mk_stat(label_text, min_width=0):
-                    box = QWidget()
-                    hb = QHBoxLayout(box)
-                    hb.setContentsMargins(0, 0, 0, 0)
-                    hb.setSpacing(4)
-                    lbl = QLabel(label_text)
-                    val = QLabel("-")
-                    try:
-                        # Keep values readable & tight (avoid large gap like "X:      158")
-                        if int(min_width) > 0:
-                            val.setMinimumWidth(int(min_width))
-                        val.setAlignment(Qt.AlignLeft | Qt.AlignVCenter)
-                    except Exception:
-                        pass
-                    hb.addWidget(lbl)
-                    hb.addWidget(val)
-                    return box, val
-
-                w_s, self.lbl_scale_val = _mk_stat("Magnification:", min_width=56)
-                w_rot, self.lbl_angle_val = _mk_stat("Rotation:", min_width=56)
-                w_flip, self.lbl_flip_val = _mk_stat("Flip:", min_width=44)
-                w_tx, self.lbl_tx_val = _mk_stat("Shift X:", min_width=46)
-                w_ty, self.lbl_ty_val = _mk_stat("Shift Y:", min_width=46)
-                w_pitch, self.lbl_pitch_val = _mk_stat("Pitch:", min_width=46)
-                w_roll, self.lbl_roll_val = _mk_stat("Roll:", min_width=46)
-
-                shl.addWidget(w_s)
-                shl.addWidget(w_rot)
-                shl.addWidget(w_flip)
-                shl.addWidget(w_tx)
-                shl.addWidget(w_ty)
-                shl.addWidget(w_pitch)
-                shl.addWidget(w_roll)
-            except Exception:
-                pass
-
-            # Add groups to the bar (left aligned, vertically centered)
-            mb.addWidget(self._mid_axis_controls, 0, Qt.AlignVCenter)
-            mb.addWidget(self._mid_rotate_controls, 0, Qt.AlignVCenter)
-            mb.addWidget(self._mid_flip_controls, 0, Qt.AlignVCenter)
-            mb.addWidget(self._mid_stats_controls, 0, Qt.AlignVCenter)
-            mb.addStretch(1)
-
-            # Initial visibility: Image mode
-            try:
-                if getattr(self, '_mid_axis_controls', None) is not None:
-                    self._mid_axis_controls.setVisible(False)
-                self._mid_rotate_controls.setVisible(True)
-                self._mid_flip_controls.setVisible(True)
-                self._mid_stats_controls.setVisible(False)
-            except Exception:
-                pass
-
-            img_layout.insertWidget(1, midbar, 0)
+            shl.addWidget(w_s)
+            shl.addWidget(w_rot)
+            shl.addWidget(w_flip)
+            shl.addWidget(w_tx)
+            shl.addWidget(w_ty)
+            shl.addWidget(w_pitch)
+            shl.addWidget(w_roll)
         except Exception:
             pass
+
+        # Add groups to the bar in the desired order.
+        mb.addWidget(self._mid_rotate_controls, 0, Qt.AlignVCenter)
+        mb.addWidget(self._mid_flip_controls, 0, Qt.AlignVCenter)
+        mb.addWidget(self._mid_axis_controls, 0, Qt.AlignVCenter)
+        mb.addWidget(self._mid_stats_controls, 0, Qt.AlignVCenter)
+        mb.addStretch(1)
+
+        try:
+            if getattr(self, 'view_orientation_controls', None) is not None:
+                self.view_orientation_controls.setVisible(False)
+            self._mid_rotate_controls.setVisible(True)
+            self._mid_flip_controls.setVisible(True)
+            if getattr(self, '_mid_axis_controls', None) is not None:
+                self._mid_axis_controls.setVisible(False)
+            self._mid_stats_controls.setVisible(False)
+        except Exception:
+            pass
+
+        img_layout.insertWidget(1, midbar, 0)
         img_layout.addWidget(self.proc_scroll, 1)
 
         # スライダー/コントロールレイアウト（各項目を横一行にまとめ、アプリ共通フォントを使う）
@@ -4461,6 +4483,18 @@ class CentroidFinderWindow(QMainWindow):
                 self.slider_img_rotate.setEnabled(is_image)
         except Exception:
             pass
+        try:
+            self._update_online_grid_mode_toggle_visibility()
+        except Exception:
+            pass
+        try:
+            self._update_online_stage_controls_overlay_visibility()
+        except Exception:
+            pass
+        try:
+            self._update_online_stage_controls_overlay_visibility()
+        except Exception:
+            pass
         # 更新をスケジュール（必要なら表示を更新するため）
         try:
             self._apply_proc_zoom()
@@ -4474,6 +4508,120 @@ class CentroidFinderWindow(QMainWindow):
                 self.schedule_update(force=True)
             except Exception:
                 pass
+
+    def _on_toggle_online_grid_mode(self, idx):
+        center_full = None
+        try:
+            if getattr(self, 'proc_scroll', None) is not None:
+                vp = self.proc_scroll.viewport()
+                pos_vp = QPoint(int(vp.width() // 2), int(vp.height() // 2))
+                pos_label = self._viewport_pos_to_label_pos(pos_vp)
+                center_full = self._display_to_full(pos_label)
+        except Exception:
+            center_full = None
+
+        try:
+            self.online_image_grid_mode = 'xy' if int(idx) == 1 else 'uv'
+        except Exception:
+            self.online_image_grid_mode = 'uv'
+
+        try:
+            self._update_online_grid_mode_toggle_visibility()
+        except Exception:
+            pass
+        try:
+            self._update_online_stage_controls_overlay_visibility()
+        except Exception:
+            pass
+        try:
+            self._apply_proc_zoom()
+            if center_full is not None:
+                try:
+                    self._ensure_full_pos_visible(float(center_full[0]), float(center_full[1]))
+                except Exception:
+                    pass
+        except Exception:
+            try:
+                self.schedule_update(force=True, recompute_centroids=False)
+            except Exception:
+                pass
+
+    def _update_online_grid_mode_toggle_visibility(self):
+        try:
+            tog = getattr(self, 'toggle_online_grid_mode', None)
+            if tog is None:
+                return
+            tog.setVisible(False)
+            try:
+                gm = str(getattr(self, 'online_image_grid_mode', 'uv') or 'uv').lower().strip()
+            except Exception:
+                gm = 'uv'
+            if gm not in ('uv', 'xy'):
+                gm = 'uv'
+            self.online_image_grid_mode = gm
+            try:
+                tog.setCheckedIndex(1 if gm == 'xy' else 0)
+            except Exception:
+                pass
+        except Exception:
+            pass
+
+    def _update_online_stage_controls_overlay_visibility(self):
+        try:
+            host = getattr(self, 'online_stage_controls_overlay', None)
+            if host is None:
+                return
+            try:
+                stage_n = str(getattr(self, 'workflow_stage', 'offline') or 'offline').lower().strip()
+            except Exception:
+                stage_n = 'offline'
+            show = bool(stage_n == 'online')
+            host.setVisible(show)
+            if show:
+                try:
+                    host.raise_()
+                except Exception:
+                    pass
+
+            try:
+                orient = str(getattr(self, 'view_orientation', 'Image') or 'Image').strip().lower()
+            except Exception:
+                orient = 'image'
+            coord_idx = 1 if orient == 'stage' else 0
+
+            try:
+                if getattr(self, 'overlay_coord_toggle', None) is not None:
+                    self.overlay_coord_toggle.setCheckedIndex(int(coord_idx))
+            except Exception:
+                pass
+
+            try:
+                x_sign = int(getattr(self, 'stage_axis_x_sign', 1) or 1)
+            except Exception:
+                x_sign = 1
+            try:
+                y_sign = int(getattr(self, 'stage_axis_y_sign', 1) or 1)
+            except Exception:
+                y_sign = 1
+
+            try:
+                if getattr(self, 'overlay_axis_toggle_x', None) is not None:
+                    self.overlay_axis_toggle_x.setCheckedIndex(0 if x_sign > 0 else 1)
+            except Exception:
+                pass
+            try:
+                if getattr(self, 'overlay_axis_toggle_y', None) is not None:
+                    self.overlay_axis_toggle_y.setCheckedIndex(0 if y_sign > 0 else 1)
+            except Exception:
+                pass
+
+            try:
+                if show:
+                    self._reposition_viewport_overlays()
+            except Exception:
+                pass
+        except Exception:
+            pass
 
     def _on_stage_axis_changed(self, axis, idx):
         """Stage座標表示の符号（X/Y）を切り替える。0:+, 1:-"""
@@ -4511,6 +4659,10 @@ class CentroidFinderWindow(QMainWindow):
                 self.schedule_update(force=True)
             except Exception:
                 pass
+        try:
+            self._update_online_stage_controls_overlay_visibility()
+        except Exception:
+            pass
 
     def _on_manual_image_rotation_changed(self, val):
         center_full = None
@@ -7366,105 +7518,241 @@ class CentroidFinderWindow(QMainWindow):
                         p.drawPixmap(pad, pad, rotated_img)
 
                         pad = int(self.view_padding)
-                        
-                        # For Image mode, use pixel coordinates
-                        display_scale = getattr(self, '_display_scale', None)
-                        if display_scale is None or display_scale <= 0:
+                        try:
+                            stage_n = str(getattr(self, 'workflow_stage', 'offline') or 'offline').lower().strip()
+                        except Exception:
+                            stage_n = 'offline'
+                        try:
+                            grid_mode = str(getattr(self, 'online_image_grid_mode', 'uv') or 'uv').lower().strip()
+                        except Exception:
+                            grid_mode = 'uv'
+                        use_stage_grid_on_image = bool(stage_n == 'online' and grid_mode == 'xy' and info is not None)
+
+                        if use_stage_grid_on_image:
                             try:
-                                display_scale = float(self.proc_zoom)
+                                import numpy as _np
+                                import math
+
+                                display_scale = getattr(self, '_display_scale', None)
+                                if display_scale is None:
+                                    display_scale = float(self.proc_zoom)
+
+                                s_val = float(info.get('s', 1.0))
+                                px_per_stage = float(display_scale) / max(1e-12, s_val)
+
+                                candidates = []
+                                for e in range(-6, 9):
+                                    for b in (1, 2, 5):
+                                        candidates.append(float(b) * (10.0 ** e))
+                                target_px = 120.0
+                                spacing = candidates[0]
+                                best_score = float('inf')
+                                for c in candidates:
+                                    s_px = c * px_per_stage
+                                    if s_px <= 0:
+                                        continue
+                                    penalty = 0.0
+                                    if s_px < 50.0:
+                                        penalty += (50.0 - s_px) * 10.0
+                                    elif s_px > 220.0:
+                                        penalty += (s_px - 220.0) * 10.0
+                                    score = abs(s_px - target_px) + penalty
+                                    if score < best_score:
+                                        best_score = score
+                                        spacing = c
+
+                                w_full = int(self._img_base_size[0]) if getattr(self, '_img_base_size', None) else new_w
+                                h_full = int(self._img_base_size[1]) if getattr(self, '_img_base_size', None) else new_h
+                                corners = [(0.0, 0.0), (float(w_full - 1), 0.0), (float(w_full - 1), float(h_full - 1)), (0.0, float(h_full - 1))]
+                                R = _np.asarray(info.get('R'), dtype=_np.float64)
+                                t = _np.asarray(info.get('t'), dtype=_np.float64)
+                                reflect_fit = bool(info.get('reflect', False))
+                                stage_corners = []
+                                for cx0, cy0 in corners:
+                                    x0 = float(cx0)
+                                    y0 = float(cy0)
+                                    u0 = x0
+                                    v0 = float((h_full - 1) - y0) if (h_full is not None and h_full > 0) else -y0
+                                    if reflect_fit:
+                                        u0 = -u0
+                                    p_uv = _np.asarray([u0, v0], dtype=_np.float64)
+                                    stage_corners.append((s_val * (R @ p_uv)) + t)
+                                xs = [float(p0[0]) for p0 in stage_corners]
+                                ys = [float(p0[1]) for p0 in stage_corners]
+                                xmin, xmax = min(xs), max(xs)
+                                ymin, ymax = min(ys), max(ys)
+
+                                start_x = math.floor(xmin / spacing) * spacing
+                                end_x = math.ceil(xmax / spacing) * spacing
+                                start_y = math.floor(ymin / spacing) * spacing
+                                end_y = math.ceil(ymax / spacing) * spacing
+
+                                pen = QPen(QColor(200, 200, 200, 140))
+                                pen.setWidth(1)
+                                p.setPen(pen)
+                                font = p.font()
+                                font.setPointSize(9)
+                                p.setFont(font)
+
+                                def _stage_to_disp_xy(sx, sy):
+                                    try:
+                                        stage = _np.asarray([float(sx), float(sy)], dtype=_np.float64)
+                                        uv = (1.0 / max(1e-12, s_val)) * (R.T @ (stage - t))
+                                        if reflect_fit:
+                                            uv[0] = -uv[0]
+                                        x_full = float(uv[0])
+                                        try:
+                                            h_full0 = int(self._img_base_size[1]) if getattr(self, '_img_base_size', None) else None
+                                        except Exception:
+                                            h_full0 = None
+                                        if h_full0 is not None and h_full0 > 0:
+                                            y_full = float((h_full0 - 1) - float(uv[1]))
+                                        else:
+                                            y_full = -float(uv[1])
+                                        dxy = self._full_to_display(x_full, y_full)
+                                        return None if dxy is None else (int(round(dxy[0])), int(round(dxy[1])))
+                                    except Exception:
+                                        return None
+
+                                def _fmt_grid_label(v):
+                                    try:
+                                        fv = float(v)
+                                        if abs(fv - round(fv)) < 1e-9:
+                                            return f"{int(round(fv))}"
+                                        afv = abs(fv)
+                                        if afv >= 1000.0 or (afv > 0.0 and afv < 1e-2):
+                                            return f"{fv:.3g}"
+                                        return f"{fv:.4f}".rstrip('0').rstrip('.')
+                                    except Exception:
+                                        return f"{v}"
+
+                                x = start_x
+                                while x <= end_x + 1e-9:
+                                    p1 = _stage_to_disp_xy(x, ymin)
+                                    p2 = _stage_to_disp_xy(x, ymax)
+                                    if p1 is not None and p2 is not None:
+                                        p.drawLine(p1[0], p1[1], p2[0], p2[1])
+                                        try:
+                                            lbl = _fmt_grid_label(x)
+                                            p.drawText(int(p1[0]) + 4, int(min(p1[1], p2[1])) + 14, lbl)
+                                        except Exception:
+                                            pass
+                                    x += spacing
+
+                                y = start_y
+                                while y <= end_y + 1e-9:
+                                    p1 = _stage_to_disp_xy(xmin, y)
+                                    p2 = _stage_to_disp_xy(xmax, y)
+                                    if p1 is not None and p2 is not None:
+                                        p.drawLine(p1[0], p1[1], p2[0], p2[1])
+                                        try:
+                                            lbl = _fmt_grid_label(y)
+                                            p.drawText(int(min(p1[0], p2[0])) + 4, int(p1[1]) - 4, lbl)
+                                        except Exception:
+                                            pass
+                                    y += spacing
                             except Exception:
-                                display_scale = 1.0
-                        display_scale = max(1e-4, float(display_scale))
+                                use_stage_grid_on_image = False
 
-                        # Choose spacing from 1-2-5 series in image-pixel units.
-                        # Keep about ~8 lines across visible width while preserving "nice" values.
-                        visible_w = max(20.0, pm2.width() - 2 * pad)
-                        target_lines = 8.0
-                        spacing_display_target = max(30.0, min(180.0, visible_w / target_lines))
-                        pixel_spacing_target = spacing_display_target / display_scale
+                        if not use_stage_grid_on_image:
+                            # For Image mode, use pixel coordinates
+                            display_scale = getattr(self, '_display_scale', None)
+                            if display_scale is None or display_scale <= 0:
+                                try:
+                                    display_scale = float(self.proc_zoom)
+                                except Exception:
+                                    display_scale = 1.0
+                            display_scale = max(1e-4, float(display_scale))
 
-                        # Build candidate spacings from powers of 10 with multipliers 1,2,5.
-                        nice_spacings = []
-                        for e in range(-2, 8):
-                            base = 10.0 ** e
-                            for m in (1.0, 2.0, 5.0):
-                                s = m * base
-                                if s >= 1.0:
-                                    nice_spacings.append(s)
-                        pixel_spacing = 10.0
-                        best_diff = float('inf')
-                        for s in nice_spacings:
-                            diff = abs(s - pixel_spacing_target)
-                            if diff < best_diff:
-                                best_diff = diff
-                                pixel_spacing = s
-                        
-                        w_full = int(self._img_base_size[0]) if getattr(self, '_img_base_size', None) else new_w
-                        h_full = int(self._img_base_size[1]) if getattr(self, '_img_base_size', None) else new_h
-                        
-                        pen = QPen(QColor(200, 200, 200, 140))
-                        pen.setWidth(1)
-                        p.setPen(pen)
-                        font = p.font()
-                        font.setPointSize(9)
-                        p.setFont(font)
-                        
-                        # グリッド/点の描画は、クリック判定と同じ座標変換（_full_to_display）に統一する
-                        def transform_grid_coords(x_px, y_px):
-                            try:
-                                dxy = self._full_to_display(float(x_px), float(y_px))
-                                if dxy is None:
+                            # Choose spacing from 1-2-5 series in image-pixel units.
+                            # Keep about ~8 lines across visible width while preserving "nice" values.
+                            visible_w = max(20.0, pm2.width() - 2 * pad)
+                            target_lines = 8.0
+                            spacing_display_target = max(30.0, min(180.0, visible_w / target_lines))
+                            pixel_spacing_target = spacing_display_target / display_scale
+
+                            # Build candidate spacings from powers of 10 with multipliers 1,2,5.
+                            nice_spacings = []
+                            for e in range(-2, 8):
+                                base = 10.0 ** e
+                                for m in (1.0, 2.0, 5.0):
+                                    s = m * base
+                                    if s >= 1.0:
+                                        nice_spacings.append(s)
+                            pixel_spacing = 10.0
+                            best_diff = float('inf')
+                            for s in nice_spacings:
+                                diff = abs(s - pixel_spacing_target)
+                                if diff < best_diff:
+                                    best_diff = diff
+                                    pixel_spacing = s
+
+                            w_full = int(self._img_base_size[0]) if getattr(self, '_img_base_size', None) else new_w
+                            h_full = int(self._img_base_size[1]) if getattr(self, '_img_base_size', None) else new_h
+
+                            pen = QPen(QColor(200, 200, 200, 140))
+                            pen.setWidth(1)
+                            p.setPen(pen)
+                            font = p.font()
+                            font.setPointSize(9)
+                            p.setFont(font)
+
+                            # グリッド/点の描画は、クリック判定と同じ座標変換（_full_to_display）に統一する
+                            def transform_grid_coords(x_px, y_px):
+                                try:
+                                    dxy = self._full_to_display(float(x_px), float(y_px))
+                                    if dxy is None:
+                                        return None, None
+                                    return int(round(dxy[0])), int(round(dxy[1]))
+                                except Exception:
                                     return None, None
-                                return int(round(dxy[0])), int(round(dxy[1]))
-                            except Exception:
-                                return None, None
-                        
-                        # Vertical lines (constant X in image pixels)
-                        # IMPORTANT: Image pixel indices are [0..w_full-1], [0..h_full-1].
-                        # Using w_full/h_full as coordinates caused v=-1 at the bottom due to (h_full-1)-h_full.
-                        x_px = 0.0
-                        x_max = max(0.0, float(w_full - 1))
-                        y_top_px = 0.0
-                        y_bottom_px = max(0.0, float(h_full - 1))
-                        while x_px <= x_max + 1e-6:
-                            # 線の始終点を計算（回転適用）
-                            x_top, y_top = transform_grid_coords(x_px, y_top_px)
-                            x_bottom, y_bottom = transform_grid_coords(x_px, y_bottom_px)
-                            if x_top is not None and x_bottom is not None:
-                                p.drawLine(x_top, y_top, x_bottom, y_bottom)
-                            # ラベル位置（下端付近）: 左下原点を明確にする
-                            x_lbl, y_lbl = transform_grid_coords(x_px, y_bottom_px)
-                            if x_lbl is not None and y_lbl is not None:
-                                try:
-                                    lbl = f"{int(round(x_px))}"
-                                    p.drawText(x_lbl + 4, y_lbl - 6, lbl)
-                                except Exception:
-                                    pass
-                            x_px += pixel_spacing
 
-                        # Horizontal lines (constant Y in image pixels)
-                        # v-axis origin is bottom-left: v=0 at y=(h_full-1), increasing upward.
-                        y_max = max(0.0, float(h_full - 1))
-                        x_left_px = 0.0
-                        x_right_px = max(0.0, float(w_full - 1))
-                        v_px = 0.0
-                        v_max = y_max
-                        while v_px <= v_max + 1e-6:
-                            y_px = y_max - v_px
-                            # 線の始終点を計算（回転適用）
-                            x_left, y_left = transform_grid_coords(x_left_px, y_px)
-                            x_right, y_right = transform_grid_coords(x_right_px, y_px)
-                            if x_left is not None and x_right is not None:
-                                p.drawLine(x_left, y_left, x_right, y_right)
-                            # ラベル位置（左端付近）: 左下原点を明確にする
-                            x_lbl, y_lbl = transform_grid_coords(x_left_px, y_px)
-                            if x_lbl is not None and y_lbl is not None:
-                                try:
-                                    lbl = f"{int(round(v_px))}"
-                                    p.drawText(x_lbl + 4, y_lbl - 4, lbl)
-                                except Exception:
-                                    pass
-                            v_px += pixel_spacing
+                            # Vertical lines (constant X in image pixels)
+                            # IMPORTANT: Image pixel indices are [0..w_full-1], [0..h_full-1].
+                            # Using w_full/h_full as coordinates caused v=-1 at the bottom due to (h_full-1)-h_full.
+                            x_px = 0.0
+                            x_max = max(0.0, float(w_full - 1))
+                            y_top_px = 0.0
+                            y_bottom_px = max(0.0, float(h_full - 1))
+                            while x_px <= x_max + 1e-6:
+                                # 線の始終点を計算（回転適用）
+                                x_top, y_top = transform_grid_coords(x_px, y_top_px)
+                                x_bottom, y_bottom = transform_grid_coords(x_px, y_bottom_px)
+                                if x_top is not None and x_bottom is not None:
+                                    p.drawLine(x_top, y_top, x_bottom, y_bottom)
+                                # ラベル位置（下端付近）: 左下原点を明確にする
+                                x_lbl, y_lbl = transform_grid_coords(x_px, y_bottom_px)
+                                if x_lbl is not None and y_lbl is not None:
+                                    try:
+                                        lbl = f"{int(round(x_px))}"
+                                        p.drawText(x_lbl + 4, y_lbl - 6, lbl)
+                                    except Exception:
+                                        pass
+                                x_px += pixel_spacing
+
+                            # Horizontal lines (constant Y in image pixels)
+                            # v-axis origin is bottom-left: v=0 at y=(h_full-1), increasing upward.
+                            y_max = max(0.0, float(h_full - 1))
+                            x_left_px = 0.0
+                            x_right_px = max(0.0, float(w_full - 1))
+                            v_px = 0.0
+                            v_max = y_max
+                            while v_px <= v_max + 1e-6:
+                                y_px = y_max - v_px
+                                # 線の始終点を計算（回転適用）
+                                x_left, y_left = transform_grid_coords(x_left_px, y_px)
+                                x_right, y_right = transform_grid_coords(x_right_px, y_px)
+                                if x_left is not None and x_right is not None:
+                                    p.drawLine(x_left, y_left, x_right, y_right)
+                                # ラベル位置（左端付近）: 左下原点を明確にする
+                                x_lbl, y_lbl = transform_grid_coords(x_left_px, y_px)
+                                if x_lbl is not None and y_lbl is not None:
+                                    try:
+                                        lbl = f"{int(round(v_px))}"
+                                        p.drawText(x_lbl + 4, y_lbl - 4, lbl)
+                                    except Exception:
+                                        pass
+                                v_px += pixel_spacing
                         
                         # 参照点は build_zoomed_canvas 側で描画されており、画像回転と一緒に回転される。
                         # ここでの再描画は不要（重複するとズレに見える原因になる）。
@@ -7771,6 +8059,20 @@ class CentroidFinderWindow(QMainWindow):
                 except Exception:
                     ov_tl.move(int(margin), int(margin))
 
+            tog_grid = getattr(self, 'toggle_online_grid_mode', None)
+            if tog_grid is not None:
+                try:
+                    if bool(tog_grid.isVisible()):
+                        tx = int(max(margin, (vp.width() - tog_grid.width()) // 2))
+                        ty = int(margin)
+                        tog_grid.move(tx, ty)
+                        try:
+                            tog_grid.raise_()
+                        except Exception:
+                            pass
+                except Exception:
+                    pass
+
             try:
                 btn_next = getattr(self, 'btn_center_uv_next', None)
                 btn_back = getattr(self, 'btn_center_uv_back', None)
@@ -7999,7 +8301,11 @@ class CentroidFinderWindow(QMainWindow):
                 overlay.show()
                 return
 
-            if not (view_orient == 'Stage' and info is not None):
+            try:
+                stage_n = str(getattr(self, 'workflow_stage', 'offline') or 'offline').lower().strip()
+            except Exception:
+                stage_n = 'offline'
+            if not (stage_n == 'online' and info is not None):
                 try:
                     self._set_center_uv_nav_visible(False)
                 except Exception:
@@ -12146,15 +12452,23 @@ class CentroidFinderWindow(QMainWindow):
         try:
             extra_row = getattr(self, '_image_param_extra_row', None)
             if extra_row is not None:
-                is_image = str(getattr(self, 'coordinate', 'Image') or 'Image') == 'Image'
-                extra_row.setVisible(bool(is_image))
+                # Keep the top image control rows available in normal workflow.
+                # Axis (+/-) controls live in this row and must remain accessible in Stage view.
+                show_param_rows = bool(not extraction_on)
+                extra_row.setVisible(show_param_rows)
         except Exception:
             pass
         try:
             top_row = getattr(self, '_image_param_top_row', None)
             if top_row is not None:
-                is_image = str(getattr(self, 'coordinate', 'Image') or 'Image') == 'Image'
-                top_row.setVisible(bool(is_image and extraction_on))
+                top_row.setVisible(bool((not is_online) and extraction_on))
+        except Exception:
+            pass
+        try:
+            w = getattr(self, 'view_orientation_controls', None)
+            if w is not None:
+                # Coordinate belongs in the unified Online row.
+                w.setVisible(bool(is_online and (not extraction_on)))
         except Exception:
             pass
 
@@ -12281,6 +12595,14 @@ class CentroidFinderWindow(QMainWindow):
             online_ctrl = getattr(self, 'online_export_controls', None)
             if online_ctrl is not None:
                 online_ctrl.setVisible(is_online)
+        except Exception:
+            pass
+        try:
+            self._update_online_grid_mode_toggle_visibility()
+        except Exception:
+            pass
+        try:
+            self._update_online_stage_controls_overlay_visibility()
         except Exception:
             pass
 
@@ -13409,6 +13731,8 @@ class CentroidFinderWindow(QMainWindow):
                 'flip_toggle_stage',
                 'axis_toggle_x',
                 'axis_toggle_y',
+                'toggle_online_grid_mode',
+                'online_stage_controls_overlay',
             ):
                 try:
                     w = getattr(self, nm, None)
@@ -14676,6 +15000,7 @@ class CentroidFinderWindow(QMainWindow):
         data["show_boundaries"] = bool(getattr(self, 'show_boundaries', True))
         data["flip_mode"] = str(getattr(self, 'flip_mode', 'auto'))
         data["view_orientation"] = str(getattr(self, 'view_orientation', 'Image'))
+        data["online_image_grid_mode"] = str(getattr(self, 'online_image_grid_mode', 'uv'))
         data["manual_image_rotation_deg"] = int(getattr(self, 'manual_image_rotation_deg', 0))
         data["grain_ident_mode"] = str(getattr(self, 'grain_ident_mode', 'basic'))
         data["calc_mode"] = str(getattr(self, 'calc_mode', 'auto'))
@@ -14880,6 +15205,11 @@ class CentroidFinderWindow(QMainWindow):
             self.view_orientation = str(data.get("view_orientation", "Image"))
         except Exception:
             pass
+        try:
+            gm = str(data.get("online_image_grid_mode", "uv") or "uv").lower().strip()
+            self.online_image_grid_mode = 'xy' if gm == 'xy' else 'uv'
+        except Exception:
+            self.online_image_grid_mode = 'uv'
         # Coordinate(Image/Stage) の復元は、表示フラグだけでなく関連UI状態
         # (Rotate有効/無効、表示行の出し分け) まで同期する。
         try:
@@ -14891,6 +15221,10 @@ class CentroidFinderWindow(QMainWindow):
                 except Exception:
                     pass
             self._on_toggle_coordinate(int(idx))
+        except Exception:
+            pass
+        try:
+            self._update_online_grid_mode_toggle_visibility()
         except Exception:
             pass
         try:

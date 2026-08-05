@@ -1,0 +1,617 @@
+﻿<h1 id="pixy-operation-manual-english">PiXY Operation Manual
+(English)</h1>
+<hr />
+<h2 id="cover-information">Cover Information</h2>
+<ul>
+<li>Software: PiXY — Pixel-to-Stage XY Coordinate Converter</li>
+<li>Author: Yoshiaki KON</li>
+<li>Repository: https://github.com/YoshiakiKON/PiXY</li>
+<li>Zenodo DOI: 10.5281/zenodo.18174474</li>
+<li>License: MIT</li>
+<li>Last updated: 2026-08-05 (v1.5.0 spec)</li>
+</ul>
+<hr />
+<h2 id="overview">Overview</h2>
+<ul>
+<li>Purpose: Pair candidate points (centroids) in microscope images with
+instrument fiducials and convert image coordinates to stage coordinates
+to reduce instrument time and improve reproducibility.</li>
+<li>Intended users: Micro-area analysis operators, sample analysis
+staff, instrument administrators</li>
+<li>Main features: Image loading, particle detection (K-means +
+connected components), fiducial input, affine transform estimation,
+residual visualization, CSV export / clipboard copy</li>
+<li>Benefits: Earlier targeting preparation, less manual work at the
+instrument, and statistically analyzing more points</li>
+</ul>
+<hr />
+<h2 id="getting-started-installation-launch">Getting Started
+(Installation &amp; Launch)</h2>
+<ul>
+<li>System requirements
+<ul>
+<li>OS: Windows recommended (distributed EXE available). Linux/Mac may
+work when running from source.</li>
+<li>Python: 3.8 or later (when running from source)</li>
+<li>Disk and memory: Depends on image resolution (large images require
+more memory)</li>
+</ul></li>
+<li>Dependencies: See <code>requirements.txt</code> (PySide6, OpenCV,
+NumPy, etc.)</li>
+<li>Installation (from source)</li>
+</ul>
+<div class="sourceCode" id="cb1"><pre
+class="sourceCode powershell"><code class="sourceCode powershell"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a>python <span class="op">-</span>m venv <span class="op">.</span><span class="fu">venv</span></span>
+<span id="cb1-2"><a href="#cb1-2" aria-hidden="true" tabindex="-1"></a><span class="op">.</span>\<span class="op">.</span><span class="fu">venv</span>\Scripts\Activate<span class="op">.</span><span class="fu">ps1</span></span>
+<span id="cb1-3"><a href="#cb1-3" aria-hidden="true" tabindex="-1"></a>pip install <span class="op">-</span>r requirements<span class="op">.</span><span class="fu">txt</span></span>
+<span id="cb1-4"><a href="#cb1-4" aria-hidden="true" tabindex="-1"></a>python Main<span class="op">.</span><span class="fu">py</span></span></code></pre></div>
+<ul>
+<li>Running the distributed EXE: After downloading, right-click →
+[Properties] → [Unblock] (if needed), then run.</li>
+<li>Note: When running from source, enable the virtual environment and
+match the versions in <code>requirements.txt</code>.</li>
+</ul>
+<hr />
+<h2 id="quick-start-minimum-steps">Quick Start (Minimum Steps)</h2>
+<ol type="1">
+<li>Run <code>PiXY_ver150.exe</code>.</li>
+<li>Click <code>New Project</code> and select an image file to
+load.</li>
+<li>Click <code>START Centroid Extraction</code>.</li>
+<li>In extraction mode, adjust the left-side detection parameters
+(<code>Number of Groups</code>, <code>Boundary Offset</code>,
+<code>Neck Separation</code>, <code>Shape Complexity</code>, and
+<code>Grain Size Threshold</code> histogram) and confirm that centroids
+are detected.</li>
+<li>(Optional but recommended) Enter a manual group name in the text
+field below each <code>Add GroupN</code> button.</li>
+<li>Add candidate points from each group using <code>Add GroupN</code>
+buttons (left cards) so they appear in the center list.</li>
+<li>If <code>Number of Groups</code> is changed and you recompute,
+manual group names are transferred to the nearest-color group
+automatically. When multiple names map to one group, the source group
+with more points is prioritized.</li>
+<li>Click <code>Finish Centroid Extraction</code> to return to on-line
+alignment.</li>
+<li>Click <code>Add Fiducial Point</code>, click fiducials on the image,
+and enter the corresponding stage coordinates in the table. Enter 3 or
+more points and check residuals. If residuals are large overall, add
+more points. If one point has a much larger residual, re-check that
+point or exclude it.</li>
+<li>If everything looks good, export coordinates via
+<code>Export XYZ</code> or <code>Clipboard</code> and pass them to the
+instrument.</li>
+</ol>
+<hr />
+<h2 id="ui-overview">UI Overview</h2>
+<ul>
+<li>Main buttons
+<ul>
+<li>Upper left (project operations)
+<ul>
+<li><code>New Project</code>: Start a new project and select an image
+file to load.</li>
+<li><code>Load Project</code>: Load a saved <code>.pixy</code> project
+(image, parameters, results).</li>
+<li><code>Save Project</code>: Save the current state as a
+<code>.pixy</code> project.</li>
+</ul></li>
+<li>Middle left (fiducial operations)
+<ul>
+<li><code>Add Fiducial Point</code>: Enter fiducial registration mode;
+click fiducial points on the image to add them to the table.</li>
+<li><code>Update XY</code>: Update the stage coordinates
+(<code>Stage X/Y/Z</code>) for the selected fiducial row.</li>
+<li><code>Clear</code> (fiducials): Delete the selected fiducial row in
+the table, or clear its values.</li>
+</ul></li>
+<li>Lower left (particle detection parameter settings)
+<ul>
+<li><code>START Centroid Extraction</code> /
+<code>Finish Centroid Extraction</code>: Enter/exit extraction
+mode.</li>
+<li>Detection parameters are operated in <code>Advanced</code> mode
+only.</li>
+<li><code>Recalculation Trigger</code> (<code>Auto</code> /
+<code>Manual</code>): Control when particle detection is recomputed.
+<code>Auto</code> recomputes on every parameter change;
+<code>Manual</code> recomputes only when you click
+<code>ReCalculate</code>.</li>
+<li><code>Number of Groups (K)</code> — Number of K-means clusters.
+Suggested 3–10 (try based on the number of colors; avoid
+over-segmentation).</li>
+<li><code>Boundary Offset</code> — Offset to avoid incomplete regions
+near the image boundary (e.g., exclude edges).</li>
+<li><code>Neck Separation</code> — Strength for separating touching
+particles (larger = stronger separation).</li>
+<li><code>Shape Complexity</code> — Tuning parameter to suppress/split
+regions with complex shapes.</li>
+<li><code>Grain Size Threshold</code> — Histogram-based min/max area
+selection.</li>
+<li>Group cards (bottom left)
+<ul>
+<li><code>Add GroupN</code>: Add detected points of group N to the
+center list.</li>
+<li><code>Group name</code> input (under each <code>Add GroupN</code>):
+Assign a manual display name for that group.</li>
+<li><code>Show</code> / <code>Hide</code>: Per-group visibility
+toggle.</li>
+<li><code>Add ALL Group to List</code>: Add all groups to the center
+list.</li>
+<li>When <code>Number of Groups</code> or posterization level changes,
+custom group visibility (<code>Show</code>/<code>Hide</code>) is reset
+and all groups are shown.</li>
+<li>If <code>Number of Groups</code> changes and centroids are
+recomputed, manual group names are inherited by nearest group color;
+collisions are resolved by preferring the source group with more
+points.</li>
+</ul></li>
+</ul></li>
+<li>Center (candidate table)
+<ul>
+<li><code>Export XYZ</code>: Convert candidate points to stage
+coordinates (X,Y,Z) using the estimated transform and save as CSV.</li>
+<li><code>Clipboard</code>: Copy output data to the clipboard in a
+paste-ready tab-separated format (TSV) for instrument software.</li>
+<li><code>Add Target</code>: Manually add a target point on the image
+(use when you want to add a point not found by automatic
+extraction).</li>
+<li><code>Update u, v</code>: Update <code>u, v</code> (image
+coordinates) of the selected target row to the currently clicked
+position.</li>
+<li><code>Clear</code> (targets): Clear the target selection or any
+temporary designation.</li>
+</ul>
+Note (<code>Add Target</code> / <code>Update u, v</code> with group
+visibility)
+<ul>
+<li><code>Update u, v</code> (Update Target) is currently a beta
+feature. The internal behavior and UI may change in future
+versions.</li>
+<li>Points added via <code>Add Target</code> are treated as manual
+targets and always belong to <code>Group 0</code>.</li>
+<li>Manual targets are appended to the end of the auto-detected
+<code>Group 0</code> block (not inserted as No.1).
+<ul>
+<li>As a result, adding a manual target can shift the candidate
+<code>No.</code> indices.</li>
+</ul></li>
+<li><code>Update u, v</code> behaves differently depending on what is
+selected.
+<ul>
+<li>If a manual target (=<code>Group 0</code>) is selected: it updates
+that manual target in place (the number of points does not
+increase).</li>
+<li>If an auto-detected target (e.g., <code>Group &gt;= 1</code>) is
+selected: it is treated as a replace operation:
+<ol type="1">
+<li>the original point is hidden/excluded, and (2) a new manual target
+(<code>Group 0</code>) is added at the clicked position.</li>
+</ol></li>
+</ul></li>
+<li>Even if <code>Group 0</code> is hidden by group
+<code>Show</code>/<code>Hide</code>, when you replace a
+non-<code>Group 0</code> point via <code>Update u, v</code>, the newly
+added point is forced-visible so you can still see the result of your
+update.</li>
+</ul></li>
+<li>Right side (image display / appearance adjustments)
+<ul>
+<li><code>Export Image</code>: Merge the current overlays (boundaries,
+centroid IDs, etc.) onto the original image and export as an image.</li>
+<li><code>Original</code> / <code>Posterized</code> and
+<code>Boundary</code> (<code>Show</code> / <code>Hide</code>) are shown
+only in Centroid Extraction mode.
+<ul>
+<li>Normal mode is fixed to <code>Original</code> +
+<code>Boundary OFF</code>.</li>
+</ul></li>
+<li><code>Coordinate</code> (<code>Image</code> / <code>Stage</code>):
+Switch the displayed coordinate system between image coordinates and
+stage coordinates.
+<ul>
+<li>When showing Image coordinates (u, v)
+<ul>
+<li><code>Flip</code> (<code>Normal</code> / <code>Flip</code>): Toggle
+a left-right flip to match the instrument view.</li>
+<li><code>Image Rotate</code> slider: Manually rotate the image to help
+re-identify fiducials (linked with the angle display).</li>
+</ul></li>
+<li>When showing Stage coordinates (X, Y, Z)
+<ul>
+<li><code>Right</code> (<code>+X</code> / <code>-X</code>): Horizontal
+axis setting for the instrument coordinate system. Choose +X if the
+screen-right direction is positive.</li>
+<li><code>Top</code> (<code>+Y</code> / <code>-Y</code>): Vertical axis
+setting for the instrument coordinate system. Choose +Y if the screen-up
+direction is positive.</li>
+</ul></li>
+</ul></li>
+</ul></li>
+</ul></li>
+<li>Image interaction
+<ul>
+<li><code>Left-click + drag</code>: Pan the image.</li>
+<li><code>Mouse wheel (over the image)</code>: Zoom in/out.</li>
+</ul></li>
+<li>Table columns
+<ul>
+<li><code>u, v</code>: Image coordinates (pixels)</li>
+<li><code>Stage X, Stage Y, Stage Z</code>: Instrument coordinates
+(units depend on the instrument)</li>
+<li><code>Res. X/Y/Z</code>: Residual for each fiducial point</li>
+<li><h2
+id="toggle-switch-showhide-each-point-hidden-points-are-excluded-from-calculation-and-export"><code>Toggle switch</code>:
+Show/hide each point; hidden points are excluded from calculation and
+export</h2></li>
+</ul></li>
+</ul>
+<h2 id="workflow-details">Workflow Details</h2>
+<ul>
+<li>Image (generate candidates)
+<ul>
+<li>Load an image, set the number of clusters with
+<code>Number of Groups (K)</code>, and perform color segmentation via
+K-means.</li>
+<li>Compute centroids per region using connected-component analysis and
+generate the candidate list.</li>
+<li>Recompute automatically or manually when parameters change
+(<code>Auto</code> / <code>Manual</code> mode).</li>
+</ul></li>
+<li>Fiducial input
+<ul>
+<li>Click <code>Add Fiducial Point</code> and register re-identifiable
+feature points by clicking on the image.</li>
+<li>Find the same points on the instrument and enter
+<code>Stage X/Y/Z</code>.</li>
+<li>We recommend 4 or more non-collinear fiducial points (5+ for
+stability).</li>
+</ul></li>
+<li>Transform estimation
+<ul>
+<li>Estimate a 2D→3D affine transform from fiducial pairs via least
+squares.</li>
+<li>Also try a flipped model and adopt the model with smaller
+residuals.</li>
+<li>Check each fiducial residual; re-identify or exclude outliers and
+re-estimate.</li>
+</ul></li>
+<li>Export
+<ul>
+<li>Convert candidates to stage coordinates and export via
+<code>Export XYZ</code> / <code>Clipboard</code>.</li>
+<li>If the instrument has a specific import format, confirm and adjust
+the CSV column order.</li>
+</ul></li>
+</ul>
+<hr />
+<h2 id="feature-guide">Feature Guide</h2>
+<ul>
+<li>Particle detection (K-means + connected components)
+<ul>
+<li>Goal: Extract target regions (e.g., particles) from an image and
+obtain centroids (candidate points) for each region.</li>
+<li>Key parameters
+<ul>
+<li><code>Number of Groups (K)</code> — Number of K-means clusters.
+Suggested 3–10 (try based on the number of colors; avoid
+over-segmentation).</li>
+<li><code>Grain Size Threshold</code> — Minimum region area (px).
+Suggested 10–50 px (noise removal).</li>
+<li><code>Maximum Area</code> — Maximum region area (px). Exclude
+regions that are too large.</li>
+<li><code>Boundary Offset</code> — Offset to avoid incomplete regions
+near the image boundary (e.g., exclude edges).</li>
+<li><code>Neck Separation</code> — Strength for separating touching
+particles (larger = stronger separation).</li>
+<li><code>Shape Complexity</code> — Tuning parameter to suppress/split
+regions with complex shapes (default: <code>3</code>).</li>
+</ul></li>
+<li>Tuning tips
+<ul>
+<li>First adjust <code>K</code> and <code>Grain Size Threshold</code>,
+then tune <code>Neck Separation</code> etc. only if many touching
+particles remain. Advanced parameters can be computationally expensive,
+so manual recalculation is recommended.</li>
+</ul></li>
+</ul></li>
+<li>Centroid filter order (current spec)
+<ol type="1">
+<li>Apply trim (<code>Boundary Offset</code>) to the binary mask.</li>
+<li>Label connected components.</li>
+<li>Early-reject components smaller than the minimum area
+threshold.</li>
+<li>Apply neck separation splitting to remaining components.</li>
+<li>Re-apply minimum/maximum area constraints to split components.</li>
+<li>Apply shape complexity filter.</li>
+<li>Compute/export centroid and boundary overlays for accepted
+components.</li>
+</ol></li>
+<li>Residual visualization
+<ul>
+<li>Check the distribution using the GUI residual table and
+histogram.</li>
+<li>Detect outliers using RMS or a median + MAD-based threshold.</li>
+</ul></li>
+<li>Project reproducibility
+<ul>
+<li>Save parameters and results into <code>.pixy</code>.</li>
+<li>In the current version, the internal random seed for K-means is
+fixed (not user-configurable).</li>
+</ul></li>
+</ul>
+<hr />
+<h2 id="files-and-formats">Files and Formats</h2>
+<ul>
+<li><code>.pixy</code> — JSON project file (embeds the input image as
+base64; includes processing parameters, extracted results, fiducials,
+and the estimated transform)</li>
+<li><code>centroids_*.csv</code> — Output CSV (No, Group, Stage X, Stage
+Y, Stage Z)</li>
+<li>Supported input images: PNG/JPG/BMP, etc.</li>
+</ul>
+<hr />
+<h2 id="practical-example-short-tutorial">Practical Example (Short
+Tutorial)</h2>
+<ol type="1">
+<li>Example: Load a microscope image (e.g., BSE) and extract candidates
+with <code>K=5</code>, <code>Min area=20px</code>.</li>
+<li>Select 5 fiducial points and obtain stage coordinates on the
+instrument.</li>
+<li>Confirm that 50% of residuals fall within 3–4 μm for each of X, Y,
+and Z.</li>
+<li>Export CSV and paste/import into the instrument software to run the
+experiment.</li>
+</ol>
+<hr />
+<h2 id="license-and-how-to-cite">License and How to Cite</h2>
+<ul>
+<li>License: MIT</li>
+<li>Citation example: Y. KON, PiXY v1.4.2.
+Zenodo:10.5281/zenodo.18174474</li>
+</ul>
+<hr />
+<h2 id="change-log-excerpt">Change Log (Excerpt)</h2>
+<ul>
+<li><p>v1.4.2 (2026-07-28): Fixed Replace Image re-detection in centroid
+extraction mode and added core/rim pair connector lines in
+overlays.</p></li>
+<li><p>v1.4.1 (2026-06-08): Improved middle-table width/scroll
+stability, synchronized center-row XYZ after extraction adds, improved
+large-number readability, and reset group visibility to all-visible when
+group count changes.</p></li>
+<li><p>v1.4.0 (2026-05-28): Added Start/Finish Centroid Extraction
+workflow, mode-dependent display controls, and updated left-panel group
+operations.</p></li>
+<li><p>v1.3.2 (2026-02-18): Windows EXE distribution, improved UI flip
+processing, added README</p></li>
+<li><p>v1.2.3: Internal bug fixes, improved fiducial residual
+display</p></li>
+</ul>
+<hr />
+<h2 id="appendix">Appendix</h2>
+<ul>
+<li>Glossary: <code>fiducial</code> (reference point),
+<code>centroid</code>, etc.</li>
+<li>References: Key papers/libraries cited for PiXY algorithms and
+dependencies</li>
+<li>Issue submission template: Attach reproduction steps, OS/Python
+version, and log output</li>
+</ul>
+<hr />
+<h2 id="appendix-equations-and-algorithm-details">Appendix: Equations
+and Algorithm Details</h2>
+<p>This appendix describes the main equations omitted from the paper and
+the algorithm logic used by major GUI features in as much detail as
+possible.</p>
+<h3 id="posterization-by-k-means-cluster-segmentation">Posterization by
+K-means (cluster segmentation)</h3>
+<ul>
+<li><p>Objective function (to minimize) <span class="math display">$$J =
+\sum_{k=1}^{K} \sum_{x\in S_k} \|x - \mu_k\|^2$$</span> Here, <span
+class="math inline"><em>x</em></span> is the pixel color vector (e.g.,
+RGB), <span class="math inline"><em>S</em><sub><em>k</em></sub></span>
+is the set of pixels assigned to cluster <span
+class="math inline"><em>k</em></span>, and <span
+class="math inline"><em>μ</em><sub><em>k</em></sub></span> is the
+cluster center (centroid).</p></li>
+<li><p>Iterative procedure (standard Lloyd’s algorithm)</p>
+<ol type="1">
+<li>Set initial centers <span
+class="math inline">{<em>μ</em><sub><em>k</em></sub>}</span> (in this
+implementation, initialization uses a fixed internal RNG for
+reproducibility).</li>
+<li>Assignment step: Assign each pixel <span
+class="math inline"><em>x</em></span> to the nearest center <span
+class="math inline"><em>μ</em><sub><em>k</em></sub></span> (Euclidean
+distance). <span
+class="math display">assign(<em>x</em>) = arg min<sub><em>k</em></sub>∥<em>x</em> − <em>μ</em><sub><em>k</em></sub>∥<sup>2</sup></span></li>
+<li>Update step: Update each cluster center by the mean. <span
+class="math display">$$\mu_k \leftarrow \frac{1}{|S_k|}\sum_{x\in S_k}
+x$$</span></li>
+<li>Convergence: Stop when assignments do not change, when center
+movement is below a threshold, or when max iterations is reached.</li>
+</ol></li>
+<li><p>Implementation notes</p>
+<ul>
+<li>For reproducibility, initialization may use a fixed seed (e.g.,
+<code>cv2.setRNGSeed(12345)</code>); the current version uses a fixed
+seed.</li>
+<li>Selecting <span class="math inline"><em>K</em></span> for the whole
+image depends on heuristics, so the user adjusts
+<code>Number of Groups (K)</code> in the GUI.</li>
+<li>Posterization is visualized by replacing each cluster label with a
+representative color (e.g., the mean color of the cluster).</li>
+</ul></li>
+</ul>
+<h3 id="connected-components-and-centroid-computation">Connected
+components and centroid computation</h3>
+<ul>
+<li>Steps
+<ol type="1">
+<li>Binarization (select target clusters from the posterized
+result)</li>
+<li>Label connected components (4-neighborhood or 8-neighborhood)</li>
+<li>For each component, compute area (pixel count), perimeter, and
+moments</li>
+<li>Compute centroid <span
+class="math inline">(<em>u</em>, <em>v</em>)</span> from first moments
+<span class="math display">$$u = \frac{M_{10}}{M_{00}},\quad v =
+\frac{M_{01}}{M_{00}}$$</span> where <span
+class="math inline"><em>M</em><sub><em>p</em><em>q</em></sub> = ∑<em>x</em><sup><em>p</em></sup><em>y</em><sup><em>q</em></sup></span>
+are region moments and <span
+class="math inline"><em>M</em><sub>00</sub></span> is the area.</li>
+</ol></li>
+</ul>
+<h3 id="size-filter-exclude-by-area">Size filter (exclude by area)</h3>
+<ul>
+<li>Logic
+<ul>
+<li>Measure area <span class="math inline"><em>A</em></span> for each
+labeled region and discard regions below <code>min_area</code> or above
+<code>max_area</code>.</li>
+</ul></li>
+<li>Pseudocode</li>
+</ul>
+<pre><code>for region in labeled_regions:
+    A = region.area
+    if A &lt; min_area or (max_area is not None and A &gt; max_area):
+        discard region
+    else:
+        keep region</code></pre>
+<h3 id="neck-separation-splitting-touching-regions">Neck separation
+(splitting touching regions)</h3>
+<ul>
+<li>Goal: Separate clusters of touching particles into individual
+particles.</li>
+<li>Common approaches (implementation options)
+<ol type="1">
+<li>Distance transform + marker-based watershed
+<ul>
+<li>Compute the distance transform and extract local maxima as
+markers</li>
+<li>Apply watershed using markers as initial labels to split touching
+regions</li>
+</ul></li>
+<li>Split based on convex hull / shape indices
+<ul>
+<li>Detect deviation from convex hull (lower solidity) or low
+circularity as split candidates</li>
+</ul></li>
+<li>Morphological erosion/dilation to detect thin neck parts and split
+there</li>
+</ol></li>
+<li>Implementation parameter
+<ul>
+<li><code>Neck Separation</code> strength (small values = weak
+splitting; larger values = more aggressive splitting)</li>
+</ul></li>
+</ul>
+<h3 id="boundary-offset">Boundary offset</h3>
+<ul>
+<li>To exclude incomplete particles near screen edges or cropped
+regions, trim a fixed number of pixels around the image boundary and
+exclude it from processing.</li>
+</ul>
+<h3 id="shape-complexity-shape-complexity-compactness">Shape complexity
+(Shape Complexity / Compactness)</h3>
+<ul>
+<li>Example metrics
+<ul>
+<li>Circularity from perimeter <span
+class="math inline"><em>P</em></span> and area <span
+class="math inline"><em>A</em></span> <span class="math display">$$C =
+\frac{4\pi A}{P^2}$$</span> Values close to 1 indicate a circle
+(simple); smaller values indicate more complex shapes (indentations,
+elongated regions).</li>
+<li>Solidity (region area / convex hull area) is also useful as a
+complexity measure.</li>
+</ul></li>
+</ul>
+<h3
+id="estimating-the-coordinate-transform-2d-image-3d-stage">Estimating
+the coordinate transform (2D image → 3D stage)</h3>
+<ul>
+<li><p>Model (affine approximation) An affine map from image coordinates
+<span class="math inline">(<em>u</em>, <em>v</em>)</span> to stage
+coordinates <span
+class="math inline">(<em>X</em>, <em>Y</em>, <em>Z</em>)</span> can be
+written as <span class="math display">$$
+\begin{bmatrix} X\\ Y\\ Z \end{bmatrix}
+=
+\begin{bmatrix}
+a_0 &amp; a_1 &amp; a_2\\
+b_0 &amp; b_1 &amp; b_2\\
+c_0 &amp; c_1 &amp; c_2
+\end{bmatrix}
+\begin{bmatrix} 1\\ u\\ v \end{bmatrix}
+$$</span> where each column contains the constant term and coefficients
+for <span class="math inline"><em>u</em>, <em>v</em></span>.</p></li>
+<li><p>Least squares derivation</p>
+<ul>
+<li>Suppose there are <span class="math inline"><em>N</em></span>
+fiducials <span class="math inline"><em>i</em></span>, each with image
+coordinates <span
+class="math inline">(<em>u</em><sub><em>i</em></sub>, <em>v</em><sub><em>i</em></sub>)</span>
+and measured stage coordinates <span
+class="math inline">(<em>X</em><sub><em>i</em></sub>, <em>Y</em><sub><em>i</em></sub>, <em>Z</em><sub><em>i</em></sub>)</span>.</li>
+<li>Let <span
+class="math inline"><em>A</em> ∈ ℝ<sup><em>N</em> × 3</sup></span> with
+rows <span
+class="math inline"><em>A</em><sub><em>i</em></sub> = [1 <em>u</em><sub><em>i</em></sub> <em>v</em><sub><em>i</em></sub>]</span>
+and <span
+class="math inline"><em>B</em> ∈ ℝ<sup><em>N</em> × 3</sup></span> with
+rows <span
+class="math inline"><em>B</em><sub><em>i</em></sub> = [<em>X</em><sub><em>i</em></sub> <em>Y</em><sub><em>i</em></sub> <em>Z</em><sub><em>i</em></sub>]</span>.
+Solving linear regression for each output coordinate yields <span
+class="math inline"><em>P</em> ∈ ℝ<sup>3 × 3</sup></span>. Using the
+normal equation: <span
+class="math display"><em>P</em> = (<em>A</em><sup><em>T</em></sup><em>A</em>)<sup>−1</sup><em>A</em><sup><em>T</em></sup><em>B</em></span></li>
+</ul></li>
+<li><p>Residuals and evaluation</p>
+<ul>
+<li>Compute residual matrix <span
+class="math inline"><em>R</em> = <em>B</em> − <em>A</em><em>P</em></span>
+and the norm <span
+class="math inline">∥<em>r</em><sub><em>i</em></sub>∥</span> of each
+point’s residual vector.</li>
+<li>Evaluate accuracy using RMS (root mean square) or per-axis RMS.</li>
+</ul></li>
+</ul>
+<hr />
+<h2 id="glossary-grouped-as-in-the-japanese-master">Glossary (grouped as
+in the Japanese master)</h2>
+<p>Below are short definitions of key terms used in this manual.</p>
+<p>【A-row】 - Affine transform: A linear transform plus translation for
+image coordinates; used as a 2D→3D approximation in this app.</p>
+<p>【Ka-row】 - K-means: A representative non-hierarchical clustering
+method that partitions color space into <span
+class="math inline"><em>K</em></span> clusters. - Cluster / Group: A set
+of pixels grouped by K-means.</p>
+<p>【Sa-row】 - Fiducial (reference point): A re-identifiable feature
+point on the image that pairs with a measured stage coordinate. -
+Residual: The difference between the predicted coordinate (from the
+estimated transform) and the measured coordinate; used for accuracy
+evaluation.</p>
+<p>【Ta-row】 - Trimming / Boundary Offset: Operation to exclude a fixed
+pixel margin around the image from processing.</p>
+<p>【Na-row】 - Neck separation: An algorithm that detects thin neck
+regions between touching particles and separates them. - Noise: Small
+false regions or misdetections; removed by size filtering via
+<code>min_area</code>.</p>
+<p>【Ha-row】 - Posterize (Posterized): Replace pixels with
+representative cluster colors for simplified display. - Shape
+complexity: A shape index computed from perimeter and area (e.g.,
+circularity, solidity).</p>
+<p>【Ma-row】 - Area: The pixel count of a labeled region; used for size
+filtering. - Centroid: A representative point computed from first
+moments (image coordinates <span
+class="math inline"><em>u</em>, <em>v</em></span>).</p>
+<p>【Ra-row】 - Connected component: A contiguous pixel set in a binary
+image; identified by labeling.</p>
+<p>【Wa-row】 - Workflow: The basic steps of this software: ImageMode
+(candidate extraction) → StageMode (fiducial input / transform
+estimation) → Export (output).</p>
+<hr />
+<p>File generated: 2026-02-18</p>
+

@@ -2,6 +2,12 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.5.0] - 2026-08-05
+- Restored online overlay coordinate control workflow with explicit `Image (u, v)` / `Stage (X, Y)` labeling.
+- Consolidated the image-top control row behavior for online alignment and ensured stage-axis controls (`Right`, `Top`) are shown in stage mode.
+- Improved marker color semantics on overlays so fiducials and manually added targets are easier to distinguish.
+- Updated release metadata and official v1.5.0 document set (manuals EN/JP, quick manuals EN/JP, release marker, and release notes).
+
 ## [1.4.4] - 2026-08-04
 - Release stabilization and UI layout balancing updates for center control rows.
 - Positioning: pre-release for the upcoming 1.5 series.

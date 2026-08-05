@@ -53,26 +53,26 @@ Developer notes
 - The `SegmentControl` helper lives inside `Ui.py` and implements compact segmented buttons used throughout the UI.
 
 Versioning & citation
-- Current release: 1.4.2
+- Current release: 1.5.0
 - Please cite the software when used in published research (see `CITATION.cff`).
 
-Official v1.4.2 document set
+Official v1.5.0 document set
 - Main manuals:
-	- `InstructionManual_EN_v1.4.2.md`
-	- `InstructionManual_JP_v1.4.2.md`
+	- `InstructionManual_EN_v1.5.0.md`
+	- `InstructionManual_JP_v1.5.0.md`
 - Quick manuals:
-	- `documentation/QuickManual_EN_v1.4.2.md`
-	- `documentation/QuickManual_JP_v1.4.2.md`
+	- `documentation/QuickManual_EN_v1.5.0.md`
+	- `documentation/QuickManual_JP_v1.5.0.md`
 - HTML manuals:
-	- `documentation/InstructionManual_EN_v1.4.2.html`
-	- `documentation/InstructionManual_JP_v1.4.2.html`
+	- `documentation/InstructionManual_EN_v1.5.0.html`
+	- `documentation/InstructionManual_JP_v1.5.0.html`
 - Release notes:
-	- `RELEASE_NOTES_v1.4.2.md`
+	- `RELEASE_NOTES_v1.5.0.md`
 
-How to verify you are running the official 1.4.2 build
-- In the app footer, confirm `Ver. 1.4.2` is displayed.
-- Verify `pyproject.toml` has `version = "1.4.2"`.
-- Verify `CITATION.cff` has `version: "1.4.2"`.
+How to verify you are running the official 1.5.0 build
+- In the app footer, confirm `Ver. 1.5.0` is displayed.
+- Verify `pyproject.toml` has `version = "1.5.0"`.
+- Verify `CITATION.cff` has `version: "1.5.0"`.
 
 License
 - MIT — see `LICENSE`.

@@ -106,7 +106,8 @@ def build_zoomed_canvas(overlay_full_img, proc_zoom, view_padding,
     cfg = {
         'pen_width': 2,
         'centroid_fill': QColor(64, 64, 64),
-        'core_fill': QColor(64, 64, 64),
+        'core_fill': QColor(220, 50, 50),
+        'rim_fill': QColor(0, 102, 220),
         'manual_fill': QColor(220, 50, 50),
         'centroid_radius': 4,
         'selected_fill': QColor(0, 102, 255),
@@ -191,10 +192,20 @@ def build_zoomed_canvas(overlay_full_img, proc_zoom, view_padding,
                 continue
             painter.setPen(QPen(QColor(255, 255, 255), cfg['pen_width']))
             fill_color = cfg['manual_fill'] if idx in manual_set else cfg['centroid_fill']
-            # Core/Rim overlay uses label suffix (...c / ...r). Draw core points in red.
+            # pos_list takes priority: 'r' -> blue, 'c' -> red; label suffix is fallback.
             try:
-                if idx not in manual_set and label_texts is not None and 0 <= int(idx) < len(label_texts):
-                    if str(label_texts[int(idx)]).strip().lower().endswith('c'):
+                ptag_r = str(pos_list[idx] if idx < len(pos_list) else '').lower().strip()
+                if ptag_r == 'r':
+                    fill_color = cfg.get('rim_fill', QColor(0, 102, 220))
+                elif ptag_r == 'c':
+                    fill_color = cfg.get('manual_fill' if idx in manual_set else 'core_fill', QColor(220, 50, 50))
+                elif idx in manual_set:
+                    fill_color = cfg['manual_fill']
+                elif label_texts is not None and 0 <= int(idx) < len(label_texts):
+                    lbl_lower = str(label_texts[int(idx)]).strip().lower()
+                    if lbl_lower.endswith('r'):
+                        fill_color = cfg.get('rim_fill', QColor(0, 102, 220))
+                    elif lbl_lower.endswith('c'):
                         fill_color = cfg.get('core_fill', QColor(220, 50, 50))
             except Exception:
                 pass
@@ -243,7 +254,7 @@ def build_zoomed_canvas(overlay_full_img, proc_zoom, view_padding,
             if label_font is not None:
                 painter.setFont(label_font)
             painter.setPen(QPen(QColor(245, 245, 245, 210), 1))
-            painter.drawText(xd + int(r) + 3, yd - int(r) - 2, str(int(ridx) + 1))
+            painter.drawText(xd + int(r) + 3, yd - int(r) - 2, f"Fid. {int(ridx) + 1}")
         except Exception:
             pass
         # Debug: draw full-image coordinates (u,v) near ref points if requested
@@ -262,34 +273,8 @@ def build_zoomed_canvas(overlay_full_img, proc_zoom, view_padding,
         except Exception:
             pass
 
-    # 3) 選択 (skip if excluded)
-    if centroids and selected_index is not None and 0 <= selected_index < len(centroids):
-        grp, xp, yp = centroids[selected_index]
-        is_forced_visible = selected_index in force_visible_set
-        if is_forced_visible or (selected_index not in excluded_set and (visible_group_set is None or int(grp) in visible_group_set)):
-            xf = xp * scale_proc_to_full
-            yf = yp * scale_proc_to_full
-            xd = int(round(xf * display_scale)) + off_x
-            yd = int(round(yf * display_scale)) + off_y
-            painter.setPen(QPen(QColor(255, 255, 255), cfg['pen_width']))
-            painter.setBrush(cfg['selected_fill'])
-            painter.drawEllipse(QPoint(xd, yd), cfg['selected_radius'], cfg['selected_radius'])
-            # 選択重心は少しだけ見やすく番号表示
-            try:
-                if label_font is not None:
-                    painter.setFont(label_font)
-                painter.setPen(QPen(QColor(255, 255, 255, 230), 1))
-                rs = int(cfg['selected_radius'])
-                try:
-                    if label_texts is not None and 0 <= int(selected_index) < len(label_texts):
-                        lbl = str(label_texts[int(selected_index)])
-                    else:
-                        lbl = str(int(selected_index) + 1)
-                except Exception:
-                    lbl = str(int(selected_index) + 1)
-                painter.drawText(xd + rs + 3, yd - rs - 3, lbl)
-            except Exception:
-                pass
+    # 3) 選択強調はUi側の差分オーバーレイでのみ実施する。
+    # ベースキャンバスへ選択状態を書き込むと、選択遷移時に残留しやすいため無効化。
 
     painter.end()
     # return actual drawn image physical size (img_resized) and logical display size (width,height)

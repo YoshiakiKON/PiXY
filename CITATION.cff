@@ -1,7 +1,7 @@
 ﻿cff-version: 1.2.0
 message: "If you use this software, please cite it using the following metadata."
 title: "PiXY: Pixel to stage-XY Coordinate Converter"
-version: "1.5.1"
+version: "1.5.2"
 url: "https://github.com/YoshiakiKON/PiXY"
 repository-code: "https://github.com/YoshiakiKON/PiXY"
 doi: 10.5281/zenodo.18174474
@@ -10,7 +10,7 @@ authors:
   - family-names: "Kon"
     given-names: "Yoshiaki"
     affiliation: "Geological Survey of Japan, AIST"
-date-released: 2026-08-10
+date-released: 2026-08-16
 license: "MIT"
 abstract: >
   PiXY is open-source software that links target selection on microscopy images with physical

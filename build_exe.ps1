@@ -1,9 +1,12 @@
 # PowerShell build script for creating a single-file GUI EXE using PyInstaller
 # Usage (run in project root):
 #   .\build_exe.ps1 -Clean -Name PiXY
+#   .\build_exe.ps1 -Clean -Name PiXY -Flavor Both
 
 param(
     [switch]$Clean,
+    [ValidateSet("OneFile", "OneDir", "Both")]
+    [string]$Flavor = "Both",
     [string]$Name = "PiXY"
 )
 
@@ -95,8 +98,34 @@ if (Test-Path $iconPath) {
 }
 
 $main = "Main.py"
-$cmd = "$python -m PyInstaller --noconfirm --onefile --windowed --name $Name $iconArg $excludeArgs $addDataArgs $main"
-Write-Host "Running: $cmd"
-Invoke-Expression $cmd
 
-Write-Host "Build finished. Check the .\dist\$Name.exe file."
+function Invoke-PyInstallerBuild {
+    param(
+        [Parameter(Mandatory = $true)]
+        [ValidateSet("OneFile", "OneDir")]
+        [string]$BuildFlavor,
+        [Parameter(Mandatory = $true)]
+        [string]$BuildName
+    )
+
+    $flavorArgs = if ($BuildFlavor -eq "OneFile") { "--onefile" } else { "--onedir" }
+    $cmd = "$python -m PyInstaller --noconfirm $flavorArgs --windowed --name $BuildName $iconArg $excludeArgs $addDataArgs $main"
+    Write-Host "Running: $cmd"
+    Invoke-Expression $cmd
+}
+
+switch ($Flavor) {
+    "OneFile" {
+        Invoke-PyInstallerBuild -BuildFlavor OneFile -BuildName $Name
+        Write-Host "Build finished. Check the .\dist\$Name.exe file."
+    }
+    "OneDir" {
+        Invoke-PyInstallerBuild -BuildFlavor OneDir -BuildName $Name
+        Write-Host "Build finished. Check the .\dist\$Name\ folder."
+    }
+    "Both" {
+        Invoke-PyInstallerBuild -BuildFlavor OneFile -BuildName $Name
+        Invoke-PyInstallerBuild -BuildFlavor OneDir -BuildName ($Name + "_dir")
+        Write-Host "Build finished. Check the .\dist\$Name.exe file and the .\dist\$($Name + '_dir')\ folder."
+    }
+}

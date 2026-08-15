@@ -28,6 +28,20 @@ worktrees/
 PiXY-1.1.5/
 v1.1.5.tar.gz
 
+# Backups and archived files
+backups/
+
+# Large test images
+TnihSec*.jpg
+*.bmp
+
+# Runtime state / temporary files
+app.log
+startup_image_guard.json
+tmp_screenshot_xy.b64
+build_log.txt
+centroids_*.txt
+
 # Virtual environments
 .venv/
 env/

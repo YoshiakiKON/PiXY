@@ -40,8 +40,9 @@ FLIP_LABELS = {
 # Control/slider names
 NAME_OVERLAY_RATIO = "Display Mode"
 NAME_POSTERLEVEL = "PosterLevel"
-NAME_MIN_AREA = "Min Area"
+NAME_MIN_AREA = "Particle Size Range (pix)"  # Alias for Particle Size Range
 NAME_TRIM = "Trim (px)"
+NAME_PARTICLE_SIZE_RANGE = "Particle Size Range (pix)"
 
 # Table row labels
 TABLE_LEFT_ROW_LABELS = [

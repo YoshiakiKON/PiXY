@@ -1,0 +1,632 @@
+<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml" lang="" xml:lang="">
+<head>
+  <meta charset="utf-8" />
+  <meta name="generator" content="pandoc" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes" />
+  <title>PiXY 操作マニュアル v1.5.2（日本語）</title>
+  <style>
+    /* Default styles provided by pandoc.
+    ** See https://pandoc.org/MANUAL.html#variables-for-html for config info.
+    */
+    html {
+      color: #1a1a1a;
+      background-color: #fdfdfd;
+    }
+    body {
+      margin: 0 auto;
+      max-width: 36em;
+      padding-left: 50px;
+      padding-right: 50px;
+      padding-top: 50px;
+      padding-bottom: 50px;
+      hyphens: auto;
+      overflow-wrap: break-word;
+      text-rendering: optimizeLegibility;
+      font-kerning: normal;
+    }
+    @media (max-width: 600px) {
+      body {
+        font-size: 0.9em;
+        padding: 12px;
+      }
+      h1 {
+        font-size: 1.8em;
+      }
+    }
+    @media print {
+      html {
+        background-color: white;
+      }
+      body {
+        background-color: transparent;
+        color: black;
+        font-size: 12pt;
+      }
+      p, h2, h3 {
+        orphans: 3;
+        widows: 3;
+      }
+      h2, h3, h4 {
+        page-break-after: avoid;
+      }
+    }
+    p {
+      margin: 1em 0;
+    }
+    a {
+      color: #1a1a1a;
+    }
+    a:visited {
+      color: #1a1a1a;
+    }
+    img {
+      max-width: 100%;
+    }
+    svg {
+      height: auto;
+      max-width: 100%;
+    }
+    h1, h2, h3, h4, h5, h6 {
+      margin-top: 1.4em;
+    }
+    h5, h6 {
+      font-size: 1em;
+      font-style: italic;
+    }
+    h6 {
+      font-weight: normal;
+    }
+    ol, ul {
+      padding-left: 1.7em;
+      margin-top: 1em;
+    }
+    li > ol, li > ul {
+      margin-top: 0;
+    }
+    blockquote {
+      margin: 1em 0 1em 1.7em;
+      padding-left: 1em;
+      border-left: 2px solid #e6e6e6;
+      color: #606060;
+    }
+    code {
+      font-family: Menlo, Monaco, Consolas, 'Lucida Console', monospace;
+      font-size: 85%;
+      margin: 0;
+      hyphens: manual;
+    }
+    pre {
+      margin: 1em 0;
+      overflow: auto;
+    }
+    pre code {
+      padding: 0;
+      overflow: visible;
+      overflow-wrap: normal;
+    }
+    .sourceCode {
+     background-color: transparent;
+     overflow: visible;
+    }
+    hr {
+      border: none;
+      border-top: 1px solid #1a1a1a;
+      height: 1px;
+      margin: 1em 0;
+    }
+    table {
+      margin: 1em 0;
+      border-collapse: collapse;
+      width: 100%;
+      overflow-x: auto;
+      display: block;
+      font-variant-numeric: lining-nums tabular-nums;
+    }
+    table caption {
+      margin-bottom: 0.75em;
+    }
+    tbody {
+      margin-top: 0.5em;
+      border-top: 1px solid #1a1a1a;
+      border-bottom: 1px solid #1a1a1a;
+    }
+    th {
+      border-top: 1px solid #1a1a1a;
+      padding: 0.25em 0.5em 0.25em 0.5em;
+    }
+    td {
+      padding: 0.125em 0.5em 0.25em 0.5em;
+    }
+    header {
+      margin-bottom: 4em;
+      text-align: center;
+    }
+    #TOC li {
+      list-style: none;
+    }
+    #TOC ul {
+      padding-left: 1.3em;
+    }
+    #TOC > ul {
+      padding-left: 0;
+    }
+    #TOC a:not(:hover) {
+      text-decoration: none;
+    }
+    code{white-space: pre-wrap;}
+    span.smallcaps{font-variant: small-caps;}
+    div.columns{display: flex; gap: min(4vw, 1.5em);}
+    div.column{flex: auto; overflow-x: auto;}
+    div.hanging-indent{margin-left: 1.5em; text-indent: -1.5em;}
+    /* The extra [class] is a hack that increases specificity enough to
+       override a similar rule in reveal.js */
+    ul.task-list[class]{list-style: none;}
+    ul.task-list li input[type="checkbox"] {
+      font-size: inherit;
+      width: 0.8em;
+      margin: 0 0.8em 0.2em -1.6em;
+      vertical-align: middle;
+    }
+    .display.math{display: block; text-align: center; margin: 0.5rem auto;}
+    /* CSS for syntax highlighting */
+    html { -webkit-text-size-adjust: 100%; }
+    pre > code.sourceCode { white-space: pre; position: relative; }
+    pre > code.sourceCode > span { display: inline-block; line-height: 1.25; }
+    pre > code.sourceCode > span:empty { height: 1.2em; }
+    .sourceCode { overflow: visible; }
+    code.sourceCode > span { color: inherit; text-decoration: inherit; }
+    div.sourceCode { margin: 1em 0; }
+    pre.sourceCode { margin: 0; }
+    @media screen {
+    div.sourceCode { overflow: auto; }
+    }
+    @media print {
+    pre > code.sourceCode { white-space: pre-wrap; }
+    pre > code.sourceCode > span { text-indent: -5em; padding-left: 5em; }
+    }
+    pre.numberSource code
+      { counter-reset: source-line 0; }
+    pre.numberSource code > span
+      { position: relative; left: -4em; counter-increment: source-line; }
+    pre.numberSource code > span > a:first-child::before
+      { content: counter(source-line);
+        position: relative; left: -1em; text-align: right; vertical-align: baseline;
+        border: none; display: inline-block;
+        -webkit-touch-callout: none; -webkit-user-select: none;
+        -khtml-user-select: none; -moz-user-select: none;
+        -ms-user-select: none; user-select: none;
+        padding: 0 4px; width: 4em;
+        color: #aaaaaa;
+      }
+    pre.numberSource { margin-left: 3em; border-left: 1px solid #aaaaaa;  padding-left: 4px; }
+    div.sourceCode
+      {   }
+    @media screen {
+    pre > code.sourceCode > span > a:first-child::before { text-decoration: underline; }
+    }
+    code span.al { color: #ff0000; font-weight: bold; } /* Alert */
+    code span.an { color: #60a0b0; font-weight: bold; font-style: italic; } /* Annotation */
+    code span.at { color: #7d9029; } /* Attribute */
+    code span.bn { color: #40a070; } /* BaseN */
+    code span.bu { color: #008000; } /* BuiltIn */
+    code span.cf { color: #007020; font-weight: bold; } /* ControlFlow */
+    code span.ch { color: #4070a0; } /* Char */
+    code span.cn { color: #880000; } /* Constant */
+    code span.co { color: #60a0b0; font-style: italic; } /* Comment */
+    code span.cv { color: #60a0b0; font-weight: bold; font-style: italic; } /* CommentVar */
+    code span.do { color: #ba2121; font-style: italic; } /* Documentation */
+    code span.dt { color: #902000; } /* DataType */
+    code span.dv { color: #40a070; } /* DecVal */
+    code span.er { color: #ff0000; font-weight: bold; } /* Error */
+    code span.ex { } /* Extension */
+    code span.fl { color: #40a070; } /* Float */
+    code span.fu { color: #06287e; } /* Function */
+    code span.im { color: #008000; font-weight: bold; } /* Import */
+    code span.in { color: #60a0b0; font-weight: bold; font-style: italic; } /* Information */
+    code span.kw { color: #007020; font-weight: bold; } /* Keyword */
+    code span.op { color: #666666; } /* Operator */
+    code span.ot { color: #007020; } /* Other */
+    code span.pp { color: #bc7a00; } /* Preprocessor */
+    code span.sc { color: #4070a0; } /* SpecialChar */
+    code span.ss { color: #bb6688; } /* SpecialString */
+    code span.st { color: #4070a0; } /* String */
+    code span.va { color: #19177c; } /* Variable */
+    code span.vs { color: #4070a0; } /* VerbatimString */
+    code span.wa { color: #60a0b0; font-weight: bold; font-style: italic; } /* Warning */
+  </style>
+</head>
+<body>
+<header id="title-block-header">
+<h1 class="title">PiXY 操作マニュアル v1.5.2（日本語）</h1>
+</header>
+<h1 id="pixy-操作マニュアル日本語">PiXY 操作マニュアル（日本語）</h1>
+<hr />
+<h2 id="表紙情報">表紙情報</h2>
+<ul>
+<li>ソフト名: PiXY — Pixel to stage-XY Coordinate Converter</li>
+<li>著者: Yoshiaki KON</li>
+<li>リポジトリ: https://github.com/YoshiakiKON/PiXY</li>
+<li>Zenodo DOI: 10.5281/zenodo.18174474</li>
+<li>ライセンス: MIT</li>
+<li>最終更新: 2026-08-16（v1.5.2仕様）</li>
+</ul>
+<hr />
+<h2 id="バージョン情報v1.5.2">バージョン情報（v1.5.2）</h2>
+<p><strong>v1.5.1 からの主な変更:</strong> - UI パラメータ名の統一:
+「Grain Size Threshold」→「Particle Size Range (pix)」に明確化 -
+Boundary Offset、Neck Separation、Shape Complexity
+を一括制御する「統合制御モード」を追加（個別調整モードとの切り替え可能）
+-
+設定ファイルベースのパラメータ管理（<code>pixy_settings.ini</code>）</p>
+<p><strong>v1.5.1 からのアップグレーダーへの注記:</strong> -
+データフォーマットの変更はなし。既存の <code>.pixy</code> ファイルは
+v1.5.2 でも読み込み可能です。 - UI
+の用語表現が統一されましたが、機能に変化はありません。</p>
+<hr />
+<h2 id="概要">概要</h2>
+<ul>
+<li>目的:
+顕微鏡画像上の候補点（重心）と装置上の参照点を結び付け、画像座標を装置ステージ座標へ変換することで、装置稼働時間の短縮と再現性向上を支援する。</li>
+<li>対象: 微小域分析オペレータ、試料解析担当者、装置管理者</li>
+<li>主な機能: 画像読み込み、粒子検出（K-means +
+連結成分）、参照点入力、アフィン変換推定、残差可視化、CSV/クリップボード出力</li>
+<li>効果:
+ターゲッティング作業の前倒し、装置上での手作業削減、より多数点の統計的解析が可能に</li>
+</ul>
+<hr />
+<h2 id="導入インストール起動">導入（インストール・起動）</h2>
+<ul>
+<li>動作環境
+<ul>
+<li>OS: Windows 推奨（配布 EXE あり）。Linux/Mac
+はソース実行で動作する可能性あり。</li>
+<li>Python: 3.8 以上（ソース実行時）</li>
+<li>必要ディスク/メモリ: 画像解像度に依存（大画像は多メモリ推奨）</li>
+</ul></li>
+<li>依存パッケージ: <code>requirements.txt</code> を参照（PySide6,
+OpenCV, NumPy 等）</li>
+<li>インストール（ソース）</li>
+</ul>
+<div class="sourceCode" id="cb1"><pre
+class="sourceCode powershell"><code class="sourceCode powershell"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a>python <span class="op">-</span>m venv <span class="op">.</span><span class="fu">venv</span></span>
+<span id="cb1-2"><a href="#cb1-2" aria-hidden="true" tabindex="-1"></a><span class="op">.</span>\<span class="op">.</span><span class="fu">venv</span>\Scripts\Activate<span class="op">.</span><span class="fu">ps1</span></span>
+<span id="cb1-3"><a href="#cb1-3" aria-hidden="true" tabindex="-1"></a>pip install <span class="op">-</span>r requirements<span class="op">.</span><span class="fu">txt</span></span>
+<span id="cb1-4"><a href="#cb1-4" aria-hidden="true" tabindex="-1"></a>python Main<span class="op">.</span><span class="fu">py</span></span></code></pre></div>
+<ul>
+<li>配布 EXE の実行:
+ダウンロード後、右クリック→[プロパティ]→[ブロック解除]（必要なら）を行い実行</li>
+<li>注意: Python
+実行時は仮想環境を有効にし、<code>requirements.txt</code>
+のバージョンに合わせてください。</li>
+</ul>
+<hr />
+<h2 id="クイックスタート最短手順">クイックスタート（最短手順）</h2>
+<ol type="1">
+<li><code>PiXY_ver152.exe</code> を実行 <strong>←
+バージョン番号更新</strong></li>
+<li><code>New Project</code>
+をクリックし、解析対象の画像ファイルを選択して読み込む。</li>
+<li><code>START Centroid Extraction</code> を押す。</li>
+<li>抽出モード内で、左側検出パラメータ（<code>Number of Groups</code>、<code>Boundary Offset</code>、<code>Neck Separation</code>、<code>Shape Complexity</code>、<code>Particle Size Range</code>
+ヒストグラム）を調整し、重心が正しく検出されることを確認する。</li>
+<li>（推奨）各 <code>Add GroupN</code>
+ボタンの下のテキスト欄に、グループ名を手入力する。</li>
+<li>左側カードの各グループから <code>Add GroupN</code>
+ボタンで候補点を追加し、中央のリストに表示させる。</li>
+<li><code>Number of Groups</code>
+を変更して再計算した場合、手入力したグループ名は最も近い色のグループに自動転送される。複数の名前が1つのグループにマップした場合、ポイント数が多い元のグループが優先される。</li>
+<li><code>Finish Centroid Extraction</code>
+をクリックしてオンライン位置合わせモードに戻る。</li>
+<li><code>Add Fiducial Point</code>
+をクリックし、画像上の参照点をクリックして、テーブルに対応するステージ座標を入力する。3点以上登録し、残差を確認する。全体的に残差が大きい場合、点を追加する。1つの点だけ残差が大きい場合、その点を再確認するか除外する。</li>
+<li>問題がなければ、<code>Export XYZ</code>
+またはクリップボード機能で座標をエクスポートし、装置に渡す。</li>
+</ol>
+<hr />
+<h2 id="ui-概要">UI 概要</h2>
+<ul>
+<li>メインボタン
+<ul>
+<li>左上（プロジェクト操作）
+<ul>
+<li><code>New Project</code>:
+新規プロジェクトを作成し、解析対象の画像ファイルを選択</li>
+<li><code>Load Project</code>: 保存した <code>.pixy</code>
+プロジェクト（画像、パラメータ、結果）を読み込む</li>
+<li><code>Save Project</code>: 現在の状態を <code>.pixy</code>
+ファイルで保存</li>
+</ul></li>
+<li>中央左（参照点操作）
+<ul>
+<li><code>Add Fiducial Point</code>:
+参照点登録モードに入り、画像上の参照点をクリックしてテーブルに追加</li>
+<li><code>Update XY</code>:
+選択した参照点行のステージ座標（<code>Stage X/Y/Z</code>）を更新</li>
+<li><code>Clear</code>（参照点）:
+テーブルの選択行を削除するか値をクリア</li>
+</ul></li>
+<li>左下（粒子検出パラメータ設定）
+<ul>
+<li><code>START Centroid Extraction</code> /
+<code>Finish Centroid Extraction</code>: 抽出モードの開始・終了</li>
+<li>検出パラメータの操作は <code>Advanced</code> モードのみ</li>
+<li><code>Recalculation Trigger</code>（<code>Auto</code> /
+<code>Manual</code>）:
+粒子検出の再計算タイミングを制御。<code>Auto</code>
+は毎回、<code>Manual</code> は <code>ReCalculate</code>
+クリック時のみ。</li>
+<li><strong>統合制御モード</strong>（v1.5.2新機能）:
+チェックボックスで以下を切り替え:
+<ul>
+<li><strong>統合制御 ON</strong>:
+単一の「Aggressiveness」スライダー（0-10）で3つのパラメータをスケーリング</li>
+<li><strong>統合制御 OFF</strong>:
+各パラメータを個別調整（微調整モード）</li>
+</ul></li>
+<li><code>Number of Groups (K)</code> — K-means クラスタ数。推奨
+3-10（色の数に応じて試す；過分割を避ける）</li>
+<li><code>Boundary Offset</code> —
+画像境界近くの不完全領域を除外するオフセット</li>
+<li><code>Neck Separation</code> — 隣接粒子の分離強度（大きい =
+より強く分離）</li>
+<li><code>Shape Complexity</code> —
+複雑形状領域の抑制/分割パラメータ</li>
+<li><code>Particle Size Range (pix)</code> —
+ヒストグラムベースの最小/最大面積選択（「Grain Size
+Threshold」から改名）<strong>← 改名</strong></li>
+<li>グループカード（左下）
+<ul>
+<li><code>Add GroupN</code>: グループ N の検出点を中央リストに追加</li>
+<li><code>Group name</code> 入力欄（各 <code>Add GroupN</code> の下）:
+そのグループに手入力の表示名を割り当て</li>
+<li><code>Show</code> / <code>Hide</code>:
+グループ単位の表示/非表示切り替え</li>
+<li><code>Add ALL Group to List</code>:
+全グループを中央リストに一括追加</li>
+<li><code>Number of Groups</code>
+や濃淡レベル変更時、カスタムグループ表示（<code>Show</code>/<code>Hide</code>）がリセットされ全グループが表示される</li>
+<li><code>Number of Groups</code>
+変更で重心が再計算された場合、手入力名は最も近い色のグループに継承；複数の名前が1つのグループにマップした場合、ポイント数が多い元のグループが優先</li>
+</ul></li>
+</ul></li>
+<li>中央（候補点テーブル）
+<ul>
+<li><code>Export XYZ</code>:
+候補点を推定変換式でステージ座標（X,Y,Z）に変換し CSV で保存</li>
+<li><code>Clipboard</code>:
+出力をクリップボードにタブ区切り形式（TSV）で複写；装置ソフトに直貼り可能</li>
+<li><code>Add Target</code>:
+画像上に手動で対象点を追加（自動検出されなかった点を追加したい場合）</li>
+<li><code>Update u, v</code>: 選択対象点行の画像座標（u,
+v）を、現在のクリック位置に更新</li>
+<li><code>Clear</code>（対象点）:
+対象点選択をクリアするか、一時的な指定をリセット</li>
+</ul>
+注記（<code>Add Target</code> / <code>Update u, v</code>
+とグループ表示）
+<ul>
+<li><code>Update u, v</code>（対象点更新）は現在ベータ機能です。内部動作と
+UI は将来のバージョンで変更される可能性があります。</li>
+<li><code>Add Target</code> で追加された点は手動対象点として扱われ、常に
+<code>Group 0</code> に属します。</li>
+</ul></li>
+</ul></li>
+</ul>
+<hr />
+<h2 id="パラメータチューニングガイド">パラメータチューニングガイド</h2>
+<h3
+id="重心検出パラメータクイックリファレンス">重心検出パラメータ（クイックリファレンス）</h3>
+<table>
+<colgroup>
+<col style="width: 55%" />
+<col style="width: 15%" />
+<col style="width: 15%" />
+<col style="width: 15%" />
+</colgroup>
+<thead>
+<tr>
+<th>パラメータ</th>
+<th>一般的な範囲</th>
+<th>推奨デフォルト</th>
+<th>効果</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>Number of Groups (K)</code></td>
+<td>2–20</td>
+<td>4–5</td>
+<td>高い値 = より多くの色グループを分割；過分割に注意</td>
+</tr>
+<tr>
+<td><code>Boundary Offset</code></td>
+<td>0–10 px</td>
+<td>0–2</td>
+<td>画像端を除外；不完全領域を防ぐ</td>
+</tr>
+<tr>
+<td><code>Neck Separation</code></td>
+<td>0–10</td>
+<td>0–5</td>
+<td>高い値 = より強く隣接粒子を分離；処理時間増加</td>
+</tr>
+<tr>
+<td><code>Shape Complexity</code></td>
+<td>0–10</td>
+<td>3–5</td>
+<td>高い値 = 細かい詳細を保持；低い値 = 輪郭を平滑化</td>
+</tr>
+<tr>
+<td><code>Particle Size Range (pix)</code></td>
+<td>10–5000 px</td>
+<td>20–100 px</td>
+<td>小ノイズ（最小値以下）と大きなアーティファクト（最大値以上）をフィルタ。<strong>←
+改名</strong></td>
+</tr>
+</tbody>
+</table>
+<h3 id="チューニング手順">チューニング手順</h3>
+<ol type="1">
+<li>最初に <code>K</code> と <code>Particle Size Range</code>
+を調整（上記推奨範囲参照）</li>
+<li>目的の粒子が検出され、不要なノイズが除去されていることを確認</li>
+<li>隣接粒子が多く残る場合のみ、<code>Neck Separation</code>
+等を調整（Advanced パラメータは処理遅延の原因になり得る）</li>
+<li>手動再計算が必要な場合、<code>Manual</code>
+トリガーモードを使用してラグを回避</li>
+</ol>
+<h3 id="統合制御モードv1.5.2新機能">統合制御モード（v1.5.2新機能）</h3>
+<ul>
+<li>「統合制御」をチェックすると、単一の「Aggressiveness」スライダー（0-10）が有効に</li>
+<li><code>Boundary Offset</code>、<code>Neck Separation</code>、<code>Shape Complexity</code>
+を一括スケーリング</li>
+<li>急速なパラメータスイープに便利；微調整は個別モードに切り替えて実施</li>
+<li>プリセット値は <code>pixy_settings.ini</code>
+で定義され、カスタマイズ可能</li>
+</ul>
+<hr />
+<h2 id="参照点登録オンラインモード">参照点登録（オンラインモード）</h2>
+<ul>
+<li><code>Add Fiducial Point</code>
+をクリックして参照点登録モードに入る</li>
+<li>画像上の各参照点マーカーをクリック</li>
+<li>各参照点に対し、対応するステージ座標（X, Y, Z）をテーブルに入力</li>
+<li>最低3つ（非一直線上の3点が必須）の参照点を登録</li>
+<li>残差を確認（予測位置と観測位置の差分）:
+<ul>
+<li>全体的に小さければ、変換は良好</li>
+<li>1つの点だけ他より大きければ、その参照点を再確認するか除外</li>
+</ul></li>
+<li>変換を確認後、<code>Export XYZ</code>
+で対象点座標をエクスポート</li>
+</ul>
+<hr />
+<h2 id="トラブルシューティング">トラブルシューティング</h2>
+<h3
+id="重心が検出されないまたはノイズが多い">重心が検出されない、またはノイズが多い</h3>
+<ol type="1">
+<li><code>Particle Size Range</code> を確認・調整 —
+ノイズを除去し、粒子を保持する範囲を設定</li>
+<li>背景と粒子が混在している場合、<code>K</code>
+を増やして色グループをさらに分割</li>
+<li>画像品質を確認（コントラスト、シャープネス）— PiXY
+は高コントラスト画像で最良の結果が得られる</li>
+</ol>
+<h3
+id="重心は検出されるが断片化している">重心は検出されるが断片化している</h3>
+<ol type="1">
+<li><code>Neck Separation</code> を増やして隣接粒子を分離</li>
+<li>粒子が複雑な形状の場合、<code>Shape Complexity</code>
+を増やして詳細を保持</li>
+<li><code>Boundary Offset</code> を確認 —
+端が部分領域を切っていないか確認</li>
+</ol>
+<h3
+id="参照点登録後に大きな残差が生じている">参照点登録後に大きな残差が生じている</h3>
+<ol type="1">
+<li>ステージ座標を再確認 — 入力誤りは一般的な原因</li>
+<li>参照点を追加（最低3-5点推奨）— より堅牢な推定のため</li>
+<li>画像品質とズームを確認 — 参照点が明確に見える状態か確認</li>
+<li>残差が特に大きな参照点は除外を検討</li>
+</ol>
+<hr />
+<h2 id="ファイル形式">ファイル形式</h2>
+<h3 id="プロジェクトファイル.pixy">プロジェクトファイル（.pixy）</h3>
+<p><code>.pixy</code> ファイルは JSON
+ベースのプロジェクトアーカイブで以下を含む: - 画像データ（Base64
+エンコード） - 検出された対象重心とメタデータ - 参照点とそのステージ座標
+- パラメータ設定（ズーム、回転、検出パラメータ） - 抽出モード（Basic /
+Advanced）</p>
+<h3 id="エクスポート形式csv">エクスポート形式（CSV）</h3>
+<p><code>Export XYZ</code> で出力されるタブ区切り CSV の列構成:</p>
+<pre><code>Target_ID  Pixel_X  Pixel_Y  Stage_X  Stage_Y  Stage_Z</code></pre>
+<hr />
+<h2
+id="設定ファイルpixy_settings.ini">設定ファイル（pixy_settings.ini）</h2>
+<p><em>v1.5.2新規追加</em></p>
+<p><code>pixy_settings.ini</code> で以下をカスタマイズ可能: -
+<strong>Aggressiveness プリセット</strong>（統合制御モード）: 各レベル
+0-10 が特定の
+<code>Boundary Offset</code>、<code>Neck Separation</code>、<code>Shape Complexity</code>
+の組み合わせにマップ - <strong>UI デフォルト</strong>: デフォルト
+Aggressiveness レベル、統合制御の有効/無効</p>
+<p>例:</p>
+<div class="sourceCode" id="cb3"><pre
+class="sourceCode ini"><code class="sourceCode ini"><span id="cb3-1"><a href="#cb3-1" aria-hidden="true" tabindex="-1"></a><span class="kw">[Aggressiveness]</span></span>
+<span id="cb3-2"><a href="#cb3-2" aria-hidden="true" tabindex="-1"></a><span class="dt">preset_0  </span><span class="ot">=</span><span class="st"> 0, 0, 3</span></span>
+<span id="cb3-3"><a href="#cb3-3" aria-hidden="true" tabindex="-1"></a><span class="dt">preset_1  </span><span class="ot">=</span><span class="st"> 1, 0, 3</span></span>
+<span id="cb3-4"><a href="#cb3-4" aria-hidden="true" tabindex="-1"></a><span class="dt">...</span></span>
+<span id="cb3-5"><a href="#cb3-5" aria-hidden="true" tabindex="-1"></a><span class="dt">preset_5  </span><span class="ot">=</span><span class="st"> 5, 3, 5</span></span>
+<span id="cb3-6"><a href="#cb3-6" aria-hidden="true" tabindex="-1"></a><span class="dt">...</span></span>
+<span id="cb3-7"><a href="#cb3-7" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb3-8"><a href="#cb3-8" aria-hidden="true" tabindex="-1"></a><span class="kw">[UI]</span></span>
+<span id="cb3-9"><a href="#cb3-9" aria-hidden="true" tabindex="-1"></a><span class="dt">default_aggressiveness </span><span class="ot">=</span><span class="st"> </span><span class="dv">5</span></span>
+<span id="cb3-10"><a href="#cb3-10" aria-hidden="true" tabindex="-1"></a><span class="dt">unified_control_default </span><span class="ot">=</span><span class="st"> </span><span class="kw">True</span></span></code></pre></div>
+<p>このファイルを編集して PiXY を再起動すれば、変更が反映される。</p>
+<hr />
+<h2 id="応用トピック">応用トピック</h2>
+<h3 id="バッチ処理">バッチ処理</h3>
+<p>PiXY
+は対話的な画像解析用に設計されており、バッチ処理には向いていません。複数画像の抽出が必要な場合:
+1. 画像ファイルリストを準備 2. 各画像に対し GUI で対話的に実行、または
+<code>CalcCentroid.py</code> などの基盤モジュールを使用したカスタム
+Python スクリプトを作成</p>
+<h3 id="カスタム色空間">カスタム色空間</h3>
+<p>現在 PiXY は RGB 色空間をデフォルトで使用。HSV、Lab
+等の色空間対応は将来版で追加される予定。</p>
+<h3
+id="オンラインモード位置合わせアルゴリズム">オンラインモード位置合わせアルゴリズム</h3>
+<p>PiXY は<strong>アフィン変換</strong>（2D
+回転、スケール、並進、オプションで Z 平面方程式）を推定し、画像座標（u,
+v）をステージ座標（X, Y,
+Z）にマップします。推定は残差の最小二乗最小化を使用。</p>
+<hr />
+<h2 id="ヒントコツ">ヒント・コツ</h2>
+<ul>
+<li><strong>キーボードショートカット</strong>: Ctrl
+キーを押しながらスクロールホイールで画像をズーン/アウト</li>
+<li><strong>高速コピー</strong>: <code>Clipboard</code>
+ボタンでタブ区切り座標をコピー；スプレッドシートや装置ソフトに直接貼付可</li>
+<li><strong>グループ命名</strong>:
+グループに意味のある名前（例：「マトリックス」「介在物」）を付けると、ドキュメント作成が容易</li>
+<li><strong>プロジェクト保存</strong>: こまめに保存 <code>.pixy</code>
+ファイルには全ての作業とパラメータが保持される</li>
+</ul>
+<hr />
+<h2 id="引用">引用</h2>
+<p>PiXY を発表論文に使用した場合、以下の引用をお願いします:</p>
+<pre><code>@software{KON_PiXY,
+  author = {Yoshiaki KON},
+  title = {PiXY: Pixel-to-Stage XY Coordinate Converter},
+  url = {https://github.com/YoshiakiKON/PiXY},
+  doi = {10.5281/zenodo.18174474},
+  version = {1.5.2},
+  year = {2026},
+}</code></pre>
+<hr />
+<h2 id="ライセンス">ライセンス</h2>
+<p>PiXY は MIT ライセンスの下で配布されています。詳細は
+<code>LICENSE</code> ファイルを参照してください。</p>
+<hr />
+<p><strong>マニュアルバージョン</strong>: 1.5.2<br />
+<strong>最終更新</strong>: 2026-08-16<br />
+<strong>ステータス</strong>: リリース版</p>
+<h3 id="v1.5.2-リリース時の-todo">v1.5.2 リリース時の TODO</h3>
+<ul class="task-list">
+<li><label><input
+type="checkbox" />マニュアル内のバージョン番号を「1.5.2
+ドラフト」から本体に変更</label></li>
+<li><label><input
+type="checkbox" />「最終更新」日付を実際のリリース日に更新</label></li>
+<li><label><input type="checkbox" /><code>.exe</code>
+ファイル名の参照を更新（必要に応じて）</label></li>
+<li><label><input type="checkbox" />すべての UI
+スクリーンショット・説明が実装と一致していることを確認</label></li>
+<li><label><input type="checkbox" />Pandoc で HTML
+に変換し、フォーマットを確認</label></li>
+<li><label><input type="checkbox" />git に commit して
+<code>v1.5.2</code> タグを付与</label></li>
+</ul>
+</body>
+</html>

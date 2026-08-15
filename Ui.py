@@ -548,7 +548,7 @@ class AreaHistogramWidget(QWidget):
             painter.setPen(QPen(QColor("#000")))
             # Single-line title (no note line)
             painter.setFont(self.font())
-            painter.drawText(QRect(0, 0, max(10, w), max(10, int(margin_t - 6))), Qt.AlignLeft | Qt.AlignVCenter, "Grain Size Threshold (pix)")
+            painter.drawText(QRect(0, 0, max(10, w), max(10, int(margin_t - 6))), Qt.AlignLeft | Qt.AlignVCenter, "Particle Size Range (pix)")
         except Exception:
             pass
 
@@ -1229,11 +1229,11 @@ class CentroidFinderWindow(QMainWindow):
         # Internal keys should be code-safe identifiers; change display text here.
         self.display_labels = {
             'overlay_ratio': 'Display Mode',
-            'poster_level': 'Number of Groups',
-            'min_area': 'Minimum Grain Area (pix)',
+
+            'min_area': 'Particle Size Range (pix)',
             'trim': 'Boundary Offset (pix)'
         }
-        self.levels_value = 4          # PosterLevel の内部値
+
         self.show_boundaries = False   # 通常モード既定: 境界線は非表示
         self.view_orientation = 'Image'  # Coordinate (Image/Stage)
 
@@ -1638,16 +1638,14 @@ class CentroidFinderWindow(QMainWindow):
         self.control_area_width = 100
         self.max_levels = 255
 
-        # 残すのは PosterLevel と Min Area に加え、Trim(pix)
+        # 残すのは PosterLevel と Particle Size Range に加え、Trim(pix)
         # Use code-safe internal keys for widgets; display text comes from self.display_labels
-        self.edit_levels, self.slider_levels = self._make_spin_slider('poster_level', 4, 2, 20, 1)
         self.edit_min_area, self.slider_min_area = self._make_spin_slider('min_area', 50, 10, 5000, 1)
         self.edit_trim, self.slider_trim = self._make_spin_slider('trim', 0, 0, 10, 1)
         self.edit_neck_sep, self.slider_neck_sep = self._make_spin_slider('neck_separation', 0, 0, 10, 1)
         self.edit_shape_complex, self.slider_shape_complex = self._make_spin_slider('shape_complexity', 3, 0, 10, 1)
 
-        # PosterLevelの内部値（スライダー上限20を超えても保持）
-        self.levels_value = self.slider_levels.value()
+
 
         # ボタン（画像開く / エクスポート）を作る（配置は後で画像ヘッダ等へ移動する）
         self.btn_open = QPushButton("Export Image")
@@ -2240,7 +2238,7 @@ class CentroidFinderWindow(QMainWindow):
                 try:
                     # Bold only the left-column labels requested by user
                     f = QFont(ctrl_font)
-                    if str(key) in ('poster_level', 'min_area'):
+                    if str(key) in ('min_area',):
                         f.setBold(True)
                     lbl.setFont(f)
                 except Exception:
@@ -2326,7 +2324,7 @@ class CentroidFinderWindow(QMainWindow):
         # Helper to build Number of Groups row for Basic mode
         def _build_num_groups_row_widget():
             try:
-                self.edit_num_groups, self.slider_num_groups = self._make_spin_slider('num_groups', 2, 2, 20, 1)
+                self.edit_num_groups, self.slider_num_groups = self._make_spin_slider('num_groups', 2, 2, 10, 1)
                 r = _build_control_row('num_groups', 'Number of Groups', self.edit_num_groups, self.slider_num_groups, self._nudge_num_groups, self._nudge_num_groups)
                 if r is not None:
                     roww = QWidget()
@@ -2344,21 +2342,7 @@ class CentroidFinderWindow(QMainWindow):
         except Exception:
             self.row_num_groups = None
 
-        # PosterLevel row (Advanced)
-        try:
-            r = _build_control_row('poster_level', self.display_labels.get('poster_level', STR.NAME_POSTERLEVEL), self.edit_levels, self.slider_levels, self._nudge_levels, self._nudge_levels)
-            if r is not None:
-                try:
-                    self.row_poster_level = QWidget()
-                    self.row_poster_level.setLayout(r)
-                    sliders_layout.addWidget(self.row_poster_level)
-                except Exception:
-                    sliders_layout.addLayout(r)
-                    self.row_poster_level = None
-        except Exception:
-            pass
-
-        # Min Area row (Common)
+        # Particle Size Range row (Common)
         try:
             r = _build_control_row('min_area', self.display_labels.get('min_area', STR.NAME_MIN_AREA), self.edit_min_area, self.slider_min_area, self._nudge_min_area, self._nudge_min_area)
             if r is not None:
@@ -4078,7 +4062,7 @@ class CentroidFinderWindow(QMainWindow):
             if hasattr(self, 'slider_num_groups') and getattr(self, 'slider_num_groups', None) is not None:
                 levels = int(self.slider_num_groups.value())
             else:
-                levels = int(getattr(self, 'slider_levels', None).value() if hasattr(self, 'slider_levels') else 2)
+                levels = 2
         except Exception:
             levels = 2
 
@@ -4805,22 +4789,18 @@ class CentroidFinderWindow(QMainWindow):
                 self.row_num_groups.setVisible(True)
         except Exception:
             pass
-        # Min Area slider is hidden; selection is done on the histogram in both modes.
+        # Particle Size Range slider is hidden; selection is done on the histogram in both modes.
         try:
             if getattr(self, 'row_min_area', None) is not None:
                 self.row_min_area.setVisible(False)
         except Exception:
             pass
         # Advanced-only
-        for name in ('row_poster_level', 'row_trim', 'row_neck_sep', 'row_shape_complex'):
+        for name in ('row_trim', 'row_neck_sep', 'row_shape_complex'):
             try:
                 w = getattr(self, name, None)
                 if w is not None:
-                    # Posterization Steps row is deprecated; keep hidden.
-                    if name == 'row_poster_level':
-                        w.setVisible(False)
-                    else:
-                        w.setVisible(not show_basic)
+                    w.setVisible(not show_basic)
             except Exception:
                 pass
         try:
@@ -4850,10 +4830,8 @@ class CentroidFinderWindow(QMainWindow):
         except Exception:
             pass
         slider.valueChanged.connect(lambda v, e=edit, k=str(name): self._sync_from_slider(e, v, key=k))
-        # name is expected to be a code-safe key (e.g. 'poster_level', 'min_area')
+        # name is expected to be a code-safe key (e.g. 'min_area')
         try:
-            if name == 'poster_level':
-                slider._wheel_scale = 1.0 / 3.0
             if name == 'min_area':
                 approx_div = 8
                 tick_int = max(1, int(round((mx - mn) / approx_div)))
@@ -4881,106 +4859,9 @@ class CentroidFinderWindow(QMainWindow):
             pass
         edit.returnPressed.connect(lambda e=edit, s=slider: self._sync_from_edit(e, s))
 
-    # PosterLevel専用の配線（上限20超の内部値を保持）
-    def _wire_levels(self):
-        # フォーカスアウトでは適用しない。Enter確定のみ。
-        try:
-            if getattr(qt_compat, 'using', '') == 'PyQt5':
-                try:
-                    self.edit_levels.editingFinished.disconnect()
-                except Exception:
-                    pass
-        except Exception:
-            pass
-        self.edit_levels.returnPressed.connect(self._on_levels_edit_finished)
-        try:
-            if getattr(qt_compat, 'using', '') == 'PyQt5':
-                try:
-                    self.slider_levels.valueChanged.disconnect()
-                except Exception:
-                    pass
-        except Exception:
-            pass
-        self.slider_levels.valueChanged.connect(self._on_levels_slider_changed)
 
-    # PosterLevelスライダー変更ハンドラ
-    def _on_levels_slider_changed(self, v):
-        # スライダー操作は上限20まで。内部値も更新
-        self.levels_value = int(v)
-        self.edit_levels.setText(str(self.levels_value))
-        try:
-            self._reset_group_visibility_on_group_count_change()
-        except Exception:
-            pass
-        self.schedule_update()
-
-    # PosterLevel編集確定ハンドラ
-    def _on_levels_edit_finished(self):
-        text = self.edit_levels.text().strip()
-        try:
-            v = int(text)
-        except ValueError:
-            v = self.levels_value
-        if v < 1:
-            v = 1
-        if v > self.max_levels:
-            v = self.max_levels
-        self.levels_value = v
-        clamped = max(self.slider_levels.minimum(), min(self.slider_levels.maximum(), v))
-        try:
-            self.slider_levels.blockSignals(True)
-        except Exception:
-            pass
-        try:
-            self.slider_levels.setValue(clamped)
-        finally:
-            try:
-                self.slider_levels.blockSignals(False)
-            except Exception:
-                pass
-        self.edit_levels.setText(str(self.levels_value))
-        try:
-            self._reset_group_visibility_on_group_count_change()
-        except Exception:
-            pass
         self.schedule_update(force=True)
 
-    # PosterLevelの+/-ボタンで値を調整
-    def _nudge_levels(self, delta):
-        try:
-            cur = int(self.edit_levels.text().strip())
-        except Exception:
-            try:
-                cur = int(getattr(self, 'levels_value', 4))
-            except Exception:
-                cur = 4
-        try:
-            d = int(delta)
-        except Exception:
-            d = 0
-
-        v = cur + d
-        if v < 1:
-            v = 1
-        if v > self.max_levels:
-            v = self.max_levels
-
-        self.levels_value = v
-        try:
-            self.edit_levels.setText(str(v))
-        except Exception:
-            pass
-        try:
-            # クリップ範囲内ならスライダーも同期
-            if v <= self.slider_levels.maximum():
-                self.slider_levels.setValue(v)
-        except Exception:
-            pass
-        try:
-            self._reset_group_visibility_on_group_count_change()
-        except Exception:
-            pass
-        self.schedule_update()
 
     def _reset_group_visibility_on_group_count_change(self):
         """Reset per-group visibility filters when clustering group count changes."""
@@ -5031,25 +4912,6 @@ class CentroidFinderWindow(QMainWindow):
                 pass
             pass
 
-        # Keep internal value even if it exceeds slider maximum
-        self.levels_value = int(v)
-        try:
-            self.edit_levels.setText(str(self.levels_value))
-        except Exception:
-            pass
-
-        clamped = max(self.slider_levels.minimum(), min(self.slider_levels.maximum(), self.levels_value))
-        try:
-            self.slider_levels.blockSignals(True)
-        except Exception:
-            pass
-        try:
-            self.slider_levels.setValue(int(clamped))
-        finally:
-            try:
-                self.slider_levels.blockSignals(False)
-            except Exception:
-                pass
         try:
             self._reset_group_visibility_on_group_count_change()
         except Exception:
@@ -5292,7 +5154,7 @@ class CentroidFinderWindow(QMainWindow):
                 pass
 
         try:
-            if key in ('num_groups', 'poster_level'):
+            if key in ('num_groups',):
                 self._reset_group_visibility_on_group_count_change()
         except Exception:
             pass
@@ -5338,7 +5200,7 @@ class CentroidFinderWindow(QMainWindow):
         except Exception:
             skey = None
         try:
-            if skey in ('num_groups', 'poster_level'):
+            if skey in ('num_groups',):
                 self._reset_group_visibility_on_group_count_change()
         except Exception:
             pass
@@ -5682,20 +5544,7 @@ class CentroidFinderWindow(QMainWindow):
                         self.edit_num_groups.setText(str(int(lv)))
                 except Exception:
                     pass
-                try:
-                    self.levels_value = int(lv)
-                    if getattr(self, 'edit_levels', None) is not None:
-                        self.edit_levels.setText(str(int(lv)))
-                    if getattr(self, 'slider_levels', None) is not None:
-                        self.slider_levels.blockSignals(True)
-                        self.slider_levels.setValue(max(self.slider_levels.minimum(), min(self.slider_levels.maximum(), int(lv))))
-                        self.slider_levels.blockSignals(False)
-                except Exception:
-                    try:
-                        if getattr(self, 'slider_levels', None) is not None:
-                            self.slider_levels.blockSignals(False)
-                    except Exception:
-                        pass
+
 
                 try:
                     ah = getattr(self, 'area_hist', None)
@@ -9413,7 +9262,7 @@ class CentroidFinderWindow(QMainWindow):
             # Fallback before first compute/cache build.
             if not groups:
                 try:
-                    n_cfg = int(getattr(self, 'slider_num_groups', None).value() if getattr(self, 'slider_num_groups', None) is not None else getattr(self, 'levels_value', 0))
+                    n_cfg = int(getattr(self, 'slider_num_groups', None).value() if getattr(self, 'slider_num_groups', None) is not None else 0)
                 except Exception:
                     n_cfg = 0
                 if n_cfg > 0:
@@ -15267,7 +15116,7 @@ class CentroidFinderWindow(QMainWindow):
             data["levels"] = int(p.get("levels", 4))
         except Exception:
             try:
-                data["levels"] = int(getattr(self, 'slider_num_groups', None).value() if getattr(self, 'slider_num_groups', None) is not None else getattr(self, 'levels_value', 4))
+                data["levels"] = int(getattr(self, 'slider_num_groups', None).value() if getattr(self, 'slider_num_groups', None) is not None else 4)
             except Exception:
                 data["levels"] = 4
         try:
@@ -15455,14 +15304,7 @@ class CentroidFinderWindow(QMainWindow):
                     self.edit_num_groups.setText(str(int(v_num)))
                 except Exception:
                     pass
-            # Advanced mode control (PosterLevel)
-            self.levels_value = lv
-            if getattr(self, 'slider_levels', None) is not None:
-                self.slider_levels.setValue(max(self.slider_levels.minimum(), min(self.slider_levels.maximum(), lv)))
-            try:
-                self.edit_levels.setText(str(lv))
-            except Exception:
-                pass
+            # Advanced mode control (PosterLevel) deprecated; num_groups is the sole source.
         except Exception:
             pass
         for attr, key, default in [

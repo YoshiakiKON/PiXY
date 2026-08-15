@@ -1,0 +1,670 @@
+<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml" lang="" xml:lang="">
+<head>
+  <meta charset="utf-8" />
+  <meta name="generator" content="pandoc" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes" />
+  <title>PiXY Operation Manual v1.5.2 (English)</title>
+  <style>
+    /* Default styles provided by pandoc.
+    ** See https://pandoc.org/MANUAL.html#variables-for-html for config info.
+    */
+    html {
+      color: #1a1a1a;
+      background-color: #fdfdfd;
+    }
+    body {
+      margin: 0 auto;
+      max-width: 36em;
+      padding-left: 50px;
+      padding-right: 50px;
+      padding-top: 50px;
+      padding-bottom: 50px;
+      hyphens: auto;
+      overflow-wrap: break-word;
+      text-rendering: optimizeLegibility;
+      font-kerning: normal;
+    }
+    @media (max-width: 600px) {
+      body {
+        font-size: 0.9em;
+        padding: 12px;
+      }
+      h1 {
+        font-size: 1.8em;
+      }
+    }
+    @media print {
+      html {
+        background-color: white;
+      }
+      body {
+        background-color: transparent;
+        color: black;
+        font-size: 12pt;
+      }
+      p, h2, h3 {
+        orphans: 3;
+        widows: 3;
+      }
+      h2, h3, h4 {
+        page-break-after: avoid;
+      }
+    }
+    p {
+      margin: 1em 0;
+    }
+    a {
+      color: #1a1a1a;
+    }
+    a:visited {
+      color: #1a1a1a;
+    }
+    img {
+      max-width: 100%;
+    }
+    svg {
+      height: auto;
+      max-width: 100%;
+    }
+    h1, h2, h3, h4, h5, h6 {
+      margin-top: 1.4em;
+    }
+    h5, h6 {
+      font-size: 1em;
+      font-style: italic;
+    }
+    h6 {
+      font-weight: normal;
+    }
+    ol, ul {
+      padding-left: 1.7em;
+      margin-top: 1em;
+    }
+    li > ol, li > ul {
+      margin-top: 0;
+    }
+    blockquote {
+      margin: 1em 0 1em 1.7em;
+      padding-left: 1em;
+      border-left: 2px solid #e6e6e6;
+      color: #606060;
+    }
+    code {
+      font-family: Menlo, Monaco, Consolas, 'Lucida Console', monospace;
+      font-size: 85%;
+      margin: 0;
+      hyphens: manual;
+    }
+    pre {
+      margin: 1em 0;
+      overflow: auto;
+    }
+    pre code {
+      padding: 0;
+      overflow: visible;
+      overflow-wrap: normal;
+    }
+    .sourceCode {
+     background-color: transparent;
+     overflow: visible;
+    }
+    hr {
+      border: none;
+      border-top: 1px solid #1a1a1a;
+      height: 1px;
+      margin: 1em 0;
+    }
+    table {
+      margin: 1em 0;
+      border-collapse: collapse;
+      width: 100%;
+      overflow-x: auto;
+      display: block;
+      font-variant-numeric: lining-nums tabular-nums;
+    }
+    table caption {
+      margin-bottom: 0.75em;
+    }
+    tbody {
+      margin-top: 0.5em;
+      border-top: 1px solid #1a1a1a;
+      border-bottom: 1px solid #1a1a1a;
+    }
+    th {
+      border-top: 1px solid #1a1a1a;
+      padding: 0.25em 0.5em 0.25em 0.5em;
+    }
+    td {
+      padding: 0.125em 0.5em 0.25em 0.5em;
+    }
+    header {
+      margin-bottom: 4em;
+      text-align: center;
+    }
+    #TOC li {
+      list-style: none;
+    }
+    #TOC ul {
+      padding-left: 1.3em;
+    }
+    #TOC > ul {
+      padding-left: 0;
+    }
+    #TOC a:not(:hover) {
+      text-decoration: none;
+    }
+    code{white-space: pre-wrap;}
+    span.smallcaps{font-variant: small-caps;}
+    div.columns{display: flex; gap: min(4vw, 1.5em);}
+    div.column{flex: auto; overflow-x: auto;}
+    div.hanging-indent{margin-left: 1.5em; text-indent: -1.5em;}
+    /* The extra [class] is a hack that increases specificity enough to
+       override a similar rule in reveal.js */
+    ul.task-list[class]{list-style: none;}
+    ul.task-list li input[type="checkbox"] {
+      font-size: inherit;
+      width: 0.8em;
+      margin: 0 0.8em 0.2em -1.6em;
+      vertical-align: middle;
+    }
+    .display.math{display: block; text-align: center; margin: 0.5rem auto;}
+    /* CSS for syntax highlighting */
+    html { -webkit-text-size-adjust: 100%; }
+    pre > code.sourceCode { white-space: pre; position: relative; }
+    pre > code.sourceCode > span { display: inline-block; line-height: 1.25; }
+    pre > code.sourceCode > span:empty { height: 1.2em; }
+    .sourceCode { overflow: visible; }
+    code.sourceCode > span { color: inherit; text-decoration: inherit; }
+    div.sourceCode { margin: 1em 0; }
+    pre.sourceCode { margin: 0; }
+    @media screen {
+    div.sourceCode { overflow: auto; }
+    }
+    @media print {
+    pre > code.sourceCode { white-space: pre-wrap; }
+    pre > code.sourceCode > span { text-indent: -5em; padding-left: 5em; }
+    }
+    pre.numberSource code
+      { counter-reset: source-line 0; }
+    pre.numberSource code > span
+      { position: relative; left: -4em; counter-increment: source-line; }
+    pre.numberSource code > span > a:first-child::before
+      { content: counter(source-line);
+        position: relative; left: -1em; text-align: right; vertical-align: baseline;
+        border: none; display: inline-block;
+        -webkit-touch-callout: none; -webkit-user-select: none;
+        -khtml-user-select: none; -moz-user-select: none;
+        -ms-user-select: none; user-select: none;
+        padding: 0 4px; width: 4em;
+        color: #aaaaaa;
+      }
+    pre.numberSource { margin-left: 3em; border-left: 1px solid #aaaaaa;  padding-left: 4px; }
+    div.sourceCode
+      {   }
+    @media screen {
+    pre > code.sourceCode > span > a:first-child::before { text-decoration: underline; }
+    }
+    code span.al { color: #ff0000; font-weight: bold; } /* Alert */
+    code span.an { color: #60a0b0; font-weight: bold; font-style: italic; } /* Annotation */
+    code span.at { color: #7d9029; } /* Attribute */
+    code span.bn { color: #40a070; } /* BaseN */
+    code span.bu { color: #008000; } /* BuiltIn */
+    code span.cf { color: #007020; font-weight: bold; } /* ControlFlow */
+    code span.ch { color: #4070a0; } /* Char */
+    code span.cn { color: #880000; } /* Constant */
+    code span.co { color: #60a0b0; font-style: italic; } /* Comment */
+    code span.cv { color: #60a0b0; font-weight: bold; font-style: italic; } /* CommentVar */
+    code span.do { color: #ba2121; font-style: italic; } /* Documentation */
+    code span.dt { color: #902000; } /* DataType */
+    code span.dv { color: #40a070; } /* DecVal */
+    code span.er { color: #ff0000; font-weight: bold; } /* Error */
+    code span.ex { } /* Extension */
+    code span.fl { color: #40a070; } /* Float */
+    code span.fu { color: #06287e; } /* Function */
+    code span.im { color: #008000; font-weight: bold; } /* Import */
+    code span.in { color: #60a0b0; font-weight: bold; font-style: italic; } /* Information */
+    code span.kw { color: #007020; font-weight: bold; } /* Keyword */
+    code span.op { color: #666666; } /* Operator */
+    code span.ot { color: #007020; } /* Other */
+    code span.pp { color: #bc7a00; } /* Preprocessor */
+    code span.sc { color: #4070a0; } /* SpecialChar */
+    code span.ss { color: #bb6688; } /* SpecialString */
+    code span.st { color: #4070a0; } /* String */
+    code span.va { color: #19177c; } /* Variable */
+    code span.vs { color: #4070a0; } /* VerbatimString */
+    code span.wa { color: #60a0b0; font-weight: bold; font-style: italic; } /* Warning */
+  </style>
+</head>
+<body>
+<header id="title-block-header">
+<h1 class="title">PiXY Operation Manual v1.5.2 (English)</h1>
+</header>
+<h1 id="pixy-operation-manual-english">PiXY Operation Manual
+(English)</h1>
+<hr />
+<h2 id="cover-information">Cover Information</h2>
+<ul>
+<li>Software: PiXY — Pixel-to-Stage XY Coordinate Converter</li>
+<li>Author: Yoshiaki KON</li>
+<li>Repository: https://github.com/YoshiakiKON/PiXY</li>
+<li>Zenodo DOI: 10.5281/zenodo.18174474</li>
+<li>License: MIT</li>
+<li>Last updated: 2026-08-16 (v1.5.2 spec)</li>
+</ul>
+<hr />
+<h2 id="version-notes-v1.5.2">Version Notes (v1.5.2)</h2>
+<p><strong>Changes from v1.5.1:</strong> - UI parameter naming: “Grain
+Size Threshold” → “Particle Size Range (pix)” for clarity - Unified
+control mode for Boundary Offset, Neck Separation, Shape Complexity
+(optional; can switch to individual mode) - Configuration file-based
+parameter management (<code>pixy_settings.ini</code>)</p>
+<p><strong>Notes for upgraders from v1.5.1:</strong> - No data-format
+changes; existing <code>.pixy</code> project files load without
+modification. - UI terminology updated for consistency; functionality
+unchanged.</p>
+<hr />
+<h2 id="overview">Overview</h2>
+<ul>
+<li>Purpose: Pair candidate points (centroids) in microscope images with
+instrument fiducials and convert image coordinates to stage coordinates
+to reduce instrument time and improve reproducibility.</li>
+<li>Intended users: Micro-area analysis operators, sample analysis
+staff, instrument administrators</li>
+<li>Main features: Image loading, particle detection (K-means +
+connected components), fiducial input, affine transform estimation,
+residual visualization, CSV export / clipboard copy</li>
+<li>Benefits: Earlier targeting preparation, less manual work at the
+instrument, and statistically analyzing more points</li>
+</ul>
+<hr />
+<h2 id="getting-started-installation-launch">Getting Started
+(Installation &amp; Launch)</h2>
+<ul>
+<li>System requirements
+<ul>
+<li>OS: Windows recommended (distributed EXE available). Linux/Mac may
+work when running from source.</li>
+<li>Python: 3.8 or later (when running from source)</li>
+<li>Disk and memory: Depends on image resolution (large images require
+more memory)</li>
+</ul></li>
+<li>Dependencies: See <code>requirements.txt</code> (PySide6, OpenCV,
+NumPy, etc.)</li>
+<li>Installation (from source)</li>
+</ul>
+<div class="sourceCode" id="cb1"><pre
+class="sourceCode powershell"><code class="sourceCode powershell"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a>python <span class="op">-</span>m venv <span class="op">.</span><span class="fu">venv</span></span>
+<span id="cb1-2"><a href="#cb1-2" aria-hidden="true" tabindex="-1"></a><span class="op">.</span>\<span class="op">.</span><span class="fu">venv</span>\Scripts\Activate<span class="op">.</span><span class="fu">ps1</span></span>
+<span id="cb1-3"><a href="#cb1-3" aria-hidden="true" tabindex="-1"></a>pip install <span class="op">-</span>r requirements<span class="op">.</span><span class="fu">txt</span></span>
+<span id="cb1-4"><a href="#cb1-4" aria-hidden="true" tabindex="-1"></a>python Main<span class="op">.</span><span class="fu">py</span></span></code></pre></div>
+<ul>
+<li>Running the distributed EXE: After downloading, right-click →
+[Properties] → [Unblock] (if needed), then run.</li>
+<li>Note: When running from source, enable the virtual environment and
+match the versions in <code>requirements.txt</code>.</li>
+</ul>
+<hr />
+<h2 id="quick-start-minimum-steps">Quick Start (Minimum Steps)</h2>
+<ol type="1">
+<li>Run <code>PiXY_ver152.exe</code>.</li>
+<li>Click <code>New Project</code> and select an image file to
+load.</li>
+<li>Click <code>START Centroid Extraction</code>.</li>
+<li>In extraction mode, adjust the left-side detection parameters
+(<code>Number of Groups</code>, <code>Boundary Offset</code>,
+<code>Neck Separation</code>, <code>Shape Complexity</code>, and
+<code>Particle Size Range</code> histogram) and confirm that centroids
+are detected.</li>
+<li>(Optional but recommended) Enter a manual group name in the text
+field below each <code>Add GroupN</code> button.</li>
+<li>Add candidate points from each group using <code>Add GroupN</code>
+buttons (left cards) so they appear in the center list.</li>
+<li>If <code>Number of Groups</code> is changed and you recompute,
+manual group names are transferred to the nearest-color group
+automatically. When multiple names map to one group, the source group
+with more points is prioritized.</li>
+<li>Click <code>Finish Centroid Extraction</code> to return to on-line
+alignment.</li>
+<li>Click <code>Add Fiducial Point</code>, click fiducials on the image,
+and enter the corresponding stage coordinates in the table. Enter 3 or
+more points and check residuals. If residuals are large overall, add
+more points. If one point has a much larger residual, re-check that
+point or exclude it.</li>
+<li>If everything looks good, export coordinates via
+<code>Export XYZ</code> or <code>Clipboard</code> and pass them to the
+instrument.</li>
+</ol>
+<hr />
+<h2 id="ui-overview">UI Overview</h2>
+<ul>
+<li>Main buttons
+<ul>
+<li>Upper left (project operations)
+<ul>
+<li><code>New Project</code>: Start a new project and select an image
+file to load.</li>
+<li><code>Load Project</code>: Load a saved <code>.pixy</code> project
+(image, parameters, results).</li>
+<li><code>Save Project</code>: Save the current state as a
+<code>.pixy</code> project.</li>
+</ul></li>
+<li>Middle left (fiducial operations)
+<ul>
+<li><code>Add Fiducial Point</code>: Enter fiducial registration mode;
+click fiducial points on the image to add them to the table.</li>
+<li><code>Update XY</code>: Update the stage coordinates
+(<code>Stage X/Y/Z</code>) for the selected fiducial row.</li>
+<li><code>Clear</code> (fiducials): Delete the selected fiducial row in
+the table, or clear its values.</li>
+</ul></li>
+<li>Lower left (particle detection parameter settings)
+<ul>
+<li><code>START Centroid Extraction</code> /
+<code>Finish Centroid Extraction</code>: Enter/exit extraction
+mode.</li>
+<li>Detection parameters are operated in <code>Advanced</code> mode
+only.</li>
+<li><code>Recalculation Trigger</code> (<code>Auto</code> /
+<code>Manual</code>): Control when particle detection is recomputed.
+<code>Auto</code> recomputes on every parameter change;
+<code>Manual</code> recomputes only when you click
+<code>ReCalculate</code>.</li>
+<li><strong>Unified Control Mode</strong> (new in v1.5.2): A checkbox
+allows switching between:
+<ul>
+<li><strong>Unified Control ON</strong>: Adjust a single
+“Aggressiveness” slider (0-10) to scale all three parameters
+proportionally.</li>
+<li><strong>Unified Control OFF</strong>: Adjust individual parameters
+separately (fine-tuning mode).</li>
+</ul></li>
+<li><code>Number of Groups (K)</code> — Number of K-means clusters.
+Suggested 3–10 (try based on the number of colors; avoid
+over-segmentation).</li>
+<li><code>Boundary Offset</code> — Offset to avoid incomplete regions
+near the image boundary (e.g., exclude edges).</li>
+<li><code>Neck Separation</code> — Strength for separating touching
+particles (larger = stronger separation).</li>
+<li><code>Shape Complexity</code> — Tuning parameter to suppress/split
+regions with complex shapes.</li>
+<li><code>Particle Size Range (pix)</code> — Histogram-based min/max
+area selection (replaces “Grain Size Threshold”). <strong>←
+RENAMED</strong></li>
+<li>Group cards (bottom left)
+<ul>
+<li><code>Add GroupN</code>: Add detected points of group N to the
+center list.</li>
+<li><code>Group name</code> input (under each <code>Add GroupN</code>):
+Assign a manual display name for that group.</li>
+<li><code>Show</code> / <code>Hide</code>: Per-group visibility
+toggle.</li>
+<li><code>Add ALL Group to List</code>: Add all groups to the center
+list.</li>
+<li>When <code>Number of Groups</code> or posterization level changes,
+custom group visibility (<code>Show</code>/<code>Hide</code>) is reset
+and all groups are shown.</li>
+<li>If <code>Number of Groups</code> changes and centroids are
+recomputed, manual group names are inherited by nearest group color;
+collisions are resolved by preferring the source group with more
+points.</li>
+</ul></li>
+</ul></li>
+<li>Center (candidate table)
+<ul>
+<li><code>Export XYZ</code>: Convert candidate points to stage
+coordinates (X,Y,Z) using the estimated transform and save as CSV.</li>
+<li><code>Clipboard</code>: Copy output data to the clipboard in a
+paste-ready tab-separated format (TSV) for instrument software.</li>
+<li><code>Add Target</code>: Manually add a target point on the image
+(use when you want to add a point not found by automatic
+extraction).</li>
+<li><code>Update u, v</code>: Update <code>u, v</code> (image
+coordinates) of the selected target row to the currently clicked
+position.</li>
+<li><code>Clear</code> (targets): Clear the target selection or any
+temporary designation.</li>
+</ul>
+Note (<code>Add Target</code> / <code>Update u, v</code> with group
+visibility)
+<ul>
+<li><code>Update u, v</code> (Update Target) is currently a beta
+feature. The internal behavior and UI may change in future
+versions.</li>
+<li>Points added via <code>Add Target</code> are treated as manual
+targets and always belong to <code>Group 0</code>.</li>
+</ul></li>
+</ul></li>
+</ul>
+<hr />
+<h2 id="parameter-tuning-guide">Parameter Tuning Guide</h2>
+<h3 id="centroid-detection-parameters-quick-reference">Centroid
+Detection Parameters (Quick Reference)</h3>
+<table>
+<colgroup>
+<col style="width: 55%" />
+<col style="width: 15%" />
+<col style="width: 15%" />
+<col style="width: 15%" />
+</colgroup>
+<thead>
+<tr>
+<th>Parameter</th>
+<th>Typical Range</th>
+<th>Recommended Default</th>
+<th>Effect</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>Number of Groups (K)</code></td>
+<td>2–20</td>
+<td>4–5</td>
+<td>Higher = more color groups segmented. Too high causes
+over-splitting.</td>
+</tr>
+<tr>
+<td><code>Boundary Offset</code></td>
+<td>0–10 px</td>
+<td>0–2</td>
+<td>Exclude edges of the image; prevents incomplete regions.</td>
+</tr>
+<tr>
+<td><code>Neck Separation</code></td>
+<td>0–10</td>
+<td>0–5</td>
+<td>Higher = stronger separation of touching particles; slower.</td>
+</tr>
+<tr>
+<td><code>Shape Complexity</code></td>
+<td>0–10</td>
+<td>3–5</td>
+<td>Higher = retain fine details; lower = smooth contours.</td>
+</tr>
+<tr>
+<td><code>Particle Size Range (pix)</code></td>
+<td>10–5000 px</td>
+<td>20–100 px</td>
+<td>Filters small noise (below min) and large artifacts (above max).
+<strong>← RENAMED</strong></td>
+</tr>
+</tbody>
+</table>
+<h3 id="tuning-workflow">Tuning Workflow</h3>
+<ol type="1">
+<li>First adjust <code>K</code> and <code>Particle Size Range</code>
+(see recommended ranges above).</li>
+<li>Confirm that desired particles are detected and unwanted noise is
+removed.</li>
+<li>Only if many touching particles remain, tune
+<code>Neck Separation</code> etc. (Advanced parameters can be
+computationally expensive).</li>
+<li>For manual recalculation, use <code>Manual</code> trigger mode to
+avoid lag while adjusting.</li>
+</ol>
+<h3 id="unified-control-mode-new-in-v1.5.2">Unified Control Mode (new in
+v1.5.2)</h3>
+<ul>
+<li>Check “Unified Control” to enable a single “Aggressiveness” slider
+(0-10).</li>
+<li>This scales <code>Boundary Offset</code>,
+<code>Neck Separation</code>, and <code>Shape Complexity</code>
+together.</li>
+<li>Useful for rapid parameter sweeps; switch to individual mode for
+fine-tuning.</li>
+<li>Preset values are defined in <code>pixy_settings.ini</code> and can
+be customized.</li>
+</ul>
+<hr />
+<h2 id="fiducial-point-registration-online-mode">Fiducial Point
+Registration (Online Mode)</h2>
+<ul>
+<li>Click <code>Add Fiducial Point</code> to enter registration
+mode.</li>
+<li>Click on each fiducial marker in the image.</li>
+<li>For each fiducial, enter its stage coordinates (X, Y, Z) in the
+table.</li>
+<li>Register at least 3 fiducials (3 non-collinear points define an
+affine transform).</li>
+<li>Review residuals (differences between predicted and observed
+positions):
+<ul>
+<li>If residuals are uniformly small, the transform is good.</li>
+<li>If one point has a much larger residual than others, re-check that
+fiducial or exclude it.</li>
+</ul></li>
+<li>After confirming the transform, export target point coordinates via
+<code>Export XYZ</code>.</li>
+</ul>
+<hr />
+<h2 id="troubleshooting">Troubleshooting</h2>
+<h3 id="centroids-not-detected-or-noisy">Centroids Not Detected or
+Noisy</h3>
+<ol type="1">
+<li>Check <code>Particle Size Range</code> — adjust min/max to remove
+noise and retain particles.</li>
+<li>Increase <code>K</code> to segment more color groups if particles
+are mixed with background.</li>
+<li>Check image quality (contrast, sharpness) — PiXY performs best on
+high-contrast images.</li>
+</ol>
+<h3 id="centroids-detected-but-fragments-incorrectly">Centroids Detected
+but Fragments Incorrectly</h3>
+<ol type="1">
+<li>Increase <code>Neck Separation</code> to separate touching
+particles.</li>
+<li>Increase <code>Shape Complexity</code> to retain finer details (if
+particles have complex shapes).</li>
+<li>Check <code>Boundary Offset</code> — ensure edges are not cutting
+off partial regions.</li>
+</ol>
+<h3 id="large-residuals-after-fiducial-registration">Large Residuals
+After Fiducial Registration</h3>
+<ol type="1">
+<li>Re-check stage coordinates; typos are a common source.</li>
+<li>Add more fiducials (3–5 minimum) for robust estimation.</li>
+<li>Check image quality and zoom — ensure fiducials are clearly
+visible.</li>
+<li>Exclude outlier fiducials if one point has much larger
+residual.</li>
+</ol>
+<hr />
+<h2 id="file-formats">File Formats</h2>
+<h3 id="project-file-.pixy">Project File (.pixy)</h3>
+<p>A <code>.pixy</code> file is a JSON-based project archive containing:
+- Image data (encoded in base64) - Detected target centroids and their
+metadata - Fiducial points and their stage coordinates - Parameter
+settings (zoom, rotation, extraction parameters) - Extraction mode
+(Basic / Advanced)</p>
+<h3 id="export-format-csv">Export Format (CSV)</h3>
+<p>When you click <code>Export XYZ</code>, the output is a tab-separated
+CSV with columns:</p>
+<pre><code>Target_ID  Pixel_X  Pixel_Y  Stage_X  Stage_Y  Stage_Z</code></pre>
+<hr />
+<h2 id="configuration-file-pixy_settings.ini">Configuration File
+(pixy_settings.ini)</h2>
+<p><em>New in v1.5.2</em></p>
+<p><code>pixy_settings.ini</code> allows customization of: -
+<strong>Aggressiveness presets</strong> (unified control mode): Each
+level 0-10 is mapped to a specific combination of
+<code>Boundary Offset</code>, <code>Neck Separation</code>,
+<code>Shape Complexity</code>. - <strong>UI defaults</strong>: Default
+aggressiveness level, unified control enable/disable.</p>
+<p>Example:</p>
+<div class="sourceCode" id="cb3"><pre
+class="sourceCode ini"><code class="sourceCode ini"><span id="cb3-1"><a href="#cb3-1" aria-hidden="true" tabindex="-1"></a><span class="kw">[Aggressiveness]</span></span>
+<span id="cb3-2"><a href="#cb3-2" aria-hidden="true" tabindex="-1"></a><span class="dt">preset_0  </span><span class="ot">=</span><span class="st"> 0, 0, 3</span></span>
+<span id="cb3-3"><a href="#cb3-3" aria-hidden="true" tabindex="-1"></a><span class="dt">preset_1  </span><span class="ot">=</span><span class="st"> 1, 0, 3</span></span>
+<span id="cb3-4"><a href="#cb3-4" aria-hidden="true" tabindex="-1"></a><span class="dt">...</span></span>
+<span id="cb3-5"><a href="#cb3-5" aria-hidden="true" tabindex="-1"></a><span class="dt">preset_5  </span><span class="ot">=</span><span class="st"> 5, 3, 5</span></span>
+<span id="cb3-6"><a href="#cb3-6" aria-hidden="true" tabindex="-1"></a><span class="dt">...</span></span>
+<span id="cb3-7"><a href="#cb3-7" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb3-8"><a href="#cb3-8" aria-hidden="true" tabindex="-1"></a><span class="kw">[UI]</span></span>
+<span id="cb3-9"><a href="#cb3-9" aria-hidden="true" tabindex="-1"></a><span class="dt">default_aggressiveness </span><span class="ot">=</span><span class="st"> </span><span class="dv">5</span></span>
+<span id="cb3-10"><a href="#cb3-10" aria-hidden="true" tabindex="-1"></a><span class="dt">unified_control_default </span><span class="ot">=</span><span class="st"> </span><span class="kw">True</span></span></code></pre></div>
+<p>Edit this file and restart PiXY for changes to take effect.</p>
+<hr />
+<h2 id="advanced-topics">Advanced Topics</h2>
+<h3 id="batch-processing">Batch Processing</h3>
+<p>PiXY is designed for interactive image analysis, not batch
+processing. For bulk extraction: 1. Prepare a list of image files. 2.
+For each, use the GUI interactively or write a custom Python script
+using the underlying modules (e.g., <code>CalcCentroid.py</code>).</p>
+<h3 id="custom-color-spaces">Custom Color Spaces</h3>
+<p>Currently, PiXY uses RGB color space by default. Support for other
+color spaces (e.g., HSV, Lab) may be added in future versions.</p>
+<h3 id="online-mode-alignment-algorithm">Online Mode Alignment
+Algorithm</h3>
+<p>PiXY fits an <strong>affine transformation</strong> (2D rotation,
+scale, translation, and optional Z-plane equation) to map image
+coordinates (u, v) to stage coordinates (X, Y, Z). The fit uses
+least-squares minimization of residuals.</p>
+<hr />
+<h2 id="tips-tricks">Tips &amp; Tricks</h2>
+<ul>
+<li><strong>Keyboard shortcuts</strong>: Hold Ctrl while using the
+scroll wheel to zoom in/out on the image.</li>
+<li><strong>Quick copy</strong>: Use <code>Clipboard</code> button to
+copy tab-separated coordinates; paste directly into spreadsheet or
+instrument software.</li>
+<li><strong>Group naming</strong>: Assign meaningful names (e.g.,
+“matrix”, “inclusion”) to groups for easier documentation.</li>
+<li><strong>Saving projects</strong>: Save early and often. A
+<code>.pixy</code> file preserves all your work and parameters.</li>
+</ul>
+<hr />
+<h2 id="citation">Citation</h2>
+<p>If you use PiXY in published work, please cite:</p>
+<pre><code>@software{KON_PiXY,
+  author = {Yoshiaki KON},
+  title = {PiXY: Pixel-to-Stage XY Coordinate Converter},
+  url = {https://github.com/YoshiakiKON/PiXY},
+  doi = {10.5281/zenodo.18174474},
+  version = {1.5.2},
+  year = {2026},
+}</code></pre>
+<hr />
+<h2 id="license">License</h2>
+<p>PiXY is distributed under the MIT License. See <code>LICENSE</code>
+file for details.</p>
+<hr />
+<p><strong>Manual Version</strong>: 1.5.2<br />
+<strong>Last Updated</strong>: 2026-08-16<br />
+<strong>Status</strong>: Release</p>
+<h3 id="todo-for-v1.5.2-release">TODO for v1.5.2 Release</h3>
+<ul class="task-list">
+<li><label><input type="checkbox" />Update version number in this manual
+(currently “1.5.2 Draft”)</label></li>
+<li><label><input type="checkbox" />Update “Last updated” date to actual
+release date</label></li>
+<li><label><input type="checkbox" />Update <code>.exe</code> filename
+references (if applicable)</label></li>
+<li><label><input type="checkbox" />Test all UI screenshots/descriptions
+match actual UI</label></li>
+<li><label><input type="checkbox" />Convert to HTML via Pandoc and
+verify formatting</label></li>
+<li><label><input type="checkbox" />Commit to git and tag as
+<code>v1.5.2</code></label></li>
+</ul>
+</body>
+</html>

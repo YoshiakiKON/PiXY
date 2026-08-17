@@ -10,7 +10,7 @@ authors:
   - family-names: "Kon"
     given-names: "Yoshiaki"
     affiliation: "Geological Survey of Japan, AIST"
-date-released: 2026-08-16
+date-released: 2026-08-17
 license: "MIT"
 abstract: >
   PiXY is open-source software that links target selection on microscopy images with physical

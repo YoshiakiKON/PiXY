@@ -68,7 +68,7 @@ TABLE_RIGHT_ROW_LABELS = [
 
 # Dialogs and messages
 OPEN_DIALOG_TITLE = "Select Image File"
-FILE_FILTER = "Image Files (*.jpg *.jpeg *.png *.bmp)"
+FILE_FILTER = "Image Files (*.jpg *.jpeg *.png *.bmp *.tif *.tiff)"
 
 # Tooltips
 FLIP_TOOLTIP = "Manual flip mode: cycle Auto → Normal → Flip"

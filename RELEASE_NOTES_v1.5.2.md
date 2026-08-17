@@ -1,59 +1,82 @@
-# PiXY v1.5.2 — Release Notes (2026-08-16)
+# PiXY v1.5.2
+**Release date:** 2026-08-17
 
 ## Overview
 
-PiXY is a desktop GUI tool for image-based centroid extraction and pixel-to-stage coordinate conversion.
+PiXY (Pixel to stage-XY Coordinate Converter) is an open-source graphical user interface (GUI) software for offline targeting in microanalysis. It enables measurement positions to be selected on pre-acquired sample images before sample loading and subsequently converted into instrument stage coordinates during online alignment.
 
-**Recommended screen size**: 1200×900 or larger.
+PiXY is designed to reduce the time and operator effort required for on-instrument targeting, particularly when a large number of measurement positions must be selected, such as in zircon U–Pb dating and other microanalytical applications.
 
-## What's Included
+PiXY provides two complementary approaches to target-point selection:
+
+- **Image-based extraction:** particle regions can be extracted from high-contrast images using colour segmentation and connected-component analysis. Particle centroids can be used as core target points, and additional points can be generated near particle boundaries for rim targeting.
+- **Manual targeting:** arbitrary positions can be selected directly on an image, allowing targeting based on textures, zoning, inclusions, phase boundaries, or other features that cannot be reliably identified by particle segmentation.
+
+Target points selected by either approach can be combined within the same project.
+
+## Offline Targeting and Online Alignment
+
+PiXY uses a two-step workflow.
+
+In the **offline targeting** step, target points are selected on pre-acquired sample images. For particulate samples such as zircon grains in back-scattered electron images, image processing can be used to extract particle regions and generate target points automatically. Manual selection is available when image-based extraction is unsuitable or when measurement positions are defined by textural relationships.
+
+![Offline targeting — target points on a BSE image of zircon grains](Screenshot_Pix.png)
+
+In the **online alignment** step, PiXY converts image coordinates into instrument stage coordinates using fiducial points whose image and stage coordinates are known. The XY coordinates are transformed using a two-dimensional similarity transformation, while the Z coordinate is estimated independently by plane fitting. The resulting stage coordinates can then be transferred to the analytical instrument or its control software.
+
+![Online alignment — fiducial registration and stage coordinate export](Screenshot_XY.png)
+
+This workflow allows a large number of target positions to be prepared before sample loading and brings the instrument stage to the vicinity of the selected targets before measurement.
+
+## Project and Data Handling
+
+PiXY stores the sample image, targeting settings, and selected target-point coordinates together in a project file (`.pixy`). This allows targeting information to be retained and reused without repeating the offline selection process.
+
+Converted stage coordinates can be reviewed in the coordinate table and exported as CSV files or copied to the clipboard as text data. This facilitates transfer to instruments or control software that accept coordinate information in text-based formats.
+
+## Image Processing
+
+For image-based target extraction, PiXY uses K-means clustering for colour segmentation followed by connected-component analysis. Users can interactively adjust parameters controlling the segmentation and extraction process, including the number of colour groups, grain-area range, boundary offset, neck separation, and shape complexity.
+
+For each extracted particle, the centroid can be used as a core target point. A rim target point can also be generated inside the particle boundary along the direction from the centroid toward the farthest boundary point.
+
+## Supported Image Formats
+
+PiXY supports commonly used image formats for sample imaging:
+
+- TIFF: `.tif`, `.tiff`
+- JPEG: `.jpg`, `.jpeg`
+- PNG: `.png`
+- BMP: `.bmp`
+
+## This Release
+
+Version 1.5.2 is a maintenance release that includes improvements to the user interface, expanded image-format support, and internal code cleanup. These changes do not alter the basic targeting workflow or coordinate-export behaviour.
+
+The release also updates the Quick Manual to reflect the current user interface.
+
+## Included Files
 
 - Standalone Windows executable: `PiXY_ver152.exe`
-- Source code (Python)
+- Source code for running PiXY in a Python environment
+- `InstructionManual_EN_v1.5.2.md`
+- `InstructionManual_JP_v1.5.2.md`
 
-## What's New in v1.5.2
-
-This release is a UI polish and code cleanup update based on v1.5.1.
-
-### Parameter naming: "Grain Size Threshold" → "Particle Size Range (pix)"
-
-The particle area filter parameter has been renamed throughout the UI for clarity:
-
-- Histogram title: **"Particle Size Range (pix)"** (was "Grain Size Threshold (pix)")
-- Slider label: **"Particle Size Range (pix)"** (was "Minimum Grain Area (pix)")
-
-Functionality is unchanged; only the display names were updated.
-
-### Parameter naming: "Number of Groups (K)" label consistent
-
-The `Number of Groups (K)` label is now shown consistently in the centroid extraction panel. The internal `display_labels` entry was also updated to match.
-
-### Number of Groups maximum reduced to 10
-
-The slider maximum for **Number of Groups** has been reduced from 20 to 10. Values above 10 are rarely useful for typical microscope images and can cause slow computation.
-
-### Dead code removal: poster_level / slider_levels
-
-The deprecated `poster_level` slider and its associated widgets, signal handlers, and methods (`_wire_levels`, `_on_levels_slider_changed`, `_on_levels_edit_finished`, `_nudge_levels`) have been removed. The active `Number of Groups` control (`slider_num_groups`) is the sole parameter for K-means cluster count.
-
-## Notes for Upgraders
-
-If you are coming from v1.5.1:
-- No data-format changes; existing `.pixy` project files load without modification.
-- The EXE is renamed to `PiXY_ver152.exe`.
-- UI parameter names changed (cosmetic only; no effect on saved projects or exports).
-
-## Known Issues / Limitations
-
-- The bundled EXE is large (Qt, NumPy, OpenCV, and related dependencies).
-- Very large images may require additional memory.
-
-## Documentation
-
-See the v1.5.1 documentation set for the full manual. Updated v1.5.2 manuals are available as draft files (`InstructionManual_EN_v1.5.2.md`, `InstructionManual_JP_v1.5.2.md`).
+**Recommended screen size:** 1200 × 900 pixels or larger.
 
 ## Citation
 
-If you use PiXY in published work, please cite the software.
-- See `CITATION.cff` for the recommended citation metadata.
-- DOI: https://doi.org/10.5281/zenodo.18174474
+If you use PiXY in published research, please cite the software and the associated publication.
+
+**DOI:** 10.5281/zenodo.18174474
+
+See `CITATION.cff` for the recommended citation metadata.
+
+## Platform
+
+The pre-built executable is provided for Windows. Users can also run PiXY from the source code in a Python environment.
+
+## Documentation
+
+The Quick Manual provides a step-by-step description of the offline targeting and online alignment workflow, including image-based target extraction, manual target selection, fiducial-point registration, and coordinate export.
+

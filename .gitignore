@@ -31,9 +31,8 @@ v1.1.5.tar.gz
 # Backups and archived files
 backups/
 
-# Large test images
-TnihSec*.jpg
-*.bmp
+# Large binary source files (keep locally, not in repo)
+*.ai
 
 # Runtime state / temporary files
 app.log

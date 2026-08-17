@@ -1684,8 +1684,8 @@ class CentroidFinderWindow(QMainWindow):
         self.edit_add_target_name_seq = QLineEdit("001")
         self.edit_add_target_name_seq.setFixedHeight(40)
         self.edit_add_target_name_seq.setAlignment(Qt.AlignCenter)
-        self.edit_add_target_name_seq.setReadOnly(True)
         self.edit_add_target_name_seq.setFixedWidth(46)
+        self.edit_add_target_name_seq.editingFinished.connect(self._on_name_seq_edit_finished)
         self.lbl_add_target_name_sep = QLabel("-")
         self.lbl_add_target_name_sep.setAlignment(Qt.AlignCenter)
         self.btn_select_all = QPushButton("Select ALL")
@@ -9291,6 +9291,23 @@ class CentroidFinderWindow(QMainWindow):
             return int(self._center_row_uid_seq)
         except Exception:
             return int(np.random.randint(1, 2**31 - 1))
+
+    def _on_name_seq_edit_finished(self):
+        """Sync hand-typed seq value back to internal counter."""
+        try:
+            text = str(self.edit_add_target_name_seq.text()).strip()
+            v = int(text)
+            if v < 1:
+                v = 1
+            self._manual_name_seq = v - 1  # next call to _advance increments to v
+            self.edit_add_target_name_seq.setText(f"{v:03d}")
+        except Exception:
+            try:
+                self.edit_add_target_name_seq.setText(
+                    f"{max(1, int(getattr(self, '_manual_name_seq', 0)) + 1):03d}"
+                )
+            except Exception:
+                pass
 
     def _next_manual_name_seq(self):
         try:

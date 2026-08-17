@@ -11,6 +11,7 @@ _datas = [
     ('PiXY_Pix.png', '.'),
     ('PiXY_XY.png', '.'),
     ('PiXY.png', '.'),
+    ('pixy_settings.ini', '.'),
 ]
 
 for _opt in (

@@ -1,12 +1,12 @@
 # -*- coding: utf-8 -*-
 """
-Centroid Finder のメイン UI ウィンドウ実装。
+Centroid Finder main UI window implementation.
 
-主な機能:
-- 画像の読み込みと表示
-- 重心検出パラメータの調整
-- 参照点の設定とフィッティング
-- テーブル表示と編集
+Main features:
+- Load and display images
+- Adjust centroid detection parameters
+- Set and fit reference points
+- View and edit tables
 """
 
 import qt_compat
@@ -290,7 +290,7 @@ class CenterShowToggleDelegate(QStyledItemDelegate):
 
 
 class AreaHistogramWidget(QWidget):
-    """軽量な面積ヒストグラム描画ウィジェット（Qtペイント、曲線接続、ログ軸）。"""
+    """Lightweight area histogram drawing widget (Qt painting, line connection, log axis)."""
 
     rangeChanged = pyqtSignal(float, float)
     rangeCommitted = pyqtSignal(float, float)
@@ -299,7 +299,7 @@ class AreaHistogramWidget(QWidget):
         super().__init__(parent)
         self._bins = None
         self._vals = None
-        self._counts = None  # 粒子数
+        self._counts = None  # Particle count
         self._sel_min = None
         self._sel_max = None
         self._dragging = None  # 'min'|'max'|None
@@ -988,14 +988,14 @@ class RoundedWindow(QWidget):
         painter.setBrush(QColor(240, 240, 240))
         painter.drawRect(path_rect)
 
-# 表示テーブル関連の実装は tables.py に移動
+#  tables.py 
 
 class CentroidFinderWindow(QMainWindow):
     """
-    Centroid Finder のメインウィンドウクラス。
+    Centroid Finder main window class.
 
-    画像処理と重心検出の GUI を提供します。
-    参照点設定、フィッティング、テーブル表示を統合。
+    Provides the GUI for image processing and centroid detection.
+    Integrates reference point setup, fitting, and table display.
     """
 
     def __init__(self):
@@ -1077,7 +1077,7 @@ class CentroidFinderWindow(QMainWindow):
         except Exception:
             pass
 
-        # デバッグ出力ヘルパ
+        # Debug output helper
         def _dbg(msg):
             if DEBUG or LOG_MODE:
                 try:
@@ -1143,24 +1143,24 @@ class CentroidFinderWindow(QMainWindow):
         self._log_info = _log_info
 
 
-        # 画像関連変数
-        self.img_full = None          # フル解像度画像 (numpy array)
-        self.proc_img = None          # 処理用縮小画像
-        self.scale_proc_to_full = 1.0 # 処理画像からフル画像へのスケール
-        self.proc_target_width = PROC_TARGET_WIDTH  # 処理画像の目標幅
+        # Image-related variables
+        self.img_full = None          # Full-resolution image (numpy array)
+        self.proc_img = None          # Processing-scale reduced image
+        self.scale_proc_to_full = 1.0 # Scale from processing image to full image
+        self.proc_target_width = PROC_TARGET_WIDTH  # Target processing image width
 
-        # 重心処理関連
-        self.centroid_processor = None  # CentroidProcessor インスタンス
-        self.centroids = []            # 検出された重心リスト [(group_no, x, y), ...]
-        self._auto_centroids = []      # 自動検出のみの重心リスト（手動加算前）
-        self.manual_target_mode = False  # True: 手動ターゲット(Group0)を優先
+        # Centroid processing related
+        self.centroid_processor = None  # CentroidProcessor instance
+        self.centroids = []            # Detected centroid list [(group_no, x, y), ...]
+        self._auto_centroids = []      # Centroid list from automatic detection only (before manual additions)
+        self.manual_target_mode = False  # True: prioritize manual target (Group0)
         self.manual_targets = []         # [(0, x_proc, y_proc), ...]
-        self.excluded_centroid_indices = set()  # 出力除外する重心インデックス
-        self._explicit_excluded_centroid_indices = set()  # ユーザー操作/置換により明示的に除外された重心インデックス
-        self._force_visible_centroid_indices = set()  # フィルタ非表示中でも一時的に表示する重心インデックス
+        self.excluded_centroid_indices = set()  # Centroid indices excluded from output
+        self._explicit_excluded_centroid_indices = set()  # Centroid indices explicitly excluded by user actions/replacements
+        self._force_visible_centroid_indices = set()  # Centroid indices temporarily shown even while filtered out
         self.visible_groups = None       # None=all visible, otherwise set[int]
-        self.center_list_indices = []    # 中カラムに追加された重心インデックス
-        self.center_numeric_rows = []    # 中カラム表示値の数値スナップショット(dict list)
+        self.center_list_indices = []    # Centroid indices added to the center column
+        self.center_numeric_rows = []    # Numeric snapshot of displayed center-column values (list of dicts)
         self._center_name_max_len = 0    # cached max length of center Name strings
         self.center_add_core_enabled = True
         self.center_add_rim_enabled = True
@@ -1170,8 +1170,8 @@ class CentroidFinderWindow(QMainWindow):
         self.centroid_generation = 0  # successful centroid-recompute generation counter
         self._center_row_uid_seq = 0  # stable unique id for center rows
         self._manual_name_seq = 0     # running number for manual-name assignment
-        self._table_between_row_indices = []  # table_between行 -> centroidsインデックス
-        self._table_between_row_keys = []     # table_between行 -> (source_idx, 'c')
+        self._table_between_row_indices = []  # table_between row -> centroid indices
+        self._table_between_row_keys = []     # table_between row -> (source_idx, 'c')
         self._offline_group_tables = {}   # grp -> {table: QTableWidget, indices: list[int]}
         self._offline_group_sort_key = 'u'  # u|v
         self._offline_group_sort_desc = False
@@ -1188,32 +1188,32 @@ class CentroidFinderWindow(QMainWindow):
         self._center_undo_stack = []
         self._center_undo_stack_max = 30
         self.center_add_uv_similarity_px = 2  # treat +/-N px in u,v as similar on left->center add
-        self.overlay_point_source = 'left'  # 'left': 左リスト(全検出), 'center': 中リスト(Add済み)
+        self.overlay_point_source = 'left'  # 'left': left list (all detected), 'center': center list (already added)
         self._btn_start_ce_fixed_width = None
         self._startup_image_retry_count = 0
         self._centroid_finish_blink_on = False
         self._replace_target_source_index = None
         self._replace_target_source_group = None
-        self.selected_index = None     # 選択中の重心インデックス
-        self.selected_point_pos = 'c'  # 選択中点の種別 ('c'|'r')
-        self.selected_point_keys = set()  # 複数選択 {(source_idx, 'c'|'r'), ...}
+        self.selected_index = None     # Selected centroid index
+        self.selected_point_pos = 'c'  # Type of selected point ('c'|'r')
+        self.selected_point_keys = set()  # Multi-selection {(source_idx, 'c'|'r'), ...}
         self._center_uv_update_queue = []  # [{'row': int, 'no': str, 'key': (src_idx, pos)}]
         self._center_uv_update_pos = 0
         self._center_uv_update_active_key = None
         self._stage_info_override_text = None
-        self.select_radius_display = 10.0  # 画像上の選択半径 (pix)
+        self.select_radius_display = 10.0  # Selection radius on the image (pix)
 
-        # 参照点関連
-        self.ref_points = [None] * 10  # 参照点リスト [(x_proc, y_proc) or None]
-        self.ref_selected_index = 0     # 選択中の参照点インデックス
-        self.ref_obs = [{"x": "", "y": "", "z": ""} for _ in range(10)]  # 参照点の観測値
-        self.excluded_ref_indices = set()  # 座標変換から除外する参照点インデックス
+        # Reference point related
+        self.ref_points = [None] * 10  # Reference point list [(x_proc, y_proc) or None]
+        self.ref_selected_index = 0     # Selected reference point index
+        self.ref_obs = [{"x": "", "y": "", "z": ""} for _ in range(10)]  # Observed values for reference points
+        self.excluded_ref_indices = set()  # Reference point indices excluded from coordinate transform
 
-        # UI 状態
-        self.visible_ref_cols = 3      # 表示する参照点列数
-        self.flip_mode = 'auto'        # 左右反転モード ('auto', 'normal', 'flip')
+        # UI state
+        self.visible_ref_cols = 3      # Number of reference point columns shown
+        self.flip_mode = 'auto'        # Left-right flip mode ('auto', 'normal', 'flip')
         self.overlay_mode = 'Original'  # Overlay display mode: Original / Posterized
-        self._centroid_extraction_overlay_mode = 'Posterized'  # CentroidExtraction時の既定/記憶値
+        self._centroid_extraction_overlay_mode = 'Posterized'  # Default/saved value for CentroidExtraction
         self._centroid_extraction_show_boundaries = True
         self._normal_overlay_mode_before_centroid = 'Original'
         self._normal_show_boundaries_before_centroid = False
@@ -1234,68 +1234,68 @@ class CentroidFinderWindow(QMainWindow):
             'trim': 'Boundary Offset (pix)'
         }
 
-        self.show_boundaries = False   # 通常モード既定: 境界線は非表示
+        self.show_boundaries = False   # Default normal mode: boundaries hidden
         self.view_orientation = 'Image'  # Coordinate (Image/Stage)
 
-        # Stage座標表示の符号（Stageモード時のみ表示に反映）
+        # Stage coordinate sign (applies only in Stage mode)
         self.stage_axis_x_sign = 1  # +1: right is +X, -1: right is -X
         self.stage_axis_y_sign = 1  # +1: up is +Y,   -1: up is -Y
 
-        # 画像表示関連
-        # 仮想キャンバス関連: 実際の表示はビューポート分のみだが、スクロール範囲は仮想的に拡張する
-        self._virtual_canvas_size = (0, 0)  # 仮想キャンバス幅,高さ (pix)
-        # パッチ生成の安全弁 (パッチのピクセル数上限)
-        self.MAX_PATCH_PIXELS = 4096 * 4096  # 大きなパッチ作成を防ぐ
+        # Image display related
+        # Virtual canvas related: only the viewport is actually shown, but the scroll range is extended virtually
+        self._virtual_canvas_size = (0, 0)  # , (pix)
+        # Safety cap for patch generation (maximum pixel count per patch)
+        self.MAX_PATCH_PIXELS = 4096 * 4096  # Prevent generation of very large patches
 
-        self._img_base_size = None     # ベース画像サイズ (w, h)
-        self.proc_zoom = 1.0           # 処理画像のズーム倍率
-        self.view_padding = 200        # 表示パディング
-        self._display_offset = (0, 0)  # 表示オフセット
-        self._display_img_size = (0, 0) # 表示画像サイズ
-        self._display_pm_base = None   # ベース Pixmap
-        self._initial_center_done = False  # 初期センタリング完了フラグ
-        self._last_stage_info = None   # 最新のステージ座標変換情報（グリッド再利用用）
-        self._last_pm_image_grid = None  # Imageモード用に最後に描いたグリッド付きPixmapを保持
+        self._img_base_size = None     # Base image size (w, h)
+        self.proc_zoom = 1.0           # Zoom factor for processing image
+        self.view_padding = 200        # Display padding
+        self._display_offset = (0, 0)  # Display offset
+        self._display_img_size = (0, 0) # Display image size
+        self._display_pm_base = None   # Base pixmap
+        self._initial_center_done = False  # Flag indicating initial centering is complete
+        self._last_stage_info = None   # Latest stage coordinate transform info (for grid reuse)
+        self._last_pm_image_grid = None  # Keep the last pixmap with grid for Image mode
 
-        # パン/フリック関連
+        # Pan / flick related
         self._mouse_pressed = False
         self._dragging = False
         self._drag_start_vp = None
         self._drag_start_scroll = (0, 0)
-        self._drag_recent = deque(maxlen=8)  # 最近のドラッグ位置
+        self._drag_recent = deque(maxlen=8)  # Recent drag positions
         self._kinetic_timer = QTimer(self)
         self._kinetic_timer.setInterval(16)
         self._kinetic_timer.timeout.connect(self._on_kinetic_tick)
-        self._kinetic_vx = 0.0  # 慣性速度 X
-        self._kinetic_vy = 0.0  # 慣性速度 Y
+        self._kinetic_vx = 0.0  # Inertial velocity X
+        self._kinetic_vy = 0.0  # Inertial velocity Y
         self._kinetic_last_t = 0.0
 
-        # キャッシュ: パラメータ変更時の再計算を避ける
+        # Cache: avoid recalculation when parameters change
         self._cache = {
-            "img_id": None,      # 画像 ID (id(proc_img))
+            "img_id": None,      # Image ID (id(proc_img))
             "levels": None,      # PosterLevel
             "min_area": None,    # Min Area
             "trim_px": None,     # Trim (pix)
-            "poster": None,      # ポスタライズ画像
-            "centroids": None,   # 重心リスト
-            "rim_points_proc": None,  # 自動検出重心に対応するRim点(proc)
+            "poster": None,      # Posterized image
+            "centroids": None,   # Centroid list
+            "rim_points_proc": None,  # Rim points corresponding to automatically detected centroids (proc)
         }
 
-        # 更新タイマー (UI 更新を遅延)
+        # Update timer (delays UI updates)
         self.update_timer = QTimer(self)
         self.update_timer.setSingleShot(True)
-        self.update_timer.setInterval(35)  # 35ms 遅延
+        self.update_timer.setInterval(35)  # 35 ms delay
         self.update_timer.timeout.connect(self._update_image_actual)
-        self._painting = False  # 描画中フラグ
+        self._painting = False  # Drawing in progress flag
 
-        # 自動デバッグ: 初回更新後に自動終了するかどうか
+        # Auto debug: whether to quit automatically after the first update
         self._auto_exit_after_update = False
 
-        # 画像表示ラベル (中央揃え)
+        # Image display label (centered)
         self.img_label_proc = QLabel(alignment=Qt.AlignCenter)
-        self.img_label_proc.setMouseTracking(True)  # マウス追跡有効
+        self.img_label_proc.setMouseTracking(True)  # Mouse tracking enabled
 
-        # 画像用スクロールエリア (ズーム/パン対応)
+        # Image scroll area (zoom/pan support)
         self.proc_scroll = QScrollArea()
         self.proc_scroll.setWidgetResizable(False)
         # Use top-left alignment so label coordinates map directly to scroll values.
@@ -1304,7 +1304,7 @@ class CentroidFinderWindow(QMainWindow):
         self.proc_scroll.setWidget(self.img_label_proc)
         self.proc_scroll.viewport().setMouseTracking(True)
 
-        # Stage情報オーバーレイ（左上固定）
+        # Stage info overlay (fixed top-left)
         self.stage_info_overlay = QLabel(self.proc_scroll.viewport())
         self.stage_info_overlay.setWordWrap(False)
         self.stage_info_overlay.setAttribute(Qt.WA_TransparentForMouseEvents, True)
@@ -1379,7 +1379,7 @@ class CentroidFinderWindow(QMainWindow):
         except Exception:
             pass
 
-        # カーソル座標オーバーレイ（右下固定）
+        # Cursor coordinate overlay (fixed bottom-right)
         self.cursor_info_overlay = QLabel(self.proc_scroll.viewport())
         self.cursor_info_overlay.setWordWrap(False)
         self.cursor_info_overlay.setAttribute(Qt.WA_TransparentForMouseEvents, True)
@@ -1409,7 +1409,7 @@ class CentroidFinderWindow(QMainWindow):
             pass
 
 
-        # マウス/キーボード操作コントローラ
+        # Mouse/keyboard interaction controller
         self.interactions = ImageViewController(self)
 
         # Ensure patch worker threads are cleaned up on app exit
@@ -1423,11 +1423,11 @@ class CentroidFinderWindow(QMainWindow):
         except Exception:
             pass
 
-        # 参照点テーブル (左側: 最大10列、表示列は可変)
-        self.table_ref = QTableWidget(0, 10)  # 行0、列10 (内部容量)
-        # 重心テーブル (右側: 列数は動的)
+        # Reference point table (left: up to 10 columns, visible columns are variable)
+        self.table_ref = QTableWidget(0, 10)  # Row 0, col 10 (internal capacity)
+        # Centroid table (right: column count varies dynamically)
         self.table = QTableWidget(0, 0)
-        # 下部テーブルはウィンドウのリサイズで高さを変えたくないため固定高さにする
+        # Keep the lower table at a fixed height so it does not resize with the window
         try:
             # Do not hardcode a default here; compute exact height for 5 rows
             # after the tables have been populated so it matches the actual
@@ -1436,14 +1436,14 @@ class CentroidFinderWindow(QMainWindow):
         except Exception:
             pass
 
-        # 表示する参照点列数 (起動時は3列)
+        # Number of reference point columns shown (3 columns at startup)
         self.visible_ref_cols = 3
         try:
             self.table_ref.setHorizontalHeaderLabels([f"Fiducial {i + 1}" for i in range(self.table_ref.columnCount())])
         except Exception:
             pass
 
-        # 左テーブル垂直ヘッダ設定 (行ラベル表示、太字、右揃え)
+        # Left table vertical header settings (show row labels, bold, right-aligned)
         self.table_ref.verticalHeader().setVisible(True)
         vf = self.table_ref.verticalHeader().font()
         vf.setBold(True)
@@ -1451,9 +1451,9 @@ class CentroidFinderWindow(QMainWindow):
         try:
             self.table_ref.verticalHeader().setDefaultAlignment(Qt.AlignRight | Qt.AlignVCenter)
         except Exception:
-            pass  # 互換性確保
+            pass  # 
 
-        # 右テーブル垂直ヘッダ設定 (行ラベル表示、太字、右揃え)
+        #  (、、)
         self.table.verticalHeader().setVisible(True)
         vf2 = self.table.verticalHeader().font()
         vf2.setBold(True)
@@ -1463,7 +1463,7 @@ class CentroidFinderWindow(QMainWindow):
         except Exception:
             pass
 
-        # 水平ヘッダ設定 (両テーブルとも太字、中央揃え)
+        #  (、)
         hf_ref = self.table_ref.horizontalHeader().font()
         hf_ref.setBold(True)
         self.table_ref.horizontalHeader().setFont(hf_ref)
@@ -1539,10 +1539,10 @@ class CentroidFinderWindow(QMainWindow):
             QTimer.singleShot(150, self._adjust_table_column_widths)
         except Exception:
             pass
-        # 編集トリガー設定
-        # 右テーブル: 編集不可
+        # 
+        # : 
         self.table.setEditTriggers(QTableWidget.NoEditTriggers)
-        # 左テーブル: ユーザー操作時のみ編集 (Stage.* 行のみ有効)
+        # :  (Stage.* )
         try:
             triggers = (
                 QAbstractItemView.EditKeyPressed
@@ -1553,36 +1553,36 @@ class CentroidFinderWindow(QMainWindow):
         except Exception:
             self.table_ref.setEditTriggers(QTableWidget.AllEditTriggers)
 
-        # 選択モード設定 (両テーブル: 列選択)
+        #  (: )
         self.table.setSelectionBehavior(QAbstractItemView.SelectColumns)
         self.table.setSelectionMode(QAbstractItemView.SingleSelection)
         self.table_ref.setSelectionBehavior(QAbstractItemView.SelectColumns)
         self.table_ref.setSelectionMode(QAbstractItemView.SingleSelection)
 
-        # 左テーブルデリゲート (Enterキーでのセル移動)
+        #  (Enter)
         try:
             self.table_ref.setItemDelegate(RefTableDelegate(self.table_ref))
         except Exception:
             pass
 
-        # テーブル変更イベント接続
+        # 
         self.table.currentCellChanged.connect(self._on_table_current_changed)
         self.table_ref.currentCellChanged.connect(self._on_ref_table_current_changed)
-        # 左テーブルクリックイベント (Stage行即編集)
+        #  (Stage)
         try:
             self.table_ref.cellClicked.connect(self._on_ref_cell_clicked)
         except Exception:
             pass
 
-        # スクロール/サイズ設定
+        # /
         # Allow vertical scrollbar if content exceeds available height and let
         # the left table expand vertically so all rows can be shown when space allows.
         self.table_ref.setVerticalScrollBarPolicy(Qt.ScrollBarAsNeeded)
-        self.table_ref.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)  # 左は固定横幅
+        self.table_ref.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)  # 
         self.table_ref.setVerticalScrollMode(QAbstractItemView.ScrollPerPixel)
         self.table_ref.setHorizontalScrollMode(QAbstractItemView.ScrollPerPixel)
         self.table_ref.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Expanding)
-        # 左テーブルの列幅は固定運用（小さめ）
+        # （）
         try:
             self.table_ref.horizontalHeader().setSectionResizeMode(QHeaderView.Fixed)
             self.table_ref.horizontalHeader().setMinimumSectionSize(20)
@@ -1628,17 +1628,17 @@ class CentroidFinderWindow(QMainWindow):
         self.table.setHorizontalScrollMode(QAbstractItemView.ScrollPerPixel)
         self.table.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
         
-        # 横スクロール状態が変わったら高さも再調整（右テーブル）
+        # （）
         try:
             self.table.horizontalScrollBar().rangeChanged.connect(lambda _min, _max: fix_tables_height(self.table_ref, self.table))
         except Exception:
             pass
 
-        # 統一幅（数字+ボタン領域の幅） -- 左カラムを狭めるために少し小さめに設定
+        # （+） -- 
         self.control_area_width = 100
         self.max_levels = 255
 
-        # 残すのは PosterLevel と Particle Size Range に加え、Trim(pix)
+        #  PosterLevel  Particle Size Range 、Trim(pix)
         # Use code-safe internal keys for widgets; display text comes from self.display_labels
         self.edit_min_area, self.slider_min_area = self._make_spin_slider('min_area', 50, 10, 5000, 1)
         self.edit_trim, self.slider_trim = self._make_spin_slider('trim', 0, 0, 10, 1)
@@ -1647,14 +1647,14 @@ class CentroidFinderWindow(QMainWindow):
 
 
 
-        # ボタン（画像開く / エクスポート）を作る（配置は後で画像ヘッダ等へ移動する）
+        # （ / ）（）
         self.btn_open = QPushButton("Export Image")
         self.btn_open.setFixedHeight(40)
         self.btn_open.clicked.connect(self._on_export_image_clicked)
         self.btn_replace_image = QPushButton("Replace Image")
         self.btn_replace_image.setFixedHeight(40)
         self.btn_replace_image.clicked.connect(self._on_replace_image_clicked)
-        # Export ボタンは短くして隣に Clipboard を追加
+        # Export  Clipboard 
         self.btn_export = QPushButton("Export XYZ")
         self.btn_export.setFixedHeight(40)
         self.btn_export.clicked.connect(self.export_centroids)
@@ -1708,18 +1708,18 @@ class CentroidFinderWindow(QMainWindow):
         self.btn_center_name_filter.setFixedHeight(40)
         self.btn_center_name_filter.clicked.connect(self._on_center_name_filter_button)
 
-        # 自動更新/手動再計算の UI 部品を先に作成
-        # Auto Update の ON/OFF 表示・選択は不要なので、常に auto_update_mode=True とする
-        self.interp_mode = 'auto'  # 常に auto モード（ズーム倍率で自動選択）
+        # / UI 
+        # Auto Update  ON/OFF 、 auto_update_mode=True 
+        self.interp_mode = 'auto'  #  auto （）
         self.auto_update_mode = True
         self.chk_auto_update = None
-        # Recalc ボタン表示は不要
+        # Recalc 
         self.btn_recalc = None
 
         # v1.1.7+: heavy recomputation can be manual-triggered
         self.calc_mode = 'auto'  # 'auto' | 'manual'
         self._manual_recompute_request = False
-        # Auto/Manualで計算パラメータを分離保持（切替時に保存/復元）
+        # Auto/Manual（/）
         self._calc_params_by_mode = {'auto': None, 'manual': None}
         self.calc_mode_controls = None
         self.lbl_calc_mode = None
@@ -1729,47 +1729,47 @@ class CentroidFinderWindow(QMainWindow):
         self._calc_stop_requested = False
         self._calc_trace_seq = 0
         self._calc_trace_last_reason = ""
-        # New Project 初期化用: Area閾値を下位/上位1/3で一度だけ自動設定
+        # New Project : Area/1/3
         self._area_init_tercile_pending = False
         self._pending_recompute_after_area_init = False
         self._ref_add_has_added = False
         self.centroid_extraction_mode = False
 
-        # ピックモード（ルーペ制御）
+        # （）
         self.pick_mode = None  # None / 'add' / 'update'
         self.pick_ref_index = None
-        # 全体ズーム係数（1.0=等倍）
+        # （1.0=）
         self.proc_zoom = 1.0
-        # 最後に描いた右側オーバーレイ画像（フル解像度、numpy画像）
+        # （、numpy）
         self._last_overlay_full = None
-        # パン/フリック用の状態
+        # /
         self._mouse_pressed = False
         self._dragging = False
-        self._drag_start_vp = None  # ビューポート座標での押下位置
+        self._drag_start_vp = None  # 
         self._drag_start_scroll = (0, 0)
         self._drag_recent = deque(maxlen=8)  # (t, QPoint)
         self._kinetic_timer = QTimer(self)
         self._kinetic_timer.setInterval(16)
         self._kinetic_timer.timeout.connect(self._on_kinetic_tick)
-        self._kinetic_vx = 0.0  # スクロール速度(px/秒)
+        self._kinetic_vx = 0.0  # (px/)
         self._kinetic_vy = 0.0
         self._kinetic_last_t = 0.0
-        # 表示用余白（スクロールの遊び）と描画状態
+        # （）
         self.view_padding = 200
-        self._display_offset = (0, 0)   # 画像がキャンバス内で開始するラベル座標
-        self._display_img_size = (0, 0) # キャンバス内の画像サイズ（ズーム後）
-        self._display_pm_base = None    # クロスヘア等を描く前のベースPixmap
-        self._max_render_pixels_override = None  # ホイール中の軽量描画用（Noneで通常）
-        self.max_zoom_target_visible_px = 220    # 最大拡大時に長辺方向で見える元画像pxの目標
+        self._display_offset = (0, 0)   # 
+        self._display_img_size = (0, 0) # （）
+        self._display_pm_base = None    # Pixmap
+        self._max_render_pixels_override = None  # （None）
+        self.max_zoom_target_visible_px = 220    # px
         self._normal_max_render_pixels = 8192 * 8192
         self._hard_max_render_pixels = 12288 * 12288
-        # 初回表示は画像中心から開始するためのフラグ
+        # 
         self._initial_center_done = False
-        # 通常時は手のカーソル
+        # 
         self.img_label_proc.setCursor(QCursor(Qt.OpenHandCursor))
 
-        # 画像右上用の「境界線」トグルボタン（先に生成しておく）
-        # 画像右上用の「境界線」トグル（Show/Hide の2択）
+        # 「」（）
+        # 「」（Show/Hide 2）
         self.show_boundaries = False
         try:
             self.boundary_toggle = SegmentControl(["Show", "Hide"], checked_index=0, btn_w=64, btn_h=27)
@@ -1791,7 +1791,7 @@ class CentroidFinderWindow(QMainWindow):
             self.btn_boundary_show = None
             self.btn_boundary_hide = None
 
-        # Boundary ラベル + Show/Hide トグルをひとまとめに（右上に配置）
+        # Boundary  + Show/Hide （）
         try:
             if getattr(self, 'boundary_toggle', None) is not None:
                 self.boundary_controls = QWidget()
@@ -1820,7 +1820,7 @@ class CentroidFinderWindow(QMainWindow):
                         pass
                 bcl.addWidget(self.lbl_boundary)
                 bcl.addWidget(self.boundary_toggle)
-                # Coordinate  トグル（Image / Stage）を右隣に追加
+                # Coordinate  （Image / Stage）
                 try:
                     self.view_orientation_toggle = SegmentControl(["Image (u, v)", "Stage (X, Y)"], checked_index=0, btn_w=128, btn_h=27)
                     try:
@@ -1875,11 +1875,11 @@ class CentroidFinderWindow(QMainWindow):
             self.boundary_controls = None
             self.lbl_boundary = None
 
-        # 手動画像回転（Imageビュー専用）と左右反転モード（ビュー別）
+        # （Image）（）
         self.manual_image_rotation_deg = 0
         self.flip_mode_image = 'normal'  # 'normal' | 'flip'
         self.flip_mode_stage = 'auto'    # 'auto' | 'normal' | 'flip'
-        # Flipトグル（Image/Stage用を用意し、Coordinateに応じて出し分け）
+        # Flip（Image/Stage、Coordinate）
         self.flip_toggle_image = None
         self.flip_toggle_stage = None
         self.lbl_scale_val = None
@@ -1887,19 +1887,19 @@ class CentroidFinderWindow(QMainWindow):
         self.lbl_ty_val = None
         self.lbl_angle_val = None
 
-        # 画像領域レイアウト：上にボタン群（左に Open/Export/Clipboard、中央に補間/自動系、右に Flip/境界）
+        # ：（ Open/Export/Clipboard、/、 Flip/）
         img_layout = QVBoxLayout()
         img_header = QHBoxLayout()
         img_header.setContentsMargins(0, 0, 0, 0)
         img_header.setSpacing(8)
-        # 1段目: Open / Boundary / Display Mode
+        # 1: Open / Boundary / Display Mode
         try:
             # Simply add the btn_open directly to avoid nested layout alignment issues
             img_header.addWidget(self.btn_open, 0, Qt.AlignLeft | Qt.AlignVCenter)
             img_header.addWidget(self.btn_replace_image, 0, Qt.AlignLeft | Qt.AlignVCenter)
         except Exception:
             pass
-        # 中央上には自動更新/手動再計算をまとめる
+        # /
         try:
             center_controls = QHBoxLayout()
             center_controls.setContentsMargins(0, 0, 0, 0)
@@ -1907,7 +1907,7 @@ class CentroidFinderWindow(QMainWindow):
             img_header.addLayout(center_controls)
         except Exception:
             pass
-        # 右上コントロール（左→右）: Coordinate, Boundary, Posterization Overlay
+        # （→）: Coordinate, Boundary, Posterization Overlay
         overlay_ctrl = None
         self.overlay_mode_controls = None
         try:
@@ -1966,12 +1966,12 @@ class CentroidFinderWindow(QMainWindow):
             self.overlay_mode_controls = None
             pass
 
-        # 1段目はボタン専用にして潰れを防ぐ
+        # 1
         img_header.addStretch(1)
 
         img_layout.addLayout(img_header, 0)
 
-        # 2段目: Coordinate / Boundary / Display Mode（重心抽出中だけ表示する追加行）
+        # 2: Coordinate / Boundary / Display Mode（）
         try:
             param_row_top = QWidget()
             self._image_param_top_row = param_row_top
@@ -2000,7 +2000,7 @@ class CentroidFinderWindow(QMainWindow):
         except Exception:
             pass
 
-        # 3段目: Image Rotate / Normal/Flip（重心抽出中だけ追加表示）
+        # 3: Image Rotate / Normal/Flip（）
         midbar = QWidget()
         mb = QHBoxLayout(midbar)
         mb.setContentsMargins(6, 0, 6, 0)
@@ -2206,7 +2206,7 @@ class CentroidFinderWindow(QMainWindow):
         img_layout.insertWidget(1, midbar, 0)
         img_layout.addWidget(self.proc_scroll, 1)
 
-        # スライダー/コントロールレイアウト（各項目を横一行にまとめ、アプリ共通フォントを使う）
+        # /（、）
         sliders_layout = QVBoxLayout()
         from qt_compat.QtGui import QFont
         # Use Segoe UI 12 as the control font (match app-wide font)
@@ -2244,7 +2244,7 @@ class CentroidFinderWindow(QMainWindow):
                 except Exception:
                     pass
                 try:
-                    # 固定幅にして、すぐ隣に数値ボックスが来るようにする（ラベルと数値の間に可変スペースを入れない）
+                    # 、（）
                     # Give labels more room so text doesn't clip; this also narrows the slider area.
                     lbl.setFixedWidth(180)
                     lbl.setAlignment(Qt.AlignVCenter | Qt.AlignLeft)
@@ -2420,9 +2420,9 @@ class CentroidFinderWindow(QMainWindow):
         except Exception:
             self.area_hist = None
 
-        # MinAreaとテーブルの間にボタン行（左詰め）を追加
+        # MinArea（）
         actions_row = QHBoxLayout()
-        # ここから「境界線」ボタンは削除（画像右上に移動済み）
+        # 「」（）
         self.btn_start_centroid_extraction = QPushButton("START Centroid Extraction")
         self.btn_center_add_core = QPushButton("Core")
         self.btn_center_add_rim = QPushButton("Rim")
@@ -2484,11 +2484,11 @@ class CentroidFinderWindow(QMainWindow):
         actions_row.addWidget(self.btn_add_ref)
         actions_row.addWidget(self.btn_update_xy)
         actions_row.addWidget(self.btn_clear_ref)
-        # Flip は右上（画像ヘッダー）に配置
-        actions_row.addStretch(1)  # 左詰め
+        # Flip （）
+        actions_row.addStretch(1)  # 
         
 
-        # メインルートレイアウト
+        # 
         root = QVBoxLayout()
 
         # Compose main content: left column contains ReferencePoints and sliders,
@@ -2561,7 +2561,7 @@ class CentroidFinderWindow(QMainWindow):
         # The transposed view of the left reference table (visible to user)
         self.table_ref_view = QTableWidget()
         try:
-            # ユーザー側の左カラム表示は行方向で選択する（列方向ではなく）
+            # （）
             self.table_ref_view.setSelectionBehavior(QAbstractItemView.SelectRows)
             self.table_ref_view.setSelectionMode(QAbstractItemView.SingleSelection)
             try:
@@ -2579,7 +2579,7 @@ class CentroidFinderWindow(QMainWindow):
             except Exception:
                 pass
             try:
-                # 固定幅にして左カラム内の表の横幅を左コンテナに合わせる
+                # 
                 self.table_ref_view.setFixedWidth(500)
             except Exception:
                 pass
@@ -2638,87 +2638,31 @@ class CentroidFinderWindow(QMainWindow):
         except Exception:
             pass
 
-        # A transposed copy of the bottom centroid table placed between left and image
-        self.table_between = QTableWidget()
+        # Middle transposed tables (split by stage):
+        # - offline: ID, Name, u, v, Grp, No., C/R, Gen., Show
+        # - online : ID, Name, u, v, X,   Y,   Z,    Show
+        self.table_between_offline = QTableWidget()
+        self.table_between_online = QTableWidget()
         try:
-            self.table_between.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Expanding)
-            try:
-                # We render a custom 2-row pseudo header; hide Qt native horizontal header.
-                self.table_between.horizontalHeader().setVisible(False)
-            except Exception:
-                pass
-            # Keep startup schema aligned with middle-table builder:
-            # No, Name, u, v, Grp, No., C/R, Gen., Show.
-            try:
-                self.table_between.setColumnCount(9)
-                self.table_between.setRowCount(2)
-                self._setup_pseudo_headers_between(self.table_between)
-            except Exception:
-                pass
-            # Keep scrollbar presence stable so the center column doesn't jitter
-            self.table_between.setVerticalScrollBarPolicy(Qt.ScrollBarAlwaysOn)
-            self.table_between.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
-            try:
-                sb_mid = self.table_between.verticalScrollBar()
-                if sb_mid is not None:
-                    sb_mid.setMinimumWidth(14)
-                    try:
-                        sb_mid.setSingleStep(1)
-                    except Exception:
-                        pass
-            except Exception:
-                pass
-            try:
-                self.table_between.setStyleSheet(
-                    "QScrollBar:vertical { width: 14px; background: #efefef; }"
-                    "QScrollBar::handle:vertical { background: #9c9c9c; min-height: 24px; border-radius: 6px; }"
-                    "QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical { height: 0px; }"
-                )
-            except Exception:
-                pass
-            try:
-                self.table_between.verticalHeader().setDefaultAlignment(Qt.AlignHCenter | Qt.AlignVCenter)
-            except Exception:
-                pass
-            try:
-                # make the transposed middle table selectable by rows so image<->table sync is easier
-                self.table_between.setSelectionBehavior(QAbstractItemView.SelectRows)
-                self.table_between.setSelectionMode(QAbstractItemView.ExtendedSelection)
-                self.table_between.setEditTriggers(QAbstractItemView.DoubleClicked | QAbstractItemView.EditKeyPressed)
-                self.table_between.setContextMenuPolicy(Qt.CustomContextMenu)
-                self.table_between.currentCellChanged.connect(self._on_table_between_current_changed)
-                self.table_between.cellClicked.connect(self._on_table_between_cell_clicked)
-                self.table_between.cellDoubleClicked.connect(self._on_table_between_cell_double_clicked)
-                self.table_between.itemSelectionChanged.connect(self._on_table_between_selection_changed)
-                self.table_between.itemChanged.connect(self._on_table_between_item_changed)
-                self.table_between.customContextMenuRequested.connect(self._on_table_between_context_menu)
-            except Exception:
-                pass
-            try:
-                self._center_show_toggle_delegate = CenterShowToggleDelegate(self, self.table_between)
-            except Exception:
-                self._center_show_toggle_delegate = None
-        except Exception:
-            pass
-
-        # Use explicit font size for numeric contents (requested: specify directly)
-        try:
-            f2 = self.table_between.font()
-            if f2 is not None:
-                f2.setPointSize(10)
-                self.table_between.setFont(f2)
+            self._configure_middle_transposed_table(self.table_between_offline, stage='offline')
         except Exception:
             pass
         try:
-            # Keep row selection clearly visible even when cells have custom gray background.
-            self.table_between.setStyleSheet(
-                "QTableWidget::item:selected {"
-                "background-color: rgb(46, 132, 255);"
-                "color: white;"
-                "}"
-            )
+            self._configure_middle_transposed_table(self.table_between_online, stage='online')
         except Exception:
             pass
+        try:
+            self.table_between_online.setVisible(False)
+        except Exception:
+            pass
+        try:
+            self.table_between = self.table_between_offline
+        except Exception:
+            self.table_between = self.table_between_offline
+        try:
+            self._center_show_toggle_delegate = CenterShowToggleDelegate(self, self)
+        except Exception:
+            self._center_show_toggle_delegate = None
 
         left_col = QVBoxLayout()
         self.left_col_layout = left_col
@@ -3104,7 +3048,7 @@ class CentroidFinderWindow(QMainWindow):
                 tb.setContentsMargins(0, 0, 0, 0)
             except Exception:
                 pass
-            # 起動時は Off-line を既定にする
+            #  Off-line 
             self.left_tabs.setCurrentIndex(0)
         except Exception:
             self.left_tabs = None
@@ -3221,7 +3165,7 @@ class CentroidFinderWindow(QMainWindow):
             self.extract_mode_options_controls = None
             pass
 
-        # 左カラムの表の上に Add/Update/Clear ボタンを配置
+        #  Add/Update/Clear 
         try:
             left_controls = QHBoxLayout()
             try:
@@ -3367,13 +3311,13 @@ class CentroidFinderWindow(QMainWindow):
             except Exception:
                 pass
             try:
-                # 起動時は常に Off-line で開始
+                #  Off-line 
                 self._set_workflow_stage('offline', sync_toggle=True, allow_mode_side_effects=False)
             except Exception:
                 pass
         try:
             if getattr(self, 'left_extract_controls', None) is not None:
-                # START Centroid Extraction 行を左カラム内容の直下に配置
+                # START Centroid Extraction 
                 left_col.addWidget(self.left_extract_controls, 0)
         except Exception:
             pass
@@ -3381,10 +3325,10 @@ class CentroidFinderWindow(QMainWindow):
         self.left_container = QWidget()
         self.left_container.setLayout(left_col)
         try:
-            # 左カラム最小幅（必要時はこの値を調整）
+            # （）
             min_left_w = int(getattr(self, 'left_column_min_width', LEFT_COLUMN_MIN_WIDTH) or LEFT_COLUMN_MIN_WIDTH)
             self.left_column_min_width = min_left_w
-            # 起動時は最小幅で開始し、その後は再計算側で必要に応じて拡張する
+            # 、
             self.left_container.setMinimumWidth(min_left_w)
             self.left_container.setFixedWidth(min_left_w)
         except Exception:
@@ -3446,7 +3390,7 @@ class CentroidFinderWindow(QMainWindow):
                     except Exception:
                         pass
                     try:
-                        # 1行目: Add Target Point + name fields
+                        # 1: Add Target Point + name fields
                         center_btn_grid.addWidget(self.btn_add_target, 0, 0)
                         add_prefix_wrap = QWidget()
                         add_prefix_wrap_l = QHBoxLayout(add_prefix_wrap)
@@ -3477,7 +3421,7 @@ class CentroidFinderWindow(QMainWindow):
                         center_btn_grid.addLayout(add_seq_row, 0, 2)
                         center_btn_grid.addWidget(self.btn_center_undo, 0, 3)
 
-                        # 2行目: Name Filter / Update u, v / Clear Selected / Clear ALL
+                        # 2: Name Filter / Update u, v / Clear Selected / Clear ALL
                         center_btn_grid.addWidget(self.btn_center_name_filter, 1, 0)
                         center_btn_grid.addWidget(self.btn_update_target_uv, 1, 1)
                         center_btn_grid.addWidget(self.btn_clear_target, 1, 2)
@@ -3510,9 +3454,16 @@ class CentroidFinderWindow(QMainWindow):
                 self.table_between_header = QTableWidget()
                 hdr_mid = self.table_between_header
                 hdr_mid.setRowCount(2)
-                # Pre-allocate 9 columns to match current middle table layout:
-                # No, Name, u, v, Grp, No., C/R, Gen., Show
-                hdr_mid.setColumnCount(9)
+                # Pre-allocate columns to match the current workflow stage.
+                try:
+                    layout = self._middle_table_layout_meta()
+                    hdr_mid.setColumnCount(int(layout.get('data_cols', 9)))
+                except Exception:
+                    try:
+                        stage_now = str(getattr(self, 'workflow_stage', 'offline') or 'offline').lower().strip()
+                    except Exception:
+                        stage_now = 'offline'
+                    hdr_mid.setColumnCount(8 if stage_now == 'online' else 9)
                 try:
                     hdr_mid.verticalHeader().setVisible(True)
                 except Exception:
@@ -3538,9 +3489,9 @@ class CentroidFinderWindow(QMainWindow):
                     pass
                 # Ensure initial column count covers the main table_between columns
                 try:
-                    pref_mid = max(9, int(getattr(self, 'table_between', None).columnCount() or 9))
+                    pref_mid = max(8, int(getattr(self, 'table_between', None).columnCount() or 8))
                 except Exception:
-                    pref_mid = 9
+                    pref_mid = 8
                 hdr_mid.setColumnCount(pref_mid)
                 hdr_mid.setFixedHeight(60)
                 try:
@@ -3706,7 +3657,14 @@ class CentroidFinderWindow(QMainWindow):
                     pass
             except Exception:
                 self.table_between_header = None
-            center_col.addWidget(self.table_between, 1)
+            try:
+                center_col.addWidget(self.table_between_offline, 1)
+            except Exception:
+                pass
+            try:
+                center_col.addWidget(self.table_between_online, 1)
+            except Exception:
+                pass
             # Wrap the center column in a QWidget so we can control the column width
             self.center_container = QWidget()
             self.center_container.setLayout(center_col)
@@ -3772,7 +3730,7 @@ class CentroidFinderWindow(QMainWindow):
         # layout any more (user requested it removed). It remains as the
         # canonical data table for internal calculations but is not shown.
 
-        # 中央ウィジェット設定
+        # 
         # Build top-level container with custom title bar and footer
         content_widget = QWidget()
         content_widget.setLayout(root)
@@ -3838,29 +3796,29 @@ class CentroidFinderWindow(QMainWindow):
             QTimer.singleShot(100, self._shrink_visible_columns)
         except Exception:
             pass
-        # 中央カラム（table_between）を1列分狭める処理も実行
+        # （table_between）1
         try:
             QTimer.singleShot(150, self._narrow_center_column)
         except Exception:
             pass
-        # 左上画像を左カラム幅に合わせる同期処理
+        # 
         try:
             QTimer.singleShot(160, self._sync_left_top_image_width)
         except Exception:
             pass
 
-        # 配線
+        # 
         self._wire_levels()
         self._wire(self.edit_min_area, self.slider_min_area)
         self._wire(self.edit_trim, self.slider_trim)
         self._wire(self.edit_neck_sep, self.slider_neck_sep)
         self._wire(self.edit_shape_complex, self.slider_shape_complex)
-        # Ref の Stage.* 入力保持用（内部容量は10）
+        # Ref  Stage.* （10）
         self.ref_obs = [{"x": "", "y": "", "z": ""} for _ in range(10)]
-        # 入力変更を監視（半角正規化）
+        # （）
         self.table_ref.itemChanged.connect(self._on_ref_item_changed)
 
-        # 起動直後に一度テーブルを構築（左表を3列で表示しておく）
+        # （3）
         try:
             self._safe_populate_tables(
                 self.table_ref,
@@ -3873,17 +3831,17 @@ class CentroidFinderWindow(QMainWindow):
                 flip_mode=self.flip_mode,
                 visible_ref_cols=self.visible_ref_cols,
             )
-            # 初期の列幅/高さを反映
+            # /
             try:
                 fix_tables_height(self.table_ref, self.table)
             except Exception:
                 pass
-            # 下部テーブルは5行固定なので、その表示に合わせて高さを固定する
+            # 5、
             try:
                 rows_fixed = 6
                 row_h = self.table.verticalHeader().defaultSectionSize()
                 hdr_h = self.table.horizontalHeader().height()
-                # フレームや余白分の余裕を少し加える
+                # 
                 extra = 4
                 try:
                     # frameWidth is a method on some styles; try to call if present
@@ -3954,7 +3912,7 @@ class CentroidFinderWindow(QMainWindow):
 
         self._open_startup_image()
 
-    # オーバーレイ表示モード（Original/Posterized）変更ハンドラ
+    # （Original/Posterized）
     def _on_overlay_mode_changed(self, idx):
         if not bool(getattr(self, 'centroid_extraction_mode', False)):
             try:
@@ -3985,7 +3943,7 @@ class CentroidFinderWindow(QMainWindow):
 
     # Recalculation Trigger toggle handler (Auto/Manual)
     def _on_toggle_calc_mode(self, idx):
-        # 計算中はモード切り替えではなく緊急停止として扱う
+        # 
         try:
             if bool(getattr(self, '_calc_in_progress', False)):
                 self._request_calc_stop("mode-toggle")
@@ -4197,7 +4155,7 @@ class CentroidFinderWindow(QMainWindow):
                     pass
 
     def _on_manual_recalculate_clicked(self):
-        # 計算中に同ボタンが押された場合は緊急停止として扱う
+        # 
         try:
             if bool(getattr(self, '_calc_in_progress', False)):
                 self._request_calc_stop("manual-segment")
@@ -4287,7 +4245,7 @@ class CentroidFinderWindow(QMainWindow):
         except Exception:
             pass
 
-        # 計算中は現在採用中モードのセグメントを「Stop Calc.」として使う
+        # 「Stop Calc.」
         try:
             tcm = getattr(self, 'toggle_calc_mode', None)
             if tcm is not None:
@@ -4386,7 +4344,7 @@ class CentroidFinderWindow(QMainWindow):
             except Exception:
                 pass
 
-    # 境界線表示トグルハンドラ
+    # 
     def _on_toggle_boundaries(self, checked):
         if not bool(getattr(self, 'centroid_extraction_mode', False)):
             checked = False
@@ -4401,7 +4359,7 @@ class CentroidFinderWindow(QMainWindow):
                     pass
         except Exception:
             pass
-        # Boundary の表示/非表示を変えるだけなので再計算は不要
+        # Boundary /
         self.schedule_update(force=True, recompute_centroids=False)
     def _on_toggle_coordinate(self, idx):
         center_full = None
@@ -4481,7 +4439,7 @@ class CentroidFinderWindow(QMainWindow):
             self._update_online_stage_controls_overlay_visibility()
         except Exception:
             pass
-        # 更新をスケジュール（必要なら表示を更新するため）
+        # （）
         try:
             self._apply_proc_zoom()
             if center_full is not None:
@@ -4610,7 +4568,7 @@ class CentroidFinderWindow(QMainWindow):
             pass
 
     def _on_stage_axis_changed(self, axis, idx):
-        """Stage座標表示の符号（X/Y）を切り替える。0:+, 1:-"""
+        """Stage（X/Y）。0:+, 1:-"""
         center_full = None
         try:
             if str(getattr(self, 'view_orientation', 'Image')) == 'Stage' and getattr(self, 'proc_scroll', None) is not None:
@@ -4697,7 +4655,7 @@ class CentroidFinderWindow(QMainWindow):
                     pass
         except Exception:
             self.manual_image_rotation_deg = 0
-        # 表示のみ更新（Imageモード回転では表示中心を維持）
+        # （Image）
         try:
             self._apply_proc_zoom()
             if center_full is not None and str(getattr(self, 'view_orientation', 'Image')) == 'Image':
@@ -4735,7 +4693,7 @@ class CentroidFinderWindow(QMainWindow):
                 self.flip_mode_stage = {0: 'auto', 1: 'normal', 2: 'flip'}.get(int(idx), 'auto')
         except Exception:
             pass
-        # 表示のみ更新
+        # 
         try:
             self._apply_proc_zoom()
             try:
@@ -4755,7 +4713,7 @@ class CentroidFinderWindow(QMainWindow):
         except Exception:
             pass
 
-    # Grain Identification トグルハンドラ（Basic/Advanced）
+    # Grain Identification （Basic/Advanced）
     def _on_toggle_grain_ident(self, idx):
         self.grain_ident_mode = 'advanced'
         try:
@@ -4809,7 +4767,7 @@ class CentroidFinderWindow(QMainWindow):
         except Exception:
             pass
 
-    # スピンボックスとスライダーのペアを作成するヘルパーメソッド
+    # 
     def _make_spin_slider(self, name, init, mn, mx, tick):
         edit = QLineEdit(str(init))
         edit.setAlignment(Qt.AlignRight)
@@ -4844,9 +4802,9 @@ class CentroidFinderWindow(QMainWindow):
             pass
         return edit, slider
 
-    # 編集ボックスとスライダーの同期配線 (Enter確定のみ)
+    #  (Enter)
     def _wire(self, edit, slider):
-        # Enter（Return）で確定したときのみ適用する
+        # Enter（Return）
         # Only attempt to call signal.disconnect() without a slot on PyQt5.
         # On PySide6, calling disconnect() with no arguments emits a RuntimeWarning.
         try:
@@ -4876,7 +4834,7 @@ class CentroidFinderWindow(QMainWindow):
         except Exception:
             pass
 
-    # Number of Groups の+/-ボタンで値を調整
+    # Number of Groups +/-
     def _nudge_num_groups(self, delta):
         try:
             cur = int(self.edit_num_groups.text().strip())
@@ -5127,7 +5085,7 @@ class CentroidFinderWindow(QMainWindow):
             except Exception:
                 pass
 
-    # スライダーから編集ボックスへ同期
+    # 
     def _sync_from_slider(self, edit, val, key=None):
         try:
             edit.setText(str(val))
@@ -5160,7 +5118,7 @@ class CentroidFinderWindow(QMainWindow):
             pass
         self.schedule_update()
 
-    # 編集ボックスからスライダーへ同期 (Enter確定)
+    #  (Enter)
     def _sync_from_edit(self, edit, slider):
         try:
             v = int(edit.text())
@@ -5246,7 +5204,7 @@ class CentroidFinderWindow(QMainWindow):
         self.edit_shape_complex.setText(str(cur))
         self.schedule_update(force=True)
 
-    # 画像ファイルを開くダイアログを表示
+    # 
     def open_image(self):
         last_path = load_last_image_path()
         fname, _ = QFileDialog.getOpenFileName(self, STR.OPEN_DIALOG_TITLE, last_path, STR.FILE_FILTER)
@@ -5266,7 +5224,7 @@ class CentroidFinderWindow(QMainWindow):
             pass
 
     def _open_startup_image(self):
-        """起動時はデモ画像を自動読み込みし、見つからない場合のみ手動選択へフォールバック。"""
+        """、。"""
         try:
             try:
                 retry_count = int(getattr(self, '_startup_image_retry_count', 0) or 0)
@@ -5461,21 +5419,21 @@ class CentroidFinderWindow(QMainWindow):
         except Exception:
             pass
 
-    # 指定パスから画像を読み込み、処理画像を構築
+    # 、
     def _open_image_from_path(self, fname: str, show_startup_prompt_on_fail: bool = False, auto_detect: bool = False, reset_project_state: bool = False):
-        # 大きなファイルかどうかチェックして、必要なら軽負荷モードを有効化
+        # 、
         try:
             fsize = os.path.getsize(fname)
         except Exception:
             fsize = 0
         LARGE_THRESHOLD = 100 * 1024 * 1024  # 100MB
         if fsize >= LARGE_THRESHOLD:
-            # 大きい画像なので処理用幅を縮小して操作性を確保
+            # 
             try:
                 self._dbg(f"Large image detected: {fsize} bytes. Enabling lightweight processing.")
             except Exception:
                 pass
-            # 保存してから縮小
+            # 
             self._prev_proc_target_width = getattr(self, 'proc_target_width', PROC_TARGET_WIDTH)
             self.proc_target_width = max(200, PROC_TARGET_WIDTH // 2)
             self._large_file_hint = True
@@ -5485,7 +5443,7 @@ class CentroidFinderWindow(QMainWindow):
         # update status
         try:
             if getattr(self, '_large_file_hint', False):
-                self.ui_footer.showMessage("軽負荷モード: 大きな画像を簡易処理中")
+                self.ui_footer.showMessage(": ")
             else:
                 self.ui_footer.showMessage("")
         except Exception:
@@ -5494,14 +5452,14 @@ class CentroidFinderWindow(QMainWindow):
         try:
             self.img_full = cv2.imdecode(np.fromfile(fname, dtype=np.uint8), cv2.IMREAD_COLOR)
             if self.img_full is None:
-                raise ValueError("画像の読み込みに失敗しました")
+                raise ValueError("")
             save_last_image_path(fname)
             try:
                 self.image_path = str(fname)
             except Exception:
                 self.image_path = ""
         except Exception as e:
-            print("画像読み込みエラー:", e)
+            print(":", e)
             self.img_full = None
             try:
                 if bool(show_startup_prompt_on_fail):
@@ -5521,9 +5479,9 @@ class CentroidFinderWindow(QMainWindow):
                 self._reset_project_coordinates()
         except Exception:
             pass
-        # New Project 読み込み時の初期条件:
-        # - Number of Groups を 2 に固定
-        # - Area Min/Max の初期化を「下位1/3・上位1/3」に設定
+        # New Project :
+        # - Number of Groups  2 
+        # - Area Min/Max 「1/31/3」
         try:
             if bool(reset_project_state):
                 # Keep current manual/auto mode untouched; only reset detection defaults.
@@ -5558,21 +5516,21 @@ class CentroidFinderWindow(QMainWindow):
                 self._pending_recompute_after_area_init = False
         except Exception:
             pass
-        # 画像が変わったのでキャッシュ破棄
+        # 
         self._cache = {"img_id": id(self.proc_img), "levels": None, "min_area": None, "trim_px": None, "poster": None, "centroids": None}
-        # 次回更新時に画像中心へスクロール
+        # 
         self._initial_center_done = False
         # Preserve legacy detection behavior for startup/new project image loads.
         recompute_on_load = bool(auto_detect) or bool(reset_project_state) or bool(getattr(self, 'centroid_extraction_mode', False))
         self.schedule_update(force=True, recompute_centroids=bool(recompute_on_load))
         return True
 
-    # 自動デバッグ実行: 前回画像を読み込み、更新後に終了
+    # : 、
     def run_auto_and_exit(self):
-        """前回の画像を自動で読み込み、初回更新が完了したらアプリを終了する。"""
+        """、。"""
         last_path = load_last_image_path()
         if not last_path or not os.path.isfile(last_path):
-            # 対象が無ければ即終了
+            # 
             app = QApplication.instance()
             if app is not None:
                 QTimer.singleShot(0, app.quit)
@@ -5580,7 +5538,7 @@ class CentroidFinderWindow(QMainWindow):
         self._auto_exit_after_update = True
         self._open_image_from_path(last_path)
 
-    # 処理用画像を構築 (リサイズしてPROC_TARGET_WIDTHに合わせる)
+    #  (PROC_TARGET_WIDTH)
     def _build_processing_image(self):
         if self.img_full is None:
             self.proc_img = None
@@ -5705,7 +5663,7 @@ class CentroidFinderWindow(QMainWindow):
         except Exception:
             pass
 
-    # 更新をスケジュール (タイマーで遅延実行、forceで即時)
+    #  (、force)
     def schedule_update(self, force=False, recompute_centroids=True):
         """Schedule UI update.
 
@@ -5748,6 +5706,12 @@ class CentroidFinderWindow(QMainWindow):
                     self._calc_trace_last_reason = 'force-update'
                 else:
                     self._calc_trace_last_reason = 'update'
+        except Exception:
+            pass
+        try:
+            # Heavy centroid recomputation is only allowed while centroid extraction mode is active.
+            if bool(recompute_centroids) and (not bool(getattr(self, 'centroid_extraction_mode', False))):
+                recompute_centroids = False
         except Exception:
             pass
         try:
@@ -5809,7 +5773,7 @@ class CentroidFinderWindow(QMainWindow):
         else:
             self.update_timer.start()
 
-        # 現在の処理パラメータを取得
+        # 
     def _get_params(self):
         # Number of Groups is the single source of truth for k-means levels.
         try:
@@ -5898,13 +5862,13 @@ class CentroidFinderWindow(QMainWindow):
             if mx <= mn:
                 mx = mn * 1.1
             bins = _np.logspace(math.log10(mn), math.log10(mx), num=21)
-            # 面積の総和（赤線）
+            # （）
             vals, edges = _np.histogram(arr, bins=bins, weights=arr)
-            # 粒子数（灰色線）
+            # （）
             counts, _ = _np.histogram(arr, bins=bins)
             self.area_hist.set_data(edges.tolist(), vals.tolist(), counts.tolist())
 
-            # New Project 初回のみ: Min/Max を Log 変換後レンジの 1/3, 2/3 で初期化。
+            # New Project : Min/Max  Log  1/3, 2/3 。
             try:
                 if bool(getattr(self, '_area_init_tercile_pending', False)):
                     log_mn = float(_np.log(float(mn)))
@@ -5918,7 +5882,7 @@ class CentroidFinderWindow(QMainWindow):
                         sel_min, sel_max = sel_max, sel_min
                     self.area_hist.set_selection(sel_min, sel_max)
                     self._area_init_tercile_pending = False
-                    # 初期閾値が確定したので、次フレームでその値を使って再計算する。
+                    # 、。
                     self._pending_recompute_after_area_init = True
                     return
             except Exception:
@@ -6046,7 +6010,7 @@ class CentroidFinderWindow(QMainWindow):
                 except Exception:
                     pass
                 return
-            # 単一ビュー表示のため、左側原画像の描画は廃止
+            # 、
             params = self._get_params()
             if self.proc_img is None:
                 self._build_processing_image()
@@ -6072,7 +6036,7 @@ class CentroidFinderWindow(QMainWindow):
             except Exception:
                 group_name_transfer_state = None
             if self.centroid_processor:
-                # 判定: 自動更新モードか手動モードかで重い処理の実行を切り替える
+                # : 
                 try:
                     is_manual_mode = (str(getattr(self, 'calc_mode', 'auto')) == 'manual')
                 except Exception:
@@ -6100,8 +6064,8 @@ class CentroidFinderWindow(QMainWindow):
                     or cache_shape != params.get("shape_complexity")
                 )
 
-                # Manualモードでは、トリガーされていない更新では poster も再計算しない。
-                # (Autoでは随時計算、ManualではReCalculate等で recompute_centroids=True の時だけ再計算)
+                # Manual、 poster 。
+                # (Auto、ManualReCalculate recompute_centroids=True )
                 if bool(is_manual_mode) and (not bool(recompute_centroids)):
                     need_poster_recalc = False
 
@@ -6145,7 +6109,7 @@ class CentroidFinderWindow(QMainWindow):
                         rim_points_now = list(getattr(self, '_auto_rim_proc_points', []) or [])
                         areas_now = getattr(self, '_cache', {}).get('areas')
                         boundary_mask_now = getattr(self, '_cache', {}).get('boundary_mask')
-                # 自動モードでは通常通り重い処理を行う
+                # 
                 elif self.auto_update_mode:
                     if poster is None:
                         poster = kmeans_posterize(self.proc_img, params["levels"])
@@ -6211,7 +6175,7 @@ class CentroidFinderWindow(QMainWindow):
                             "boundary_mask": boundary_mask_now,
                         })
                 else:
-                    # 手動モードで再計算を許可したケース（force/manual recompute）
+                    # （force/manual recompute）
                     if poster is None:
                         poster = kmeans_posterize(self.proc_img, params["levels"])
                     did_centroid_recompute = True
@@ -6253,13 +6217,13 @@ class CentroidFinderWindow(QMainWindow):
                             "areas": areas_now,
                             "boundary_mask": boundary_mask_now,
                         })
-                # 表示用にポスター画像をフル解像度へ拡大
+                # 
                 poster_full = None
                 poster_edges_full = None
                 try:
                     if poster is not None:
-                        # Manual モードで heavy recompute が許可されていない (スライダー移動中など) 場合、
-                        # フル解像度への cv2.resize をスキップして UI を軽くする。
+                        # Manual  heavy recompute  () 、
+                        #  cv2.resize  UI 。
                         is_manual_mode = (str(getattr(self, 'calc_mode', 'auto')) == 'manual')
                         try:
                             trace = bool(str(os.environ.get('PIXY_UPDATE_TRACE', '')).strip())
@@ -6282,7 +6246,7 @@ class CentroidFinderWindow(QMainWindow):
                                 new_w = self.img_full.shape[1]
                                 new_h = self.img_full.shape[0]
                                 poster_full = cv2.resize(poster, (new_w, new_h), interpolation=cv2.INTER_LINEAR)
-                                # Boundary のエッジ検出は最近傍で拡大したポスターを使う（線が太くなる原因を避ける）
+                                # Boundary （）
                                 poster_edges_full = cv2.resize(poster, (new_w, new_h), interpolation=cv2.INTER_NEAREST)
                             else:
                                 poster_full = poster.copy()
@@ -6383,12 +6347,12 @@ class CentroidFinderWindow(QMainWindow):
                                 pass
                     except Exception:
                         pass
-                # ポスタリゼーション境界に白線を描画（オプション）
+                # （）
                 try:
                     # If we decided to reuse the last overlay (manual slider moves),
                     # skip boundary composition entirely to keep the UI responsive.
                     if (not bool(reuse_last_overlay)) and self.show_boundaries and poster_edges_full is not None:
-                        # エッジ検出は最近傍補間（ギザ）版を使って細い境界を得る
+                        # （）
                         # Build poster_for_edges at full resolution and apply trim in full-pixel units
                         try:
                             trim_px_full = int(params.get('trim_px', 0) or 0)
@@ -6449,11 +6413,11 @@ class CentroidFinderWindow(QMainWindow):
                                 edge_mask = np.zeros((h, w), dtype=np.uint8)
                                 edge_mask[:, 1:][diff_h] = 255
                                 edge_mask[1:, :][diff_v] = 255
-                        # 黒枠は不要 → スムージング（ガウシアン）で柔らかい白線へ
-                        # trim_px_full==0 のときは、重なって太く見えるのを抑えるため
-                        # - 事前に軽く erode して線を細くする
-                        # - ブラー強度を小さくして細い線を作る
-                        # - 最終的な alpha を少し抑えて視覚的な太さを揃える
+                        #  → （）
+                        # trim_px_full==0 、
+                        # -  erode 
+                        # - 
+                        # -  alpha 
                         try:
                             is_zero = int(trim_px_full) == 0
                         except Exception:
@@ -6466,14 +6430,14 @@ class CentroidFinderWindow(QMainWindow):
                             alpha *= 0.60 if is_zero else 0.80
                         except Exception:
                             alpha = (edge_mask.astype(np.float32) / 255.0).reshape(h, w, 1)
-                        # 白を alpha でブレンド
+                        #  alpha 
                         overlay_full = overlay_full.astype(np.float32)
                         overlay_full = overlay_full * (1.0 - alpha) + 255.0 * alpha
                         overlay_full = np.clip(overlay_full, 0, 255).astype(np.uint8)
                 except Exception:
-                    # 万一の失敗時は何もしない（オーバーレイはそのまま）
+                    # （）
                     pass
-                # マーカーは等倍時の画像に焼き込まず、ズーム後にQPainterで上描きする
+                # 、QPainter
 
                 # Remember the last-rendered visual state so manual slider moves can reuse it.
                 try:
@@ -6484,10 +6448,10 @@ class CentroidFinderWindow(QMainWindow):
                     self._last_show_boundaries = bool(getattr(self, 'show_boundaries', True))
                 except Exception:
                     pass
-            # 右画像のベースサイズを保存（フル画像サイズ)
+            # （)
             self._img_base_size = (overlay_full.shape[1], overlay_full.shape[0])
 
-            # 自動検出結果を保持（手動ターゲット合成前）
+            # （）
             try:
                 self._auto_centroids = list(centroids or [])
             except Exception:
@@ -6502,8 +6466,8 @@ class CentroidFinderWindow(QMainWindow):
             except Exception:
                 pass
 
-            # データ反映を先に行い、描画前に最新の点群を反映させる（灰色丸を即表示）
-            # 手動ターゲットは常に自動重心へ加算（+α）する。
+            # 、（）
+            # （+α）。
             self.centroids = self._compose_centroids_with_manual(self._auto_centroids)
             try:
                 self._centroid_rim_proc_points = self._compose_rim_points_with_manual(self._auto_centroids, self._auto_rim_proc_points)
@@ -6519,26 +6483,26 @@ class CentroidFinderWindow(QMainWindow):
             # NOTE:
             # Do not write directly to `table_between` here.
             # Direct item writes can emit `itemChanged` and be interpreted as Name edits.
-            # 選択インデックスが範囲外なら解除
+            # 
             if self.selected_index is not None and not (0 <= self.selected_index < len(self.centroids)):
                 self.selected_index = None
 
-            # 右側オーバーレイ画像を保持（フル解像度）
+            # （）
             self._last_overlay_full = overlay_full
 
-            # 初回描画後に画像中心へスクロール（スクロール範囲反映後に行うため 0ms ディレイ）
+            # （ 0ms ）
             if not self._initial_center_done and self._img_base_size is not None:
                 cx = self._img_base_size[0] / 2.0
                 cy = self._img_base_size[1] / 2.0
                 try:
                     QTimer.singleShot(0, lambda: self._ensure_full_pos_visible(cx, cy))
                 except Exception:
-                    # 何かあっても一度だけ試みる
+                    # 
                     pass
 
                 self._initial_center_done = True
 
-            # テーブル更新
+            # 
             self._safe_populate_tables(self.table_ref, self.table, self.ref_points, self.ref_obs, self.centroids, self.selected_index, self.ref_selected_index, flip_mode=self.flip_mode, visible_ref_cols=self.visible_ref_cols)
             try:
                 self._refresh_transposed_views(refresh_center_view=False)
@@ -6577,11 +6541,11 @@ class CentroidFinderWindow(QMainWindow):
                 except Exception:
                     pass
 
-            # 画像表示更新
+            # 
             self._apply_proc_zoom()
         finally:
             self._painting = False
-            # 自動デバッグモードなら、一度処理が走ったら終了
+            # 、
             if self._auto_exit_after_update:
                 self._auto_exit_after_update = False
                 app = QApplication.instance()
@@ -6590,7 +6554,7 @@ class CentroidFinderWindow(QMainWindow):
                         QTimer.singleShot(0, app.quit)
                     except Exception:
                         app.quit()
-            # New Project 初期閾値（下位/上位1/3）適用後の再計算を1回だけ実行
+            # New Project （/1/3）1
             try:
                 if bool(getattr(self, '_pending_recompute_after_area_init', False)):
                     self._pending_recompute_after_area_init = False
@@ -6955,10 +6919,10 @@ class CentroidFinderWindow(QMainWindow):
                 return None
 
         def _build_display_mapping(mode: str, draw_w: float, draw_h: float, pad: float, z: float, qt_transform=None):
-            """QPixmap.trueMatrix() を使い、transformed() と完全一致する変換行列を取得する。
+            """QPixmap.trueMatrix() 、transformed() 。
 
-            Qt の transformed() は内部で toAlignedRect() により整数丸めしたシフトを使う。
-            mapRect().topLeft() の浮動小数とは最大1px ズレるため、trueMatrix で統一する。
+            Qt  transformed()  toAlignedRect() 。
+            mapRect().topLeft() 1px 、trueMatrix 。
             """
             try:
                 from qt_compat.QtCore import QRectF
@@ -7044,7 +7008,7 @@ class CentroidFinderWindow(QMainWindow):
         try:
             msg = ""
             if getattr(self, '_large_file_hint', False):
-                msg = "軽負荷モード有効"
+                msg = ""
             if msg:
                 self.ui_footer.showMessage(msg)
         except Exception:
@@ -7190,7 +7154,7 @@ class CentroidFinderWindow(QMainWindow):
                     # rotate around center
                     cx = img_region.width() / 2.0
                     cy = img_region.height() / 2.0
-                    # Reflect mode: use the fitted value (表の計算パラメータ)
+                    # Reflect mode: use the fitted value ()
                     reflect_fit = bool(info.get('reflect', False))
                     # NOTE: Do NOT override with flip_mode_stage. flip_mode_stage is for override purposes,
                     # but here we use the computed reflect value. Right/Top toggles will be applied later.
@@ -7256,7 +7220,7 @@ class CentroidFinderWindow(QMainWindow):
                     p = QPainter(pm2)
                     p.drawPixmap(pad, pad, rotated)
 
-                    # 参照点は build_zoomed_canvas 側で描画され、画像回転と一緒に回転されるため、ここでの再描画は不要
+                    #  build_zoomed_canvas 、、
 
                     # Draw stage grid lines on rotated image (simple orthogonal grid)
                     try:
@@ -7407,7 +7371,7 @@ class CentroidFinderWindow(QMainWindow):
                         from qt_compat.QtGui import QPixmap, QPainter, QPen, QColor, QTransform
                         import math
                         
-                        # まずImageビュー用の回転／反転を適用
+                        # Image／
                         pad = int(self.view_padding)
                         draw_w, draw_h = (new_w, new_h)
                         try:
@@ -7417,7 +7381,7 @@ class CentroidFinderWindow(QMainWindow):
                         transform = QTransform()
                         cx = img_region.width() / 2.0
                         cy = img_region.height() / 2.0
-                        # Image用Flip
+                        # ImageFlip
                         try:
                             if getattr(self, 'flip_mode_image', 'normal') == 'flip':
                                 transform.translate(cx, cy)
@@ -7425,7 +7389,7 @@ class CentroidFinderWindow(QMainWindow):
                                 transform.translate(-cx, -cy)
                         except Exception:
                             pass
-                        # Image用回転（手動）
+                        # Image（）
                         try:
                             angle_img = float(getattr(self, 'manual_image_rotation_deg', 0.0))
                         except Exception:
@@ -7449,7 +7413,7 @@ class CentroidFinderWindow(QMainWindow):
                         except Exception:
                             pass
 
-                        # 回転後キャンバス作成
+                        # 
                         pm2 = QPixmap(rotated_img.width() + 2 * pad, rotated_img.height() + 2 * pad)
                         pm2.fill(QColor(30, 30, 30))
                         p = QPainter(pm2)
@@ -7635,7 +7599,7 @@ class CentroidFinderWindow(QMainWindow):
                             font.setPointSize(9)
                             p.setFont(font)
 
-                            # グリッド/点の描画は、クリック判定と同じ座標変換（_full_to_display）に統一する
+                            # /、（_full_to_display）
                             def transform_grid_coords(x_px, y_px):
                                 try:
                                     dxy = self._full_to_display(float(x_px), float(y_px))
@@ -7653,12 +7617,12 @@ class CentroidFinderWindow(QMainWindow):
                             y_top_px = 0.0
                             y_bottom_px = max(0.0, float(h_full - 1))
                             while x_px <= x_max + 1e-6:
-                                # 線の始終点を計算（回転適用）
+                                # （）
                                 x_top, y_top = transform_grid_coords(x_px, y_top_px)
                                 x_bottom, y_bottom = transform_grid_coords(x_px, y_bottom_px)
                                 if x_top is not None and x_bottom is not None:
                                     p.drawLine(x_top, y_top, x_bottom, y_bottom)
-                                # ラベル位置（下端付近）: 左下原点を明確にする
+                                # （）: 
                                 x_lbl, y_lbl = transform_grid_coords(x_px, y_bottom_px)
                                 if x_lbl is not None and y_lbl is not None:
                                     try:
@@ -7677,12 +7641,12 @@ class CentroidFinderWindow(QMainWindow):
                             v_max = y_max
                             while v_px <= v_max + 1e-6:
                                 y_px = y_max - v_px
-                                # 線の始終点を計算（回転適用）
+                                # （）
                                 x_left, y_left = transform_grid_coords(x_left_px, y_px)
                                 x_right, y_right = transform_grid_coords(x_right_px, y_px)
                                 if x_left is not None and x_right is not None:
                                     p.drawLine(x_left, y_left, x_right, y_right)
-                                # ラベル位置（左端付近）: 左下原点を明確にする
+                                # （）: 
                                 x_lbl, y_lbl = transform_grid_coords(x_left_px, y_px)
                                 if x_lbl is not None and y_lbl is not None:
                                     try:
@@ -7692,8 +7656,8 @@ class CentroidFinderWindow(QMainWindow):
                                         pass
                                 v_px += pixel_spacing
                         
-                        # 参照点は build_zoomed_canvas 側で描画されており、画像回転と一緒に回転される。
-                        # ここでの再描画は不要（重複するとズレに見える原因になる）。
+                        #  build_zoomed_canvas 、。
+                        # （）。
 
                         p.end()
                         pm_to_show = pm2
@@ -7701,7 +7665,7 @@ class CentroidFinderWindow(QMainWindow):
                             self._last_pm_image_grid = pm2
                         except Exception:
                             pass
-                        # mappingは rotated_img 作成直後に設定済み
+                        # mapping rotated_img 
                     except Exception as e:
                         self._dbg(f"Image grid drawing failed: {e}")
                         # fallback: reuse last successful grid pixmap if available
@@ -8014,11 +7978,11 @@ class CentroidFinderWindow(QMainWindow):
             pass
 
     def _viewport_pos_to_label_pos(self, pos):
-        # スクロールビュー座標をラベル座標へ変換
-        # ラベルの実位置（センタリング/スクロール反映）を考慮
+        # 
+        # （/）
         if self.proc_scroll is None:
             return pos
-        label_pos_in_vp = self.img_label_proc.pos()  # QPoint (相対: viewport)
+        label_pos_in_vp = self.img_label_proc.pos()  # QPoint (: viewport)
         return QPoint(pos.x() - label_pos_in_vp.x(), pos.y() - label_pos_in_vp.y())
 
     def _reposition_viewport_overlays(self):
@@ -8037,7 +8001,12 @@ class CentroidFinderWindow(QMainWindow):
                         has_override = False
                     x = int(margin) if has_override else int(max(margin, vp.width() - ov_tl.width() - margin))
                     y = int(margin)
-                    ov_tl.move(x, y)
+                    try:
+                        cur_p = ov_tl.pos()
+                        if int(cur_p.x()) != int(x) or int(cur_p.y()) != int(y):
+                            ov_tl.move(x, y)
+                    except Exception:
+                        ov_tl.move(x, y)
                 except Exception:
                     ov_tl.move(int(margin), int(margin))
 
@@ -8047,7 +8016,12 @@ class CentroidFinderWindow(QMainWindow):
                     if bool(tog_grid.isVisible()):
                         tx = int(max(margin, (vp.width() - tog_grid.width()) // 2))
                         ty = int(margin)
-                        tog_grid.move(tx, ty)
+                        try:
+                            cur_p = tog_grid.pos()
+                            if int(cur_p.x()) != int(tx) or int(cur_p.y()) != int(ty):
+                                tog_grid.move(tx, ty)
+                        except Exception:
+                            tog_grid.move(tx, ty)
                         try:
                             tog_grid.raise_()
                         except Exception:
@@ -8065,16 +8039,36 @@ class CentroidFinderWindow(QMainWindow):
                         bx = int(ov_tl.x() + ov_tl.width() + 8)
                         by = int(ov_tl.y())
                         if bool(btn_back.isVisible()):
-                            btn_back.move(bx, by)
+                            try:
+                                cur_p = btn_back.pos()
+                                if int(cur_p.x()) != int(bx) or int(cur_p.y()) != int(by):
+                                    btn_back.move(bx, by)
+                            except Exception:
+                                btn_back.move(bx, by)
                             bx += int(btn_back.width() + 6)
                         if bool(btn_next.isVisible()):
-                            btn_next.move(bx, by)
+                            try:
+                                cur_p = btn_next.pos()
+                                if int(cur_p.x()) != int(bx) or int(cur_p.y()) != int(by):
+                                    btn_next.move(bx, by)
+                            except Exception:
+                                btn_next.move(bx, by)
                             bx += int(btn_next.width() + 6)
                         if bool(btn_clear.isVisible()):
-                            btn_clear.move(bx, by)
+                            try:
+                                cur_p = btn_clear.pos()
+                                if int(cur_p.x()) != int(bx) or int(cur_p.y()) != int(by):
+                                    btn_clear.move(bx, by)
+                            except Exception:
+                                btn_clear.move(bx, by)
                             bx += int(btn_clear.width() + 6)
                         if bool(btn_finish.isVisible()):
-                            btn_finish.move(bx, by)
+                            try:
+                                cur_p = btn_finish.pos()
+                                if int(cur_p.x()) != int(bx) or int(cur_p.y()) != int(by):
+                                    btn_finish.move(bx, by)
+                            except Exception:
+                                btn_finish.move(bx, by)
             except Exception:
                 pass
 
@@ -8083,7 +8077,12 @@ class CentroidFinderWindow(QMainWindow):
                 try:
                     x = int(margin)
                     y = int(max(margin, vp.height() - ov_br.height() - margin))
-                    ov_br.move(x, y)
+                    try:
+                        cur_p = ov_br.pos()
+                        if int(cur_p.x()) != int(x) or int(cur_p.y()) != int(y):
+                            ov_br.move(x, y)
+                    except Exception:
+                        ov_br.move(x, y)
                 except Exception:
                     ov_br.move(int(margin), int(max(margin, vp.height() - ov_br.height() - margin)))
         except Exception:
@@ -8476,14 +8475,14 @@ class CentroidFinderWindow(QMainWindow):
             pass
 
     def _label_pos_to_viewport_pos(self, pos):
-        # ラベル座標をビューポート座標へ変換
+        # 
         if self.proc_scroll is None:
             return pos
-        label_pos_in_vp = self.img_label_proc.pos()  # QPoint (相対: viewport)
+        label_pos_in_vp = self.img_label_proc.pos()  # QPoint (: viewport)
         return QPoint(pos.x() + label_pos_in_vp.x(), pos.y() + label_pos_in_vp.y())
 
     def _ensure_full_pos_visible(self, x_full, y_full):
-        # 指定フル座標がビューポート中心付近に来るようスクロールを調整
+        # 
         dxy = self._full_to_display(x_full, y_full)
         if dxy is None:
             return
@@ -8521,7 +8520,7 @@ class CentroidFinderWindow(QMainWindow):
             pass
 
     def _set_scroll(self, sx, sy):
-        # スクロールバー値を範囲内に設定
+        # 
         hsb = self.proc_scroll.horizontalScrollBar()
         vsb = self.proc_scroll.verticalScrollBar()
         hsb.setValue(max(hsb.minimum(), min(hsb.maximum(), int(round(sx)))))
@@ -8556,7 +8555,7 @@ class CentroidFinderWindow(QMainWindow):
             pass
 
     def _start_kinetic(self, vx, vy):
-        # 慣性スクロール開始（vx,vy は px/秒、スクロール方向の速度）
+        # （vx,vy  px/、）
         self._kinetic_vx = float(vx)
         self._kinetic_vy = float(vy)
         self._kinetic_last_t = monotonic()
@@ -8569,7 +8568,7 @@ class CentroidFinderWindow(QMainWindow):
         self._kinetic_vy = 0.0
 
     def _on_kinetic_tick(self):
-        # 慣性スクロールの更新
+        # 
         t = monotonic()
         dt = max(0.0, t - self._kinetic_last_t)
         self._kinetic_last_t = t
@@ -8577,10 +8576,10 @@ class CentroidFinderWindow(QMainWindow):
             return
         hsb = self.proc_scroll.horizontalScrollBar()
         vsb = self.proc_scroll.verticalScrollBar()
-        # 現在位置更新
+        # 
         sx = hsb.value() + self._kinetic_vx * dt
         sy = vsb.value() + self._kinetic_vy * dt
-        # 端でのバウンド抑制：はみ出す方向の速度は殺す
+        # ：
         hit_edge_x = False
         hit_edge_y = False
         if sx <= hsb.minimum():
@@ -8592,26 +8591,26 @@ class CentroidFinderWindow(QMainWindow):
         elif sy >= vsb.maximum():
             sy = vsb.maximum(); hit_edge_y = True
         self._set_scroll(sx, sy)
-        # 減衰（指数的）
-        decay = 0.92  # 1ティックごと
+        # （）
+        decay = 0.92  # 1
         self._kinetic_vx *= decay
         self._kinetic_vy *= decay
-        # エッジ命中で該当軸の速度を強制減衰
+        # 
         if hit_edge_x:
             self._kinetic_vx *= 0.3
         if hit_edge_y:
             self._kinetic_vy *= 0.3
-        # 終了条件
+        # 
         if abs(self._kinetic_vx) < 5 and abs(self._kinetic_vy) < 5:
             self._stop_kinetic()
 
-    # テーブル構築関連は tables.py に移動
+    #  tables.py 
 
     def _on_ref_table_current_changed(self, curRow, curCol, prevRow, prevCol):
         if curCol is None or curCol < 0:
             return
         self.ref_selected_index = curCol
-        # Ref選択変更はRefマーカーの大小に影響するので、表/描画を同期する
+        # RefRef、/
         try:
             self._sync_ref_selection()
         except Exception:
@@ -8635,7 +8634,7 @@ class CentroidFinderWindow(QMainWindow):
             self.ref_selected_index = int(curRow) - header_rows
         except Exception:
             pass
-        # Ref選択変更はRefマーカーの大小に影響するので、表/描画を同期する
+        # RefRef、/
         try:
             self._sync_ref_selection()
         except Exception:
@@ -8825,12 +8824,12 @@ class CentroidFinderWindow(QMainWindow):
             pass
 
     def _on_add_ref_point(self):
-        # キャンセルモード中なら、ピックモードを終了
+        # 、
         if self.pick_mode == 'add':
             self._end_pick_mode()
             return
         
-        # 空きのRef列があればそこを選択し、RefクリックモードをON。
+        # Ref、RefON。
         # Ensure any pending edits in the transposed left view are committed
         try:
             self._flush_ref_view()
@@ -8842,10 +8841,10 @@ class CentroidFinderWindow(QMainWindow):
                 target = i
                 break
         if target is None:
-            # 既存選択が有効ならそれを使う
+            # 
             target = self.ref_selected_index if 0 <= self.ref_selected_index < len(self.ref_points) else 0
         self.ref_selected_index = target
-        # 新しい列が表示範囲外なら表示列数を拡張し、テーブルを更新
+        # 、
         if (target + 1) > self.visible_ref_cols:
             self.visible_ref_cols = min(len(self.ref_points), target + 1)
             try:
@@ -8856,7 +8855,7 @@ class CentroidFinderWindow(QMainWindow):
                     pass
             except Exception:
                 pass
-        # 左テーブル側の選択を更新
+        # 
         try:
             self.table_ref.blockSignals(True)
             # canonical table_ref has 2 pseudo-header rows
@@ -8864,22 +8863,22 @@ class CentroidFinderWindow(QMainWindow):
             self.table_ref.selectColumn(target)
         finally:
             self.table_ref.blockSignals(False)
-        # ピックモード開始（Add）
+        # （Add）
         self._ref_add_has_added = False
         self._start_pick_mode('add', ref_index=target)
-        # カーソルを画像中心にジャンプ
+        # 
         self._move_cursor_to_image_center()
 
     def _on_update_xy(self):
-        # Toggle pick-mode（Update）: 押し直すとキャンセル
+        # Toggle pick-mode（Update）: 
         if self.pick_mode == 'update':
             self._end_pick_mode()
             return
-        # ピックモード開始（Update）
+        # （Update）
         if not (0 <= self.ref_selected_index < len(self.ref_points)):
             return
         self._start_pick_mode('update', ref_index=self.ref_selected_index)
-        # 既存のRef座標があればそこへカーソル移動。無ければ選択点/画像中央。
+        # Ref。/。
         x_full = y_full = None
         if self._img_base_size is not None:
             pt = self.ref_points[self.ref_selected_index]
@@ -8894,36 +8893,75 @@ class CentroidFinderWindow(QMainWindow):
                 x_full = self._img_base_size[0] / 2.0
                 y_full = self._img_base_size[1] / 2.0
         if x_full is not None and y_full is not None:
-            # まず対象座標が見えるようスクロール
+            # 
             self._ensure_full_pos_visible(x_full, y_full)
             dxy = self._full_to_display(x_full, y_full)
             if dxy is not None:
                 local_pt = QPoint(int(round(dxy[0])), int(round(dxy[1])))
                 global_pt = self.img_label_proc.mapToGlobal(local_pt)
                 QCursor.setPos(global_pt)
-                # ルーペは廃止
-                # 十字線を即時表示
+                # 
+                # 
                 self._draw_crosshair(local_pt)
 
     def _move_cursor_to_image_center(self):
-        """カーソルを現在表示されているビューポート領域の中心にジャンプさせる（スクロール・ズーム変更なし）"""
+        """（）"""
         try:
             vp = self.proc_scroll.viewport()
-            # ビューポート中央のビューポート座標
+            # 
             vp_center_x = vp.width() / 2.0
             vp_center_y = vp.height() / 2.0
             vp_center = QPoint(int(round(vp_center_x)), int(round(vp_center_y)))
-            # グローバル座標に変換
+            # 
             global_pt = vp.mapToGlobal(vp_center)
             QCursor.setPos(global_pt)
-            # 十字線を即時表示
+            # 
             pos_label = self._viewport_pos_to_label_pos(vp_center)
             self._draw_crosshair(pos_label)
         except Exception:
             pass
 
+    def _cancel_pending_wheel_recenter(self):
+        """Cancel deferred wheel-zoom settle/recenter state.
+
+        This prevents post-click viewport jumps after zoom interactions.
+        """
+        try:
+            ivc = getattr(self, 'interactions', None)
+            if ivc is None:
+                return
+            try:
+                if getattr(ivc, '_wheel_settle_timer', None) is not None:
+                    ivc._wheel_settle_timer.stop()
+            except Exception:
+                pass
+            try:
+                if getattr(ivc, '_wheel_zoom_timer', None) is not None:
+                    ivc._wheel_zoom_timer.stop()
+            except Exception:
+                pass
+            try:
+                ivc._wheel_zoom_pending = False
+                ivc._wheel_zoom_target = None
+                ivc._wheel_zoom_anchor_full = None
+                ivc._wheel_zoom_anchor_vp = None
+                ivc._wheel_zoom_pick_mode = None
+            except Exception:
+                pass
+            try:
+                if hasattr(ivc, '_invalidate_wheel_recenter_callbacks'):
+                    ivc._invalidate_wheel_recenter_callbacks()
+            except Exception:
+                pass
+            try:
+                self._max_render_pixels_override = None
+            except Exception:
+                pass
+        except Exception:
+            pass
+
     def _on_clear_ref(self):
-        # 選択中のRef列をクリア
+        # Ref
         if not (0 <= self.ref_selected_index < len(self.ref_points)):
             return
         # Commit any pending edits before clearing
@@ -8939,7 +8977,7 @@ class CentroidFinderWindow(QMainWindow):
                 self.ref_obs[idx] = {"x": "", "y": "", "z": ""}
         except Exception:
             pass
-        # テーブル更新と再描画
+        # 
         try:
             self._safe_populate_tables(self.table_ref, self.table, self.ref_points, self.ref_obs, self.centroids, self.selected_index, self.ref_selected_index, flip_mode=self.flip_mode, visible_ref_cols=self.visible_ref_cols)
             try:
@@ -12141,7 +12179,7 @@ class CentroidFinderWindow(QMainWindow):
                     self._normal_overlay_mode_before_centroid = 'Original'
                     self._normal_show_boundaries_before_centroid = True
             if (not bool(active)) and bool(prev):
-                # Finish時の設定を次回CentroidExtraction開始の既定値として記憶
+                # FinishCentroidExtraction
                 mode_now = str(getattr(self, 'overlay_mode', 'Posterized') or 'Posterized')
                 if mode_now not in ('Original', 'Posterized'):
                     mode_now = 'Posterized'
@@ -12156,7 +12194,7 @@ class CentroidFinderWindow(QMainWindow):
                 show_pref = bool(getattr(self, '_centroid_extraction_show_boundaries', True))
                 self._apply_overlay_boundary_state(mode_pref, show_pref)
             else:
-                # Finish後は抽出前の通常オーバーレイへ戻す
+                # Finish
                 mode_prev = str(getattr(self, '_normal_overlay_mode_before_centroid', 'Original') or 'Original')
                 if mode_prev not in ('Original', 'Posterized'):
                     mode_prev = 'Original'
@@ -12748,6 +12786,13 @@ class CentroidFinderWindow(QMainWindow):
             stage_n = 'offline'
 
         try:
+            prev_stage_n = str(getattr(self, 'workflow_stage', 'offline') or 'offline').lower().strip()
+        except Exception:
+            prev_stage_n = 'offline'
+        if prev_stage_n not in ('offline', 'online'):
+            prev_stage_n = 'offline'
+
+        try:
             self.workflow_stage = stage_n
         except Exception:
             pass
@@ -12790,9 +12835,34 @@ class CentroidFinderWindow(QMainWindow):
         except Exception:
             pass
         try:
+            self._activate_middle_table_for_stage(stage_n)
+        except Exception:
+            pass
+        try:
             # Repaint transposed ref view immediately on stage toggle so Online stage-input
             # tint is visible before any Add Fiducial action.
-            self._refresh_transposed_views(update_ref_view=True, refresh_offline_lists=False, refresh_center_view=False)
+            self._refresh_transposed_views(update_ref_view=True, refresh_offline_lists=False, refresh_center_view=True)
+        except Exception:
+            pass
+
+        # Offline -> Online: force a lightweight stage sync so TargetList XYZ is refreshed
+        # after offline u,v updates (without heavy centroid recomputation).
+        try:
+            if prev_stage_n == 'offline' and stage_n == 'online':
+                try:
+                    info = getattr(self, '_last_stage_info', None)
+                    if info is not None and self._sync_center_xyz_from_stage_info(info):
+                        self._refresh_transposed_views(
+                            update_ref_view=False,
+                            refresh_offline_lists=False,
+                            refresh_center_view=True,
+                        )
+                except Exception:
+                    pass
+                try:
+                    self.schedule_update(force=True, recompute_centroids=False)
+                except Exception:
+                    pass
         except Exception:
             pass
 
@@ -13596,11 +13666,21 @@ class CentroidFinderWindow(QMainWindow):
             except Exception:
                 pass
             try:
+                self._cancel_pending_wheel_recenter()
+            except Exception:
+                pass
+            try:
                 self._zoom_to_max_on_point_key(int(si), str(pp))
             except Exception:
                 pass
             try:
                 self._refresh_selected_overlay_only()
+            except Exception:
+                pass
+            try:
+                # Keep cursor/crosshair start position at viewport center.
+                # Since target is centered above, this aligns cursor with the target.
+                self._move_cursor_to_image_center()
             except Exception:
                 pass
             try:
@@ -14700,7 +14780,7 @@ class CentroidFinderWindow(QMainWindow):
             pass
 
     def _on_cycle_flip_mode(self):
-        # Auto -> Normal -> Flip -> Auto と循環
+        # Auto -> Normal -> Flip -> Auto 
         cur = str(getattr(self, 'flip_mode', 'auto')).lower()
         nxt = 'normal' if cur == 'auto' else ('flip' if cur == 'normal' else 'auto')
         try:
@@ -14717,7 +14797,7 @@ class CentroidFinderWindow(QMainWindow):
             m = 'auto'
         self.flip_mode = m
 
-        # combobox の選択を更新
+        # combobox 
         try:
             combo = getattr(self, 'combo_flip_mode', None)
             idx_map = {'auto': 0, 'normal': 1, 'flip': 2}
@@ -14731,7 +14811,7 @@ class CentroidFinderWindow(QMainWindow):
         if not refresh:
             return
 
-        # 再描画・テーブル更新
+        # 
         try:
             self._safe_populate_tables(
                 self.table_ref,
@@ -14965,23 +15045,12 @@ class CentroidFinderWindow(QMainWindow):
         """Apply UI defaults after Load Project.
 
         - Show the normal On-line Alignment contents by default.
-        - Set recalculation trigger to Manual by default.
+        - Keep the saved recalculation trigger mode.
         """
         try:
             self._set_centroid_extraction_mode(False)
         except Exception:
             pass
-
-        # Force Manual recalculation mode after loading a project
-        try:
-            self._on_toggle_calc_mode(1)
-        except Exception:
-            try:
-                self.calc_mode = 'manual'
-                self.auto_update_mode = False
-                self._manual_recompute_request = False
-            except Exception:
-                pass
 
     def _on_export_image_clicked(self):
         """Export full-resolution image with centroid markers and index labels."""
@@ -15117,7 +15186,7 @@ class CentroidFinderWindow(QMainWindow):
         except Exception:
             data["center_group_name_overrides"] = {}
 
-        # 画像パス
+        # 
         try:
             image_path = str(getattr(self, 'image_path', '') or '')
             if not image_path:
@@ -15126,7 +15195,7 @@ class CentroidFinderWindow(QMainWindow):
         except Exception:
             data["image_path"] = ""
 
-        # スライダー / パラメータ
+        #  / 
         try:
             # Use the same source as actual centroid computation.
             p = self._get_params()
@@ -15153,7 +15222,7 @@ class CentroidFinderWindow(QMainWindow):
         except Exception:
             data["neck_separation"] = 0
 
-        # 表示設定
+        # 
         data["overlay_mode"] = str(getattr(self, 'overlay_mode', 'Original'))
         data["show_boundaries"] = bool(getattr(self, 'show_boundaries', True))
         data["flip_mode"] = str(getattr(self, 'flip_mode', 'auto'))
@@ -15163,7 +15232,7 @@ class CentroidFinderWindow(QMainWindow):
         data["grain_ident_mode"] = str(getattr(self, 'grain_ident_mode', 'basic'))
         data["calc_mode"] = str(getattr(self, 'calc_mode', 'auto'))
 
-        # 参照点
+        # 
         ref_list = []
         for i, pt in enumerate(self.ref_points):
             entry = {"index": i}
@@ -15181,7 +15250,7 @@ class CentroidFinderWindow(QMainWindow):
         data["ref_points"] = ref_list
         data["visible_ref_cols"] = int(getattr(self, 'visible_ref_cols', 3))
 
-        # 重心リスト
+        # 
         centroids_list = []
         for g, x, y in (self.centroids or []):
             centroids_list.append({"group": int(g), "x_proc": float(x), "y_proc": float(y)})
@@ -15256,7 +15325,7 @@ class CentroidFinderWindow(QMainWindow):
             data["excluded_ref_indices"] = []
         data["selected_index"] = self.selected_index
 
-        # スケール情報
+        # 
         data["scale_proc_to_full"] = float(getattr(self, 'scale_proc_to_full', 1.0))
         data["proc_target_width"] = int(getattr(self, 'proc_target_width', 640))
 
@@ -15266,7 +15335,7 @@ class CentroidFinderWindow(QMainWindow):
         """Restore state from a loaded project dict."""
         from qt_compat.QtWidgets import QMessageBox
 
-        # 画像を復元（埋め込み画像を最優先）
+        # （）
         image_loaded = False
         embedded_load_error = None
         try:
@@ -15290,7 +15359,7 @@ class CentroidFinderWindow(QMainWindow):
         except Exception as e:
             embedded_load_error = e
 
-        # 画像パス参照でフォールバック
+        # 
         img_path = data.get("image_path", "")
         if not image_loaded and img_path and os.path.isfile(img_path):
             self._open_image_from_path(img_path)
@@ -15299,7 +15368,7 @@ class CentroidFinderWindow(QMainWindow):
             QMessageBox.warning(self, "Load Project",
                 f"Image not found (skipped):\n{img_path}")
 
-        # 埋め込みがあったのに復元に失敗した場合は理由を通知（後方互換で処理は継続）
+        # （）
         if (not image_loaded) and bool(data.get("image_embedded", False)) and embedded_load_error is not None:
             try:
                 QMessageBox.warning(
@@ -15310,7 +15379,7 @@ class CentroidFinderWindow(QMainWindow):
             except Exception:
                 pass
 
-        # スライダー復元
+        # 
         try:
             lv = int(data.get("levels", 4))
             # Basic mode control (Number of Groups)
@@ -15339,7 +15408,7 @@ class CentroidFinderWindow(QMainWindow):
             except Exception:
                 pass
 
-        # 表示設定復元
+        # 
         try:
             self.overlay_mode = str(data.get("overlay_mode", "Original"))
         except Exception:
@@ -15361,8 +15430,8 @@ class CentroidFinderWindow(QMainWindow):
             self.online_image_grid_mode = 'xy' if gm == 'xy' else 'uv'
         except Exception:
             self.online_image_grid_mode = 'uv'
-        # Coordinate(Image/Stage) の復元は、表示フラグだけでなく関連UI状態
-        # (Rotate有効/無効、表示行の出し分け) まで同期する。
+        # Coordinate(Image/Stage) 、UI
+        # (Rotate/、) 。
         try:
             vo = str(getattr(self, 'view_orientation', 'Image'))
             idx = 0 if vo.lower() == 'image' else 1
@@ -15430,7 +15499,7 @@ class CentroidFinderWindow(QMainWindow):
         except Exception:
             pass
 
-        # 参照点復元
+        # 
         ref_data = data.get("ref_points", [])
         for entry in ref_data:
             try:
@@ -15456,7 +15525,7 @@ class CentroidFinderWindow(QMainWindow):
         except Exception:
             pass
 
-        # 重心復元
+        # 
         try:
             self.centroid_generation = int(data.get("centroid_generation", getattr(self, 'centroid_generation', 0) or 0))
         except Exception:
@@ -15612,7 +15681,7 @@ class CentroidFinderWindow(QMainWindow):
         except Exception:
             pass
 
-        # テーブル・画面を更新
+        # 
         try:
             self._safe_populate_tables(
                 self.table_ref, self.table,
@@ -15629,8 +15698,8 @@ class CentroidFinderWindow(QMainWindow):
             self._refresh_transposed_views(update_ref_view=False, refresh_offline_lists=False, refresh_center_view=True)
         except Exception:
             pass
-        # Load 後はポスター・boundary_mask を全パラメータで再計算する。
-        # Advanced パラメータ (trim, neck, shape) が正しく反映された boundary を描画するため。
+        # Load boundary_mask 。
+        # Advanced  (trim, neck, shape)  boundary 。
         self._manual_recompute_request = True
         self.schedule_update(force=True, recompute_centroids=True)
 
@@ -15639,7 +15708,7 @@ class CentroidFinderWindow(QMainWindow):
     def _on_table_current_changed(self, curRow, curCol, prevRow, prevCol):
         if curCol is None or curCol < 0:
             return
-        # 右テーブルはデータ列のみ（オフセット無し）
+        # （）
         idx = curCol
         self.selected_index = idx
         try:
@@ -15929,17 +15998,17 @@ class CentroidFinderWindow(QMainWindow):
             pass
 
     def eventFilter(self, obj, event):
-        # UI 側ではイベント処理を行わず、標準の処理へ委譲
+        # UI 、
         return super().eventFilter(obj, event)
 
     def _on_ref_cell_clicked(self, row, col):
-        # 左テーブルクリック時に、Stage.X/Y/Z(行2,3,4)なら即編集を開始する
+        # 、Stage.X/Y/Z(2,3,4)
         try:
             # canonical table_ref has 2 pseudo-header rows
             if row in (4, 5, 6):
                 item = self.table_ref.item(row, col)
                 if item is not None and (item.flags() & Qt.ItemIsEditable):
-                    # 列選択は維持しつつ、そのセルを編集開始
+                    # 、
                     self.table_ref.setCurrentCell(row, col)
                     self.table_ref.selectColumn(col)
                     self.table_ref.editItem(item)
@@ -15947,7 +16016,7 @@ class CentroidFinderWindow(QMainWindow):
             pass
 
     def _display_to_full(self, pos):
-        # ラベル座標 pos からフル画像座標へ（ズームとスクロールを考慮）
+        #  pos （）
         if self._img_base_size is None:
             return None
         img_w, img_h = self._img_base_size
@@ -16069,7 +16138,7 @@ class CentroidFinderWindow(QMainWindow):
         return x_full, y_full
 
     def _full_to_display(self, x_full, y_full):
-        # フル画像座標からラベル座標へ（ズーム＋回転/反転を含む）
+        # （＋/）
         if self._img_base_size is None:
             return None
         z = max(0.0001, float(getattr(self, '_display_scale', max(0.1, float(self.proc_zoom)))))
@@ -16135,20 +16204,110 @@ class CentroidFinderWindow(QMainWindow):
         return x_full * z + off_x, y_full * z + off_y
 
     def _draw_crosshair(self, pos_label):
-        # ピックモード中に、画像端まで届く白い＋線（黒縁）を描画
-        if self._display_pm_base is None:
-            return
-        pm2 = draw_crosshair(self._display_pm_base, self._display_offset, self._display_img_size, pos_label)
-        if pm2 is not None:
-            self.img_label_proc.setPixmap(pm2)
+        # 。
+        # Pixmap（QPixmap）、。
+        try:
+            if self._display_pm_base is None or self.img_label_proc is None:
+                self._hide_crosshair_overlay()
+                return
+            try:
+                pad_x, pad_y = self._display_offset
+                w, h = self._display_img_size
+                pad_x = int(pad_x)
+                pad_y = int(pad_y)
+                w = int(w)
+                h = int(h)
+            except Exception:
+                self._hide_crosshair_overlay()
+                return
+            if w <= 0 or h <= 0 or pos_label is None:
+                self._hide_crosshair_overlay()
+                return
 
-    # ルーペ更新は不要
+            self._ensure_crosshair_overlay_widgets()
+            x = min(max(int(pos_label.x()), pad_x), pad_x + w - 1)
+            y = min(max(int(pos_label.y()), pad_y), pad_y + h - 1)
+
+            ow = 4
+            iw = 2
+            half_ow = ow // 2
+            half_iw = iw // 2
+
+            h_out = getattr(self, '_crosshair_h_out', None)
+            h_in = getattr(self, '_crosshair_h_in', None)
+            v_out = getattr(self, '_crosshair_v_out', None)
+            v_in = getattr(self, '_crosshair_v_in', None)
+            if None in (h_out, h_in, v_out, v_in):
+                return
+
+            # Horizontal line (across displayed image area)
+            h_out.setGeometry(int(pad_x), int(y - half_ow), int(w), int(ow))
+            h_in.setGeometry(int(pad_x), int(y - half_iw), int(w), int(iw))
+            # Vertical line (across displayed image area)
+            v_out.setGeometry(int(x - half_ow), int(pad_y), int(ow), int(h))
+            v_in.setGeometry(int(x - half_iw), int(pad_y), int(iw), int(h))
+
+            for ww in (h_out, v_out, h_in, v_in):
+                try:
+                    ww.show()
+                    ww.raise_()
+                except Exception:
+                    pass
+        except Exception:
+            pass
+
+    def _ensure_crosshair_overlay_widgets(self):
+        try:
+            host = getattr(self, 'img_label_proc', None)
+            if host is None:
+                return
+
+            def _mk(name, color):
+                try:
+                    w = getattr(self, name, None)
+                except Exception:
+                    w = None
+                if w is None:
+                    try:
+                        w = QWidget(host)
+                        w.setObjectName(name)
+                        w.setAttribute(Qt.WA_TransparentForMouseEvents, True)
+                        w.setStyleSheet(f'background-color: {color}; border: none;')
+                        w.hide()
+                        setattr(self, name, w)
+                    except Exception:
+                        w = None
+                return w
+
+            _mk('_crosshair_h_out', 'rgb(0,0,0)')
+            _mk('_crosshair_v_out', 'rgb(0,0,0)')
+            _mk('_crosshair_h_in', 'rgb(255,255,255)')
+            _mk('_crosshair_v_in', 'rgb(255,255,255)')
+        except Exception:
+            pass
+
+    def _hide_crosshair_overlay(self):
+        try:
+            for nm in ('_crosshair_h_out', '_crosshair_v_out', '_crosshair_h_in', '_crosshair_v_in'):
+                try:
+                    w = getattr(self, nm, None)
+                except Exception:
+                    w = None
+                if w is not None:
+                    try:
+                        w.hide()
+                    except Exception:
+                        pass
+        except Exception:
+            pass
+
+    # 
 
     def _start_pick_mode(self, mode, ref_index=None):
         self.pick_mode = mode
         self.pick_ref_index = ref_index
         self.img_label_proc.setCursor(QCursor(Qt.CrossCursor))
-        # ルーペ表示は廃止
+        # 
         # While waiting for image click after "Add Ref. Point", gray-invert the button and change text to "Cancel".
         try:
             if str(mode or '') != 'center_uv_update':
@@ -16162,7 +16321,7 @@ class CentroidFinderWindow(QMainWindow):
             radius = 8
             mode = str(getattr(self, 'pick_mode', '') or '')
             if mode in ('add', 'update', 'target_add', 'target_update', 'center_uv_update'):
-                # pick モード開始時は対応ボタンをキャンセル表示にする
+                # pick 
                 if mode == 'add':
                     target_btn = self.btn_add_ref
                     wait_text = 'Finish'
@@ -16204,7 +16363,7 @@ class CentroidFinderWindow(QMainWindow):
                         f"QPushButton:pressed {{ background-color: rgb(210,100,100); }}"
                     )
                 if target_btn is not None:
-                    # ボタンのテキストを「Cancel」に変更
+                    # 「Cancel」
                     try:
                         target_btn.setText(wait_text)
                     except Exception:
@@ -16418,9 +16577,13 @@ class CentroidFinderWindow(QMainWindow):
             self._set_center_uv_update_ui_lock(False)
         except Exception:
             pass
-        # 通常は手のカーソル
+        try:
+            self._hide_crosshair_overlay()
+        except Exception:
+            pass
+        # 
         self.img_label_proc.setCursor(QCursor(Qt.OpenHandCursor))
-        # ルーペは存在しない
+        # 
         # Restore button styles and text (undo gray-invert and "Cancel" text)
         try:
             btn = getattr(self, 'btn_add_ref', None)
@@ -16469,11 +16632,16 @@ class CentroidFinderWindow(QMainWindow):
             pass
 
     def _handle_image_click(self, pos):
-        # クリック座標を右画像の元サイズ（overlay_full）座標に変換（ズームのみ考慮）
+        # （overlay_full）（）
         xy = self._display_to_full(pos)
         if xy is None:
             return
         x_full, y_full = xy
+
+        try:
+            self._cancel_pending_wheel_recenter()
+        except Exception:
+            pass
 
         if self.pick_mode == 'center_uv_update':
             try:
@@ -16534,6 +16702,16 @@ class CentroidFinderWindow(QMainWindow):
                     self.schedule_update(force=True, recompute_centroids=False)
                 except Exception:
                     pass
+                try:
+                    # UpdateUV modifies center_numeric_rows directly; rebuild middle table now
+                    # because schedule_update() path keeps refresh_center_view=False.
+                    self._refresh_transposed_views(
+                        update_ref_view=False,
+                        refresh_offline_lists=False,
+                        refresh_center_view=True,
+                    )
+                except Exception:
+                    pass
 
                 if has_next:
                     try:
@@ -16560,7 +16738,7 @@ class CentroidFinderWindow(QMainWindow):
                 pass
             return
 
-        # ピックモード中は、マウス位置の座標をRefに保存して終了
+        # 、Ref
         if self.pick_mode in ('target_add', 'target_update'):
             if self.scale_proc_to_full == 0:
                 return
@@ -16799,7 +16977,7 @@ class CentroidFinderWindow(QMainWindow):
                 idx = self.pick_ref_index if self.pick_ref_index is not None else self.ref_selected_index
                 if idx is not None and 0 <= idx < len(self.ref_points):
                     self.ref_points[idx] = (x_proc, y_proc)
-                    # Add Fiducial は1点追加後も継続し、次の空きRefへ自動移動する。
+                    # Add Fiducial 1、Ref。
                     if self.pick_mode == 'add':
                         try:
                             self._ref_add_has_added = True
@@ -16817,7 +16995,7 @@ class CentroidFinderWindow(QMainWindow):
                         except Exception:
                             pass
 
-                    # すぐに左表へ反映（populate_tables が遅延しても X/Y を見せる）
+                    # （populate_tables  X/Y ）
                     try:
                         from qt_compat.QtWidgets import QTableWidgetItem
                         from qt_compat.QtCore import Qt as _Qt
@@ -16929,7 +17107,7 @@ class CentroidFinderWindow(QMainWindow):
                                 pass
                     except Exception:
                         pass
-                    # 新しく追加された列が表示範囲外なら可視列を拡張
+                    # 
                     if (idx + 1) > self.visible_ref_cols:
                         self.visible_ref_cols = min(len(self.ref_points), idx + 1)
                     self._safe_populate_tables(self.table_ref, self.table, self.ref_points, self.ref_obs, self.centroids, self.selected_index, self.ref_selected_index, flip_mode=self.flip_mode, visible_ref_cols=self.visible_ref_cols)
@@ -16976,17 +17154,17 @@ class CentroidFinderWindow(QMainWindow):
                         pass
 
     def _on_ref_item_changed(self, item):
-        # 左テーブル（Ref）の Stage.* 行（2,3,4行目）入力を半角へ正規化し、内部配列に反映
+        # （Ref） Stage.* （2,3,4）、
         row = item.row()
         col = item.column()
         # canonical table_ref has 2 pseudo-header rows
         if row not in (4, 5, 6):
             return
         text = item.text() or ""
-        # 全角を半角へ（英数記号）
+        # （）
         normalized = unicodedata.normalize('NFKC', text)
         if normalized != text:
-            # ループ防止のため一旦シグナル停止
+            # 
             self.table_ref.blockSignals(True)
             try:
                 item.setText(normalized)
@@ -16996,7 +17174,7 @@ class CentroidFinderWindow(QMainWindow):
         if 0 <= col < len(self.ref_obs):
             self.ref_obs[col][key] = normalized
 
-        # 右表の Calc.* 更新はイベントループに回して commit/closeEditor と競合させない
+        #  Calc.*  commit/closeEditor 
         try:
             self._defer_recompute_after_ref_edit()
         except Exception:
@@ -18188,23 +18366,18 @@ class CentroidFinderWindow(QMainWindow):
                     except Exception:
                         self._table_between_row_indices = []
                         self._table_between_row_keys = []
-                    # Middle table layout:
-                    # Offline: ID, Name, u, v, Grp, No., C/R, Gen., Show
-                    # Online : ID, Name, u, v, X,   Y,   Z,   Show
+                    # Middle table layout depends on workflow stage.
                     base_cols = 0
                     try:
                         base_cols = len(getattr(STR, 'TABLE_RIGHT_ROW_LABELS', []) or [])
                     except Exception:
                         base_cols = 0
                     base_cols = max(0, int(base_cols))
-                    try:
-                        stage_n = str(getattr(self, 'workflow_stage', 'offline') or 'offline').lower().strip()
-                    except Exception:
-                        stage_n = 'offline'
-                    is_online_center = bool(stage_n == 'online')
-                    # +4 metadata columns (Grp/No./C-R/Gen.) in offline mode.
-                    # Online mode keeps XYZ columns.
-                    data_cols = 8 if is_online_center else max(9, base_cols + 4)
+                    layout = self._middle_table_layout_meta()
+                    is_online_center = bool(layout.get('is_online', False))
+                    data_cols = int(layout.get('data_cols', 9))
+                    show_col = int(layout.get('show_col', max(0, data_cols - 1)))
+                    name_col = int(layout.get('name_col', 1))
                     src_row_map = [mid_src_row_offset + i for i in range(base_cols)]
                     dst.blockSignals(True)
                     try:
@@ -18222,7 +18395,7 @@ class CentroidFinderWindow(QMainWindow):
                         try:
                             dgl = getattr(self, '_center_show_toggle_delegate', None)
                             if dgl is not None and data_cols > 0:
-                                dst.setItemDelegateForColumn(int(data_cols - 1), dgl)
+                                dst.setItemDelegateForColumn(int(show_col), dgl)
                         except Exception:
                             pass
 
@@ -18271,65 +18444,61 @@ class CentroidFinderWindow(QMainWindow):
                                             txt = str(int(round(float(vv))))
                                         except Exception:
                                             txt = ""
-                                    elif c == 4:
-                                        if is_online_center:
-                                            try:
-                                                xv = rowd.get('x', float('nan'))
-                                                xf = float(xv)
-                                                txt = "" if np.isnan(xf) else str(int(round(xf)))
-                                            except Exception:
-                                                txt = ""
-                                        else:
-                                            try:
-                                                gv = rowd.get('group_no', rowd.get('grp', float('nan')))
-                                                txt = str(int(round(float(gv))))
-                                            except Exception:
-                                                txt = ""
-                                    elif c == 5:
-                                        if is_online_center:
-                                            try:
-                                                yv = rowd.get('y', float('nan'))
-                                                yf = float(yv)
-                                                txt = "" if np.isnan(yf) else str(int(round(yf)))
-                                            except Exception:
-                                                txt = ""
-                                        else:
-                                            try:
-                                                pv = rowd.get('group_rank', float('nan'))
-                                                txt = str(int(round(float(pv))))
-                                            except Exception:
-                                                txt = ""
-                                    elif c == 6:
-                                        if is_online_center:
-                                            try:
-                                                zv = rowd.get('z', float('nan'))
-                                                zf = float(zv)
-                                                txt = "" if np.isnan(zf) else str(int(round(zf)))
-                                            except Exception:
-                                                txt = ""
-                                        else:
-                                            try:
-                                                pp = str(rowd.get('pos_display', rowd.get('pos', '')) or '').lower().strip()
-                                            except Exception:
-                                                pp = ''
-                                            if pp == 'r':
-                                                txt = 'R'
-                                            elif pp == 'c':
-                                                txt = 'C'
-                                            else:
-                                                txt = ''
-                                    elif c == 7:
-                                        if is_online_center:
+                                    elif is_online_center and c == 4:
+                                        try:
+                                            xv = rowd.get('x', float('nan'))
+                                            xf = float(xv)
+                                            txt = "" if np.isnan(xf) else str(int(round(xf)))
+                                        except Exception:
                                             txt = ""
+                                    elif is_online_center and c == 5:
+                                        try:
+                                            yv = rowd.get('y', float('nan'))
+                                            yf = float(yv)
+                                            txt = "" if np.isnan(yf) else str(int(round(yf)))
+                                        except Exception:
+                                            txt = ""
+                                    elif is_online_center and c == 6:
+                                        try:
+                                            zv = rowd.get('z', float('nan'))
+                                            zf = float(zv)
+                                            txt = "" if np.isnan(zf) else str(int(round(zf)))
+                                        except Exception:
+                                            txt = ""
+                                    elif (not is_online_center) and c == 4:
+                                        try:
+                                            gv = rowd.get('group_no', rowd.get('grp', float('nan')))
+                                            txt = str(int(round(float(gv))))
+                                        except Exception:
+                                            txt = ""
+                                    elif (not is_online_center) and c == 5:
+                                        try:
+                                            pv = rowd.get('group_rank', float('nan'))
+                                            txt = str(int(round(float(pv))))
+                                        except Exception:
+                                            txt = ""
+                                    elif (not is_online_center) and c == 6:
+                                        try:
+                                            pp = str(rowd.get('pos_display', rowd.get('pos', '')) or '').lower().strip()
+                                        except Exception:
+                                            pp = ''
+                                        if pp == 'r':
+                                            txt = 'R'
+                                        elif pp == 'c':
+                                            txt = 'C'
                                         else:
-                                            try:
-                                                if float(rowd.get('manual', 0.0)) >= 0.5:
-                                                    txt = '0'
-                                                else:
-                                                    gv = rowd.get('generation', float('nan'))
-                                                    txt = str(int(round(float(gv))))
-                                            except Exception:
-                                                txt = ""
+                                            txt = ''
+                                    elif (not is_online_center) and c == 7:
+                                        try:
+                                            if float(rowd.get('manual', 0.0)) >= 0.5:
+                                                txt = '0'
+                                            else:
+                                                gv = rowd.get('generation', float('nan'))
+                                                txt = str(int(round(float(gv))))
+                                        except Exception:
+                                            txt = ""
+                                    elif (is_online_center and c == 7) or ((not is_online_center) and c == 8):
+                                        txt = ""
                                     elif c == (data_cols - 1):
                                         # Exclude flag — will be set as checkbox below
                                         txt = ""
@@ -18343,12 +18512,12 @@ class CentroidFinderWindow(QMainWindow):
                                 except Exception:
                                     pass
                                 # Show column: toggle widget (not checkbox)
-                                if c == (data_cols - 1):
+                                if c == show_col:
                                     try:
                                         it.setFlags(_Qt.ItemIsEnabled | _Qt.ItemIsSelectable)
                                     except Exception:
                                         pass
-                                elif c == 1:
+                                elif c == name_col:
                                     # Name column: editable by user.
                                     try:
                                         it.setFlags(it.flags() | getattr(_Qt, 'ItemIsEditable', 0))
@@ -18360,7 +18529,7 @@ class CentroidFinderWindow(QMainWindow):
                                         it.setFlags(it.flags() & ~getattr(_Qt, 'ItemIsEditable', 0))
                                     except Exception:
                                         pass
-                                # Bold the leftmost Grp column values
+                                # Bold the ID column values
                                 try:
                                     if c == 0:
                                         f = it.font()
@@ -18374,7 +18543,7 @@ class CentroidFinderWindow(QMainWindow):
                                     pass
                                 # Bold important columns for readability
                                 try:
-                                    tmp_sub_labels = (["ID", "Name", "u", "v", "X", "Y", "Z", ""] if is_online_center else ["ID", "Name", "u", "v", "Grp", "No.", "C/R", "Gen.", ""])
+                                    tmp_sub_labels = list(layout.get('sub_labels', []))
                                     sub_lbl = tmp_sub_labels[c] if 0 <= c < len(tmp_sub_labels) else None
                                     if (is_online_center and sub_lbl in ("X", "Y", "Z")) or ((not is_online_center) and sub_lbl in ("Grp", "No.", "C/R", "Gen.")):
                                         f = it.font(); f.setBold(True); it.setFont(f)
@@ -18406,33 +18575,8 @@ class CentroidFinderWindow(QMainWindow):
                             pass
 
                         # In-cell header (top ID/Name area is intentionally blank)
-                        name_label = 'Name'
-                        if is_online_center:
-                            group_configs = [(0, 1, ""), (1, 1, ""), (2, 2, "Image"), (4, 3, "Stage"), (7, 1, "")]
-                            sub_labels = [
-                                self._center_label_with_sort('no', 'ID'),
-                                name_label,
-                                self._center_label_with_sort('u', 'u'),
-                                self._center_label_with_sort('v', 'v'),
-                                self._center_label_with_sort('x', 'X'),
-                                self._center_label_with_sort('y', 'Y'),
-                                self._center_label_with_sort('z', 'Z'),
-                                "",
-                            ]
-                        else:
-                            group_configs = [(0, 1, ""), (1, 1, ""), (2, 2, "Image"), (4, 4, "Centroid Extraction"), (8, 1, "")]
-                            sub_labels = [
-                                self._center_label_with_sort('no', 'ID'),
-                                name_label,
-                                self._center_label_with_sort('u', 'u'),
-                                self._center_label_with_sort('v', 'v'),
-                                self._center_label_with_sort('grp', 'Grp'),
-                                self._center_label_with_sort('pno', 'No.'),
-                                self._center_label_with_sort('cr', 'C/R'),
-                                self._center_label_with_sort('gen', 'Gen.'),
-                                "",
-                            ]
-                        _apply_incell_two_row_header(dst, group_configs, sub_labels)
+                        layout = self._middle_table_layout_meta()
+                        _apply_incell_two_row_header(dst, layout.get('group_configs', []), layout.get('sub_labels', []))
 
                         # If a fixed header widget exists, always hide in-table header rows
                         # to avoid height jitter during refresh/rebuild timing.
@@ -18523,9 +18667,200 @@ class CentroidFinderWindow(QMainWindow):
         except Exception:
             pass
 
+    def _middle_table_layout_meta(self, stage_override=None):
+        """Return a single source of truth for middle-table column layout."""
+        try:
+            if stage_override is None:
+                stage_n = str(getattr(self, 'workflow_stage', 'offline') or 'offline').lower().strip()
+            else:
+                stage_n = str(stage_override or 'offline').lower().strip()
+        except Exception:
+            stage_n = 'offline'
+        if stage_n not in ('offline', 'online'):
+            stage_n = 'offline'
+        is_online = bool(stage_n == 'online')
+        data_cols = 8 if is_online else 9
+        name_col = 1
+        show_col = data_cols - 1
+        sub_labels = [
+            self._center_label_with_sort('no', 'ID'),
+            'Name',
+            self._center_label_with_sort('u', 'u'),
+            self._center_label_with_sort('v', 'v'),
+        ]
+        if is_online:
+            sub_labels += [
+                self._center_label_with_sort('x', 'X'),
+                self._center_label_with_sort('y', 'Y'),
+                self._center_label_with_sort('z', 'Z'),
+                "",
+            ]
+            group_configs = [
+                (0, 1, ""),
+                (1, 1, ""),
+                (2, 2, "Image"),
+                (4, 3, "Stage"),
+                (7, 1, ""),
+            ]
+        else:
+            sub_labels += [
+                self._center_label_with_sort('grp', 'Grp'),
+                self._center_label_with_sort('pno', 'No.'),
+                self._center_label_with_sort('cr', 'C/R'),
+                self._center_label_with_sort('gen', 'Gen.'),
+                "",
+            ]
+            group_configs = [
+                (0, 1, ""),
+                (1, 1, ""),
+                (2, 2, "Image"),
+                (4, 4, "Centroid Extraction"),
+                (8, 1, ""),
+            ]
+        return {
+            'stage': stage_n,
+            'is_online': is_online,
+            'data_cols': data_cols,
+            'name_col': name_col,
+            'show_col': show_col,
+            'name_w': 180 if is_online else 130,
+            'sub_labels': sub_labels,
+            'group_configs': group_configs,
+        }
+
+    def _activate_middle_table_for_stage(self, stage=None):
+        """Switch visible/active middle transposed table by workflow stage."""
+        try:
+            try:
+                stage_n = str(stage or getattr(self, 'workflow_stage', 'offline') or 'offline').lower().strip()
+            except Exception:
+                stage_n = 'offline'
+            if stage_n not in ('offline', 'online'):
+                stage_n = 'offline'
+
+            tbl_off = getattr(self, 'table_between_offline', None)
+            tbl_on = getattr(self, 'table_between_online', None)
+            if tbl_off is None and tbl_on is None:
+                return
+            if tbl_off is None:
+                tbl_off = getattr(self, 'table_between', None)
+            if tbl_on is None:
+                tbl_on = tbl_off
+
+            active_tbl = tbl_on if stage_n == 'online' else tbl_off
+            inactive_tbl = tbl_off if stage_n == 'online' else tbl_on
+
+            try:
+                if inactive_tbl is not None and inactive_tbl is not active_tbl:
+                    inactive_tbl.setVisible(False)
+            except Exception:
+                pass
+            try:
+                if active_tbl is not None:
+                    active_tbl.setVisible(True)
+            except Exception:
+                pass
+
+            try:
+                self.table_between = active_tbl
+            except Exception:
+                pass
+
+            try:
+                hdr_mid = getattr(self, 'table_between_header', None)
+                if hdr_mid is not None:
+                    self._setup_pseudo_headers_between(hdr_mid, stage_override=stage_n)
+            except Exception:
+                pass
+
+            try:
+                hdr_mid = getattr(self, 'table_between_header', None)
+                if hdr_mid is not None:
+                    if active_tbl is not None:
+                        active_tbl.setRowHidden(0, True)
+                        active_tbl.setRowHidden(1, True)
+                    if inactive_tbl is not None and inactive_tbl is not active_tbl:
+                        inactive_tbl.setRowHidden(0, True)
+                        inactive_tbl.setRowHidden(1, True)
+            except Exception:
+                pass
+        except Exception:
+            pass
+
+    def _configure_middle_transposed_table(self, tbl, stage='offline'):
+        """Apply common setup for middle transposed tables."""
+        try:
+            if tbl is None:
+                return
+            try:
+                tbl.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Expanding)
+            except Exception:
+                pass
+            try:
+                tbl.horizontalHeader().setVisible(False)
+            except Exception:
+                pass
+            try:
+                layout = self._middle_table_layout_meta(stage_override=stage)
+                tbl.setColumnCount(int(layout.get('data_cols', 9)))
+                tbl.setRowCount(2)
+                self._setup_pseudo_headers_between(tbl, stage_override=stage)
+            except Exception:
+                pass
+            try:
+                tbl.setVerticalScrollBarPolicy(Qt.ScrollBarAlwaysOn)
+                tbl.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+                sb_mid = tbl.verticalScrollBar()
+                if sb_mid is not None:
+                    sb_mid.setMinimumWidth(14)
+                    try:
+                        sb_mid.setSingleStep(1)
+                    except Exception:
+                        pass
+            except Exception:
+                pass
+            try:
+                tbl.setStyleSheet(
+                    "QTableWidget::item:selected {"
+                    "background-color: rgb(46, 132, 255);"
+                    "color: white;"
+                    "}"
+                    "QScrollBar:vertical { width: 14px; background: #efefef; }"
+                    "QScrollBar::handle:vertical { background: #9c9c9c; min-height: 24px; border-radius: 6px; }"
+                    "QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical { height: 0px; }"
+                )
+            except Exception:
+                pass
+            try:
+                tbl.verticalHeader().setDefaultAlignment(Qt.AlignHCenter | Qt.AlignVCenter)
+            except Exception:
+                pass
+            try:
+                tbl.setSelectionBehavior(QAbstractItemView.SelectRows)
+                tbl.setSelectionMode(QAbstractItemView.ExtendedSelection)
+                tbl.setEditTriggers(QAbstractItemView.DoubleClicked | QAbstractItemView.EditKeyPressed)
+                tbl.setContextMenuPolicy(Qt.CustomContextMenu)
+                tbl.currentCellChanged.connect(self._on_table_between_current_changed)
+                tbl.cellClicked.connect(self._on_table_between_cell_clicked)
+                tbl.cellDoubleClicked.connect(self._on_table_between_cell_double_clicked)
+                tbl.itemSelectionChanged.connect(self._on_table_between_selection_changed)
+                tbl.itemChanged.connect(self._on_table_between_item_changed)
+                tbl.customContextMenuRequested.connect(self._on_table_between_context_menu)
+            except Exception:
+                pass
+            try:
+                f2 = tbl.font()
+                if f2 is not None:
+                    f2.setPointSize(10)
+                    tbl.setFont(f2)
+            except Exception:
+                pass
+        except Exception:
+            pass
+
     def _shrink_visible_columns(self):
-        """Apply fixed pixel widths to transposed tables so startup/更新後の幅が決まるようにする。
-        幅は必要に応じて変更してください（単位 px）。"""
+        """Apply fixed pixel widths to transposed tables so startup/。
+        （ px）。"""
         try:
             # --- Left transposed reference view ---
             tbl = getattr(self, 'table_ref_view', None)
@@ -18538,7 +18873,7 @@ class CentroidFinderWindow(QMainWindow):
                         pass
                     cnt = tbl.columnCount()
                     if cnt > 0:
-                        # すべて同じ幅に (Show列はトグル用に広め)
+                        #  (Show)
                         widths_ref = [50] * cnt
                         # Last column (Show) wider for toggle
                         if cnt >= 1:
@@ -18565,10 +18900,10 @@ class CentroidFinderWindow(QMainWindow):
                             hdr.setDefaultSectionSize(max(8, int(widths_ref[0])))
                         except Exception:
                             pass
-                        # --- 動的幅算出: 列合計 + VH + SB + margin ---
+                        # --- :  + VH + SB + margin ---
                         try:
                             col_total = sum(widths_ref)
-                            vh_w = 30  # 安全なフォールバック
+                            vh_w = 30  # 
                             try:
                                 vh = tbl.verticalHeader()
                                 if vh is not None:
@@ -18591,7 +18926,7 @@ class CentroidFinderWindow(QMainWindow):
                             min_left_w = int(getattr(self, 'left_column_min_width', LEFT_COLUMN_MIN_WIDTH) or LEFT_COLUMN_MIN_WIDTH)
                             new_w = max(min_left_w, max(370, new_w))
                             tbl.setFixedWidth(new_w)
-                            # ヘッダー・コンテナ幅の同期先はスワップ有無で切り替える
+                            # 
                             if bool(getattr(self, 'swap_left_center_columns', False)):
                                 lc = getattr(self, 'center_swap_container', None)
                             else:
@@ -18602,7 +18937,7 @@ class CentroidFinderWindow(QMainWindow):
                                     lc.setFixedWidth(new_w)
                                 except Exception:
                                     pass
-                            # 左ロゴ幅は通常レイアウト時のみ left table に同期する。
+                            #  left table 。
                             if not bool(getattr(self, 'swap_left_center_columns', False)):
                                 img = getattr(self, 'left_top_image', None)
                                 if img is not None:
@@ -18619,10 +18954,6 @@ class CentroidFinderWindow(QMainWindow):
             tbl2 = getattr(self, 'table_between', None)
             if tbl2 is not None:
                 try:
-                    name_col_width = int(self._center_name_column_width_hint(tbl2))
-                except Exception:
-                    name_col_width = 0
-                try:
                     tbl2.setVerticalScrollBarPolicy(Qt.ScrollBarAlwaysOn)
                     tbl2.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
                 except Exception:
@@ -18634,21 +18965,16 @@ class CentroidFinderWindow(QMainWindow):
                     hdr2 = None
                 cnt2 = tbl2.columnCount()
                 if cnt2 > 0:
-                    # Match widths to the left transposed reference view when possible
-                    # and keep Show column wider for toggle.
-                    ref_tbl = getattr(self, 'table_ref_view', None)
+                    layout = self._middle_table_layout_meta()
+                    name_w = int(layout.get('name_w', 130))
                     for i in range(cnt2):
                         try:
-                            if i == 0:
-                                w = 64
+                            if i == int(layout.get('name_col', 1)):
+                                w = name_w
                             elif i == (cnt2 - 1):
                                 w = 48
-                            elif i == 1 and int(name_col_width) > 0:
-                                w = max(72, min(132, int(name_col_width)))
-                            elif ref_tbl is not None and i < ref_tbl.columnCount():
-                                w = int(ref_tbl.columnWidth(i))
                             else:
-                                w = 40
+                                w = 50
                             tbl2.setColumnWidth(i, max(8, w))
                         except Exception:
                             pass
@@ -18666,7 +18992,7 @@ class CentroidFinderWindow(QMainWindow):
                         pass
                     try:
                         if hdr2 is not None:
-                            hdr2.setDefaultSectionSize(max(8, 40))
+                            hdr2.setDefaultSectionSize(50)
                     except Exception:
                         pass
 
@@ -18861,7 +19187,7 @@ class CentroidFinderWindow(QMainWindow):
                 header_h = 27
                 grp_toggle_h = 27
                 body_h = max(96, int(table_h))
-                # Add List行を廃止した分、Show/Hideトグル上下の余白を詰める。
+                # Add List、Show/Hide。
                 panel_h = header_h + grp_toggle_h + body_h + 10
             except Exception:
                 body_h = 190
@@ -19532,7 +19858,7 @@ class CentroidFinderWindow(QMainWindow):
                 except Exception:
                     pass
 
-            # Left/Center スワップ時は、左ロゴ列の幅を center table 側に合わせる。
+            # Left/Center 、 center table 。
             if bool(getattr(self, 'swap_left_center_columns', False)):
                 try:
                     lc = getattr(self, 'left_container', None)
@@ -19726,11 +20052,11 @@ class CentroidFinderWindow(QMainWindow):
     def _on_toggle_auto_update(self, enabled: bool):
         """Toggle automatic poster/centroid recalculation.
 
-        When disabled (manual mode), heavy poster regeneration is skipped until the user clicks "重心再計算".
+        When disabled (manual mode), heavy poster regeneration is skipped until the user clicks "".
         """
         try:
             self.auto_update_mode = bool(enabled)
-            # すぐに UI に反映させる（自動に切り替えたら即時再計算）
+            #  UI （）
             if self.auto_update_mode:
                 self.schedule_update(force=True)
         except Exception:
@@ -19746,7 +20072,7 @@ class CentroidFinderWindow(QMainWindow):
         try:
             self.btn_recalc.setEnabled(False)
             params = self._get_params()
-            # poster は重いので明示的に生成
+            # poster 
             poster = kmeans_posterize(self.proc_img, params["levels"])
             centroids = self.centroid_processor.get_centroids(params, poster=poster)
             self._cache.update({
@@ -19811,7 +20137,7 @@ class CentroidFinderWindow(QMainWindow):
                         edge_mask = np.zeros((h, w), dtype=np.uint8)
                         edge_mask[:, 1:][diff_h] = 255
                         edge_mask[1:, :][diff_v] = 255
-                        # trim_px_full==0 のときは見た目が太くなるため軽い erode と alpha 調整を行う
+                        # trim_px_full==0  erode  alpha 
                         try:
                             is_zero = int(trim_px_full) == 0
                         except Exception:
@@ -19845,7 +20171,7 @@ class CentroidFinderWindow(QMainWindow):
                     pass
             except Exception:
                 pass
-            # 強制再描画
+            # 
             self.schedule_update(force=True)
         finally:
             try:
@@ -19864,18 +20190,18 @@ class CentroidFinderWindow(QMainWindow):
             self._request_calc_stop("esc")
             return
 
-        # ピックモード中の操作
+        # 
         if self.pick_mode in ('add', 'update', 'target_add', 'target_update', 'center_uv_update'):
-            # Escでキャンセル
+            # Esc
             if key == Qt.Key_Escape:
                 self._end_pick_mode()
                 return
-            # 矢印キーでルーペ中心とカーソルを移動（倍率に反比例したステップ）
+            # （）
             if key in (Qt.Key_Left, Qt.Key_Right, Qt.Key_Up, Qt.Key_Down):
                 if self._img_base_size is None:
                     return
                 zoom = max(1.0, float(getattr(self.magnifier, "_zoom", 4.0)))
-                # 以前: 1/zoom に比例 → 今回: 1/(zoom^1.6) で“2倍強”に減速し、倍率が上がるほどどんどん遅く
+                # : 1/zoom  → : 1/(zoom^1.6) “2”、
                 step = max(1, int(round(6 / (zoom ** 2))))
                 dx = dy = 0
                 
@@ -19893,23 +20219,23 @@ class CentroidFinderWindow(QMainWindow):
                 if mods & Qt.ControlModifier:
                     dx = int(dx * 0.5) if dx != 0 else 0
                     dy = int(dy * 0.5) if dy != 0 else 0
-                # 現在のルーペ中心（フル座標）
-                # 現在の視界中心を起点とする（簡易）
+                # （）
+                # （）
                 vp = self.proc_scroll.viewport()
-                # ビューポート左上のフル座標（display_scale を使用）
+                # （display_scale ）
                 ds = max(0.0001, float(getattr(self, '_display_scale', max(0.1, float(self.proc_zoom)))))
                 x0_full = self.proc_scroll.horizontalScrollBar().value() / ds
                 y0_full = self.proc_scroll.verticalScrollBar().value() / ds
                 x_full = x0_full + vp.width() / (2.0 * ds)
                 y_full = y0_full + vp.height() / (2.0 * ds)
-                # 画面内に収める
+                # 
                 x_full = max(0, min(self._img_base_size[0] - 1, x_full + dx))
                 y_full = max(0, min(self._img_base_size[1] - 1, y_full + dy))
                 dxy = self._full_to_display(x_full, y_full)
                 if dxy is not None:
                     local_pt = QPoint(int(round(dxy[0])), int(round(dxy[1])))
                     global_pt = self.img_label_proc.mapToGlobal(local_pt)
-                    # カーソルも移動
+                    # 
                     QCursor.setPos(global_pt)
                 return
         super().keyPressEvent(event)
@@ -20585,7 +20911,7 @@ class CentroidFinderWindow(QMainWindow):
         except Exception:
             pass
 
-    def _setup_pseudo_headers_between(self, tbl):
+    def _setup_pseudo_headers_between(self, tbl, stage_override=None):
         """Setup pseudo-header rows (0-1) in middle table using setSpan."""
         try:
             # Ensure we have at least 2 rows
@@ -20595,75 +20921,16 @@ class CentroidFinderWindow(QMainWindow):
                 pass
 
             # Row 0: Group labels for middle transposed table.
-            # Current layout (9 cols): ID, Name, u, v, Grp, No., C/R, Gen., Show
+            # Online:  ID, Name, u, v, X, Y, Z, Show
+            # Offline: ID, Name, u, v, Grp, No., C/R, Gen., Show
             try:
                 ncols = int(tbl.columnCount() or 0)
             except Exception:
                 ncols = 0
 
-            if ncols >= 9:
-                name_label = 'Name'
-                group_configs = [
-                    (0, 1, ""),
-                    (1, 1, ""),
-                    (2, 2, "Image"),
-                    (4, 4, "Centroid Extraction"),
-                    (8, 1, ""),
-                ]
-                sub_labels = [
-                    self._center_label_with_sort('no', 'ID'),
-                    name_label,
-                    self._center_label_with_sort('u', 'u'),
-                    self._center_label_with_sort('v', 'v'),
-                    self._center_label_with_sort('grp', 'Grp'),
-                    self._center_label_with_sort('pno', 'No.'),
-                    self._center_label_with_sort('cr', 'C/R'),
-                    self._center_label_with_sort('gen', 'Gen.'),
-                    "",
-                ]
-            elif ncols == 8:
-                name_label = 'Name'
-                group_configs = [
-                    (0, 1, ""),
-                    (1, 1, ""),
-                    (2, 2, "Image"),
-                    (4, 3, "Stage"),
-                    (7, 1, ""),
-                ]
-                sub_labels = [
-                    self._center_label_with_sort('no', 'ID'),
-                    name_label,
-                    self._center_label_with_sort('u', 'u'),
-                    self._center_label_with_sort('v', 'v'),
-                    self._center_label_with_sort('x', 'X'),
-                    self._center_label_with_sort('y', 'Y'),
-                    self._center_label_with_sort('z', 'Z'),
-                    "",
-                ]
-            elif ncols >= 7:
-                group_configs = [
-                    (0, 1, "No."),
-                    (1, 2, "Image"),
-                    (3, 3, "Stage"),
-                    (6, 1, ""),
-                ]
-                sub_labels = [
-                    self._center_label_with_sort('no', 'ID'),
-                    "Name",
-                    self._center_label_with_sort('u', 'u'),
-                    self._center_label_with_sort('v', 'v'),
-                    self._center_label_with_sort('grp', 'Grp'),
-                    self._center_label_with_sort('pno', 'No.'),
-                    self._center_label_with_sort('cr', 'C/R'),
-                    self._center_label_with_sort('gen', 'Gen.'),
-                    "",
-                ]
-            else:
-                group_configs = [
-                    (0, 2, "Image"),      # cols 0-1
-                    (2, 3, "Stage"),      # cols 2-4
-                ]
-                sub_labels = ["u", "v", "X", "Y", "Z"]
+            layout = self._middle_table_layout_meta(stage_override=stage_override)
+            group_configs = list(layout.get('group_configs', []))
+            sub_labels = list(layout.get('sub_labels', []))
             for col_start, col_span, label in group_configs:
                 item = QTableWidgetItem(label)
                 try:

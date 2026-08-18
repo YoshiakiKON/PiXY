@@ -1,5 +1,7 @@
 # PiXY — Pixel to Stage-XY Coordinate Converter
 
+![PiXY header](PiXY_Header.png)
+
 PiXY is an open-source graphical user interface (GUI) software for **offline targeting in microanalysis**. It allows measurement positions to be selected on pre-acquired sample images before sample loading and subsequently converted into instrument stage coordinates during online alignment.
 
 PiXY is designed to reduce the time and operator effort required for **on-instrument targeting**, particularly when a large number of measurement positions must be selected, such as in zircon U–Pb dating and other microanalytical applications.
@@ -8,7 +10,7 @@ PiXY is designed to reduce the time and operator effort required for **on-instru
 
 PiXY provides an offline targeting environment in which target points can be selected and reviewed on pre-acquired sample images.
 
-![PiXY main window — offline targeting on a BSE image of zircon grains](Screenshot_Pix.png)
+![PiXY main window — offline targeting on a BSE image of zircon grains](PiXY_Pix.png)
 
 ## Overview
 
@@ -49,7 +51,7 @@ This approach is particularly useful when many particles of the same type need t
 ### Fiducial-based coordinate transformation
 During online alignment, PiXY uses fiducial points for which both image coordinates and corresponding instrument stage coordinates are known.
 
-![Online alignment — fiducial registration and stage coordinate export](Screenshot_XY.png)
+![Online alignment — fiducial registration and stage coordinate export](PiXY_XY.png)
 
 For the XY plane, image coordinates are transformed using a **2D similarity transformation** (isotropic scaling, rotation, and translation). The Z coordinate is estimated independently by **plane fitting** to the sample surface.
 
@@ -137,19 +139,15 @@ For detailed instructions and screenshots, see the manuals below.
 
 ### Manuals
 
-- **English:** `InstructionManual_EN_v1.5.2.md`
-- **日本語:** `InstructionManual_JP_v1.5.2.md`
-
-HTML versions are also provided:
-- `documentation/InstructionManual_EN_v1.5.2.html`
-- `documentation/InstructionManual_JP_v1.5.2.html`
+- **English:** `InstructionManual_EN_v1.5.3.md`
+- **日本語:** `InstructionManual_JP_v1.5.3.md`
 
 The manuals describe the complete offline-targeting and online-alignment workflow, including image-based target extraction, manual target selection, fiducial-point registration, coordinate transformation, and coordinate export.
 
 ### Release Notes
 
 Changes specific to each software version are documented separately:
-- `RELEASE_NOTES_v1.5.2.md`
+- `RELEASE_NOTES_v1.5.3.md`
 
 ## Citation
 
@@ -173,7 +171,7 @@ Issues and pull requests are welcome. For substantial changes, please open an is
 
 ## Version
 
-**Current release: v1.5.2**
+**Current release: v1.5.3**
 
 ## License
 

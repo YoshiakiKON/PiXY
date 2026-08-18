@@ -1,5 +1,7 @@
-# PiXY v1.5.2
-**Release date:** 2026-08-17
+# PiXY v1.5.3
+![PiXY header](PiXY_Header.png)
+
+**Release date:** 2026-08-18
 
 ## Overview
 
@@ -51,16 +53,16 @@ PiXY supports commonly used image formats for sample imaging:
 
 ## This Release
 
-Version 1.5.2 is a maintenance release that includes improvements to the user interface, expanded image-format support, and internal code cleanup. These changes do not alter the basic targeting workflow or coordinate-export behaviour.
+Version 1.5.3 is a maintenance release that fixes project-load calculation-mode restoration and keeps the displayed trigger label in sync with the saved Auto/Manual state.
 
-The release also updates the Quick Manual to reflect the current user interface.
+It also stabilizes the online and offline target-table layouts so the correct column set is shown after loading projects or switching workflow stages.
 
 ## Included Files
 
-- Standalone Windows executable: `PiXY_ver152.exe`
+- Standalone Windows executable: `PiXY_ver153.exe`
 - Source code for running PiXY in a Python environment
-- `InstructionManual_EN_v1.5.2.md`
-- `InstructionManual_JP_v1.5.2.md`
+- `InstructionManual_EN_v1.5.3.md`
+- `InstructionManual_JP_v1.5.3.md`
 
 **Recommended screen size:** 1200 × 900 pixels or larger.
 

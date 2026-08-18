@@ -1,11 +1,11 @@
 """
-自動スクリーンショット撮影スクリプト
+Automatic screenshot capture script
 
-使い方:
+Usage:
     python documentation\capture_screenshots.py
 
-このスクリプトはローカル環境で実行してください。アプリを起動し、主要画面のスクリーンショットを
-`documentation/images/` に出力します（quick_jp_1..4.png / quick_en_1..4.png を生成）。
+Run this script in a local environment. It launches the app and exports screenshots of the main screens to
+`documentation/images/` (generates quick_jp_1..4.png / quick_en_1..4.png).
 """
 import sys
 import os

@@ -84,6 +84,8 @@ class ImageViewController(QObject):
         self._wheel_settle_timer.setSingleShot(True)
         self._wheel_settle_timer.setInterval(140)
         self._wheel_settle_timer.timeout.connect(self._on_wheel_zoom_settled)
+        # Generation token used to invalidate queued recenter callbacks.
+        self._wheel_recenter_seq = 0
 
         # Optional performance logging
         self._wheel_profile = bool(str(os.environ.get('PIXY_WHEEL_PROFILE', '')).strip())
@@ -92,6 +94,17 @@ class ImageViewController(QObject):
         self._wheel_apply_ms = deque(maxlen=120)
         self._wheel_latency_ms = deque(maxlen=120)
         self._wheel_last_report_t = perf_counter()
+
+        # Mouse-move overlay throttling (cursor info + overlay reposition).
+        self._cursor_overlay_min_dt = 0.016  # ~60Hz
+        self._cursor_overlay_last_t = 0.0
+
+        # Crosshair ("cruiser") redraw throttling in pick modes.
+        # Stable viewport: prioritize cursor responsiveness (~60Hz).
+        # During scroll/zoom/kinetic: lower frequency to prioritize scrolling.
+        self._crosshair_min_dt_idle = 0.016   # ~60Hz
+        self._crosshair_min_dt_busy = 0.050   # ~20Hz
+        self._crosshair_last_t = 0.0
 
         # install event filters
         ui.proc_scroll.viewport().installEventFilter(self)
@@ -169,7 +182,16 @@ class ImageViewController(QObject):
                 pos_vp = _evt_point(event) if obj is self.ui.proc_scroll.viewport() else self.ui._label_pos_to_viewport_pos(_evt_point(event))
                 pos_label = _evt_point(event) if obj is self.ui.img_label_proc else self.ui._viewport_pos_to_label_pos(_evt_point(event))
                 try:
-                    self.ui._update_cursor_info_overlay(pos_label)
+                    now = monotonic()
+                    last_t = float(getattr(self, '_cursor_overlay_last_t', 0.0) or 0.0)
+                    mode_now = str(getattr(self.ui, 'pick_mode', '') or '')
+                    if mode_now == 'center_uv_update':
+                        # Keep crosshair motion snappy while updating UV.
+                        # Cursor info overlay updates are expensive (mapping + text layout + overlay reposition).
+                        self.ui._update_cursor_info_overlay(None)
+                    elif (now - last_t) >= float(getattr(self, '_cursor_overlay_min_dt', 0.016) or 0.016):
+                        self._cursor_overlay_last_t = now
+                        self.ui._update_cursor_info_overlay(pos_label)
                 except Exception:
                     pass
                 # 近傍の点があればカーソルを矢印に、それ以外は手のひら（ピックモード中は十字）
@@ -203,7 +225,32 @@ class ImageViewController(QObject):
                         return True
                 # draw crosshair in pick modes when not dragging
                 if self.ui.pick_mode in ('add', 'update', 'target_add', 'target_update', 'center_uv_update') and not self._dragging:
-                    self.ui._draw_crosshair(pos_label)
+                    try:
+                        now_ch = monotonic()
+                    except Exception:
+                        now_ch = 0.0
+                    try:
+                        busy = bool(
+                            self._dragging
+                            or bool(getattr(self, '_mouse_pressed', False))
+                            or bool(getattr(self, '_wheel_zoom_pending', False))
+                            or bool(getattr(self, '_wheel_zoom_timer', None) is not None and self._wheel_zoom_timer.isActive())
+                            or bool(getattr(self, '_wheel_settle_timer', None) is not None and self._wheel_settle_timer.isActive())
+                            or bool(getattr(self, '_kinetic_timer', None) is not None and self._kinetic_timer.isActive())
+                        )
+                    except Exception:
+                        busy = False
+                    try:
+                        min_dt = float(self._crosshair_min_dt_busy if busy else self._crosshair_min_dt_idle)
+                    except Exception:
+                        min_dt = 0.016
+                    try:
+                        last_ch = float(getattr(self, '_crosshair_last_t', 0.0) or 0.0)
+                    except Exception:
+                        last_ch = 0.0
+                    if (now_ch - last_ch) >= min_dt:
+                        self._crosshair_last_t = now_ch
+                        self.ui._draw_crosshair(pos_label)
             elif et == QEvent.MouseButtonRelease and event.button() == Qt.LeftButton:
                 pos_label = _evt_point(event) if obj is self.ui.img_label_proc else self.ui._viewport_pos_to_label_pos(_evt_point(event))
                 try:
@@ -320,6 +367,10 @@ class ImageViewController(QObject):
             elif et == QEvent.Leave:
                 try:
                     self.ui._update_cursor_info_overlay(None)
+                except Exception:
+                    pass
+                try:
+                    self.ui._hide_crosshair_overlay()
                 except Exception:
                     pass
                 try:
@@ -494,6 +545,13 @@ class ImageViewController(QObject):
                 pass
             return False
 
+    def _invalidate_wheel_recenter_callbacks(self):
+        """Invalidate queued wheel recenter callbacks (singleShot/settle tails)."""
+        try:
+            self._wheel_recenter_seq = int(getattr(self, '_wheel_recenter_seq', 0) or 0) + 1
+        except Exception:
+            self._wheel_recenter_seq = 1
+
     def _flush_pending_wheel_zoom_on_click(self):
         """Finalize wheel zoom state before point-selection click handling.
 
@@ -521,6 +579,15 @@ class ImageViewController(QObject):
         except Exception:
             pass
 
+        try:
+            self._wheel_zoom_pending = False
+            self._wheel_zoom_target = None
+            self._wheel_zoom_anchor_full = None
+            self._wheel_zoom_anchor_vp = None
+            self._wheel_zoom_pick_mode = None
+        except Exception:
+            pass
+
         # Do not allow deferred fast->full pass to reposition viewport after click.
         try:
             self.ui._max_render_pixels_override = None
@@ -530,14 +597,12 @@ class ImageViewController(QObject):
             self._wheel_fast_render_applied = False
         except Exception:
             pass
+
+        # Invalidate already queued singleShot recenter callbacks.
+        try:
+            self._invalidate_wheel_recenter_callbacks()
         except Exception:
-            # Log other exceptions and avoid letting them crash the Qt event loop.
-            try:
-                import traceback
-                traceback.print_exc()
-            except Exception:
-                pass
-            return False
+            pass
 
     def _nearest_centroid_hit(self, pos_label):
         """Return (idx, d2) of nearest centroid within radius; else (None, None)."""
@@ -731,9 +796,12 @@ class ImageViewController(QObject):
             pick_mode = getattr(self, '_wheel_zoom_pick_mode', None)
             evt_t = getattr(self, '_wheel_zoom_last_event_t', None)
             self._wheel_zoom_pending = False
+            recenter_seq = int(getattr(self, '_wheel_recenter_seq', 0) or 0)
 
             def _recenter_to_anchor():
                 try:
+                    if int(getattr(self, '_wheel_recenter_seq', 0) or 0) != recenter_seq:
+                        return
                     if anchor_full is None:
                         return
                     try:
@@ -881,10 +949,13 @@ class ImageViewController(QObject):
                     pass
                 if need_redraw:
                     try:
+                        recenter_seq = int(getattr(self, '_wheel_recenter_seq', 0) or 0)
                         self.ui._apply_proc_zoom()
                         # Recenter again after the full-quality redraw; the canvas size can
                         # change slightly compared with the fast path on very large images.
                         try:
+                            if int(getattr(self, '_wheel_recenter_seq', 0) or 0) != recenter_seq:
+                                raise ValueError('wheel recenter invalidated')
                             anchor_full = getattr(self, '_wheel_zoom_anchor_full', None)
                             anchor_vp = getattr(self, '_wheel_zoom_anchor_vp', None)
                             if anchor_full is not None:

@@ -1,21 +1,21 @@
 """bench_workloads.py
 
-K-Meansポスタリゼーション / 粒子検出 / 重心計算 の計算負荷(時間)を比較するベンチ。
+K-Means posterization / particle detection / centroid calculation workload benchmark (runtime comparison).
 
-PiXY の既存実装をそのまま呼び出し、同一画像・同一パラメータで以下を計測します。
-  1) K-Meansポスタリゼーション (Util.kmeans_posterize)
-  2) 粒子検出 (マスク生成 + connected components + neck separation + split CC)
-  3) 重心計算 (結果リストへの重心追加)
+The existing PiXY implementation is called directly; the same image and parameters are used to measure the following:
+  1) K-Means posterization (Util.kmeans_posterize)
+  2) Particle detection (mask generation + connected components + neck separation + split CC)
+  3) Centroid calculation (adding centroid results to the result list)
 
 Usage:
   py bench_workloads.py [image_path] [runs]
 
 Options (environment-agnostic, simplest CLI):
-  - 画像パス省略時は DemoBSE.png / DemoBMP.bmp / last_image_path.txt を探索
+  - When no image path is provided, search DemoBSE.png / DemoBMP.bmp / last_image_path.txt
 
 Note:
-  - OpenCVのkmeansは乱数を使うため、Util.kmeans_posterize側で固定シード設定済み。
-  - 計時は time.perf_counter を使用。
+  - OpenCV k-means uses randomness, so a fixed seed is already configured in Util.kmeans_posterize.
+  - Timing uses time.perf_counter.
 """
 
 import os
@@ -36,7 +36,7 @@ def _load_image_try(paths: List[str]) -> Tuple[Optional[np.ndarray], Optional[st
     for p in paths:
         if p and os.path.exists(p):
             try:
-                # Windowsパス/日本語パス対応: fromfile + imdecode
+                # Windows path / non-ASCII path support: fromfile + imdecode
                 img = cv2.imdecode(np.fromfile(p, dtype=np.uint8), cv2.IMREAD_COLOR)
                 if img is not None:
                     return img, p
@@ -46,7 +46,7 @@ def _load_image_try(paths: List[str]) -> Tuple[Optional[np.ndarray], Optional[st
 
 
 def _build_proc_img(img_full: np.ndarray, target_width: int = PROC_TARGET_WIDTH) -> Tuple[np.ndarray, float]:
-    """アプリと同じ思想: 表示/処理のため横幅を抑える。返すscaleは full/proc。"""
+    """Same idea as the app: shrink the width for display/processing. Returns scale as full/proc."""
     h, w = img_full.shape[:2]
     if w <= int(target_width):
         return img_full.copy(), 1.0
@@ -135,7 +135,7 @@ def main() -> int:
         except Exception:
             pass
 
-    # ベンチ条件
+    # Benchmark conditions
     params = {
         "levels": int(levels),
         "min_area": int(min_area),
@@ -176,7 +176,7 @@ def main() -> int:
 
     cp = CentroidProcessor(proc_img, scale_proc_to_full, img_full)
 
-    # Warmup（初回の内部キャッシュ/メモリ確保を避ける）
+    # Warmup (avoid the first internal cache / memory allocation costs)
     try:
         poster_w = kmeans_posterize(proc_img, params["levels"])
         cp.get_centroids(params, poster=poster_w, collect_timings=False, emit_timing=False)
@@ -197,7 +197,7 @@ def main() -> int:
         dt_k = time.perf_counter() - t0
         t_kmeans.append(dt_k)
 
-        # 2) 粒子検出 + 3) 重心計算（内訳タイミングを CalcCentroid から取得）
+        # 2) Particle detection + 3) centroid calculation (timings are read from the CalcCentroid breakdown)
         t1 = time.perf_counter()
         res = cp.get_centroids(
             params,

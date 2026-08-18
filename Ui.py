@@ -14847,8 +14847,8 @@ class CentroidFinderWindow(QMainWindow):
                 pass
 
 
-    def _build_center_xyz_export_tsv(self, include_header=True):
-        """Build shared TSV text from middle-table data rows: NO/Name/X/Y/Z (Hide excluded)."""
+    def _build_center_xyz_export_rows(self):
+        """Return exported center-table rows as ordered lists: [No, Name, X, Y, Z]."""
         try:
             rows = list(getattr(self, 'center_numeric_rows', []) or [])
             try:
@@ -14870,9 +14870,7 @@ class CentroidFinderWindow(QMainWindow):
                         filtered.append(rr)
                 rows = filtered
 
-            lines = []
-            if bool(include_header):
-                lines.append("No\tName\tX\tY\tZ")
+            exported_rows = []
             for rr in rows:
                 try:
                     rd = dict(rr or {})
@@ -14907,8 +14905,36 @@ class CentroidFinderWindow(QMainWindow):
                     sz = str(rd.get('z', '') if np.isfinite(float(rd.get('z', float('nan')))) else '')
                 except Exception:
                     sz = ""
-                lines.append(f"{no_txt}\t{name_txt}\t{sx}\t{sy}\t{sz}")
+                exported_rows.append([no_txt, name_txt, sx, sy, sz])
+            return exported_rows
+        except Exception:
+            return []
+
+    def _build_center_xyz_export_tsv(self, include_header=True):
+        """Build shared TSV text from middle-table data rows: NO/Name/X/Y/Z (Hide excluded)."""
+        try:
+            rows = list(self._build_center_xyz_export_rows() or [])
+            lines = []
+            if bool(include_header):
+                lines.append("No\tName\tX\tY\tZ")
+            for row in rows:
+                lines.append("\t".join(str(col) for col in row))
             return "\n".join(lines)
+        except Exception:
+            return ""
+
+    def _build_center_xyz_export_csv(self, include_header=True):
+        """Build shared CSV text from middle-table data rows: NO,Name,X,Y,Z."""
+        try:
+            import csv
+            import io
+            buffer = io.StringIO()
+            writer = csv.writer(buffer, lineterminator='\n')
+            if bool(include_header):
+                writer.writerow(["No", "Name", "X", "Y", "Z"])
+            for row in self._build_center_xyz_export_rows() or []:
+                writer.writerow(row)
+            return buffer.getvalue()
         except Exception:
             return ""
 
@@ -14930,11 +14956,12 @@ class CentroidFinderWindow(QMainWindow):
             start_path = default_name
 
         try:
-            outpath, _ = QFileDialog.getSaveFileName(
+            export_filter = "Text Files (*.txt);;CSV Files (*.csv);;All Files (*)"
+            outpath, selected_filter = QFileDialog.getSaveFileName(
                 self,
                 "Export Centroids",
                 start_path,
-                "Text Files (*.txt);;All Files (*)",
+                export_filter,
             )
         except Exception:
             outpath = ""
@@ -14943,13 +14970,24 @@ class CentroidFinderWindow(QMainWindow):
             return
 
         try:
-            txt = str(self._build_center_xyz_export_tsv(include_header=True) or "")
-            if not txt.strip():
-                txt = "No\tName\tX\tY\tZ"
-            with open(outpath, "w", encoding="utf-8") as f:
-                f.write(txt)
+            ext = os.path.splitext(outpath)[1].lower()
+            selected_filter = str(selected_filter or '').lower()
+            if ext == '.csv' or ('csv' in selected_filter and ext != '.txt'):
+                text = str(self._build_center_xyz_export_csv(include_header=True) or "")
+                if not text.strip():
+                    text = "No,Name,X,Y,Z"
+            else:
+                text = str(self._build_center_xyz_export_tsv(include_header=True) or "")
+                if not text.strip():
+                    text = "No\tName\tX\tY\tZ"
+                if ext == '':
+                    outpath = f"{outpath}.txt"
+            if ext == '' and 'csv' in selected_filter:
+                outpath = f"{outpath}.csv"
+            with open(outpath, "w", encoding="utf-8", newline='') as f:
+                f.write(text)
             from qt_compat.QtWidgets import QMessageBox
-            QMessageBox.information(self, "Export", f"Saved text export to:\n{outpath}")
+            QMessageBox.information(self, "Export", f"Saved export to:\n{outpath}")
         except Exception as e:
             from qt_compat.QtWidgets import QMessageBox
             QMessageBox.critical(self, "Export Error", str(e))

@@ -10,7 +10,7 @@ PiXY is designed to reduce the time and operator effort required for **on-instru
 
 PiXY provides an offline targeting environment in which target points can be selected and reviewed on pre-acquired sample images.
 
-![PiXY main window — offline targeting on a BSE image of zircon grains](PiXY_Pix.png)
+![PiXY main window — offline targeting on a BSE image of zircon grains](Screenshot_Pix.png)
 
 ## Overview
 
@@ -51,7 +51,7 @@ This approach is particularly useful when many particles of the same type need t
 ### Fiducial-based coordinate transformation
 During online alignment, PiXY uses fiducial points for which both image coordinates and corresponding instrument stage coordinates are known.
 
-![Online alignment — fiducial registration and stage coordinate export](PiXY_XY.png)
+![Online alignment — fiducial registration and stage coordinate export](Screenshot_XY.png)
 
 For the XY plane, image coordinates are transformed using a **2D similarity transformation** (isotropic scaling, rotation, and translation). The Z coordinate is estimated independently by **plane fitting** to the sample surface.
 

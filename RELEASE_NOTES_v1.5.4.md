@@ -7,7 +7,7 @@
 
 PiXY (Pixel to stage-XY Coordinate Converter) is an open-source graphical user interface (GUI) software for offline targeting in microanalysis. It enables measurement positions to be selected on pre-acquired sample images before sample loading and subsequently converted into instrument stage coordinates during online alignment.
 
-PiXY is designed to reduce the time and operator effort required for on-instrument targeting, particularly when a large number of measurement positions must be selected, such as in zircon U窶撤b dating and other microanalytical applications.
+PiXY is designed to reduce the time and operator effort required for on-instrument targeting, particularly when a large number of measurement positions must be selected, such as in zircon U-Pb dating and other microanalytical applications.
 
 PiXY provides two complementary approaches to target-point selection:
 
@@ -22,11 +22,11 @@ PiXY uses a two-step workflow.
 
 In the **offline targeting** step, target points are selected on pre-acquired sample images. For particulate samples such as zircon grains in back-scattered electron images, image processing can be used to extract particle regions and generate target points automatically. Manual selection is available when image-based extraction is unsuitable or when measurement positions are defined by textural relationships.
 
-![Offline targeting 窶・target points on a BSE image of zircon grains](Screenshot_Pix.png)
+![Offline targeting — target points on a BSE image of zircon grains](Screenshot_Pix.png)
 
 In the **online alignment** step, PiXY converts image coordinates into instrument stage coordinates using fiducial points whose image and stage coordinates are known. The XY coordinates are transformed using a two-dimensional similarity transformation, while the Z coordinate is estimated independently by plane fitting. The resulting stage coordinates can then be transferred to the analytical instrument or its control software.
 
-![Online alignment 窶・fiducial registration and stage coordinate export](Screenshot_XY.png)
+![Online alignment — fiducial registration and stage coordinate export](Screenshot_XY.png)
 
 This workflow allows a large number of target positions to be prepared before sample loading and brings the instrument stage to the vicinity of the selected targets before measurement.
 
@@ -64,7 +64,7 @@ It also stabilizes the online and offline target-table layouts so the correct co
 - `InstructionManual_EN_v1.5.4.md`
 - `InstructionManual_JP_v1.5.4.md`
 
-**Recommended screen size:** 1200 ﾃ・900 pixels or larger.
+**Recommended screen size:** 1200 x 900 pixels or larger.
 
 ## Citation
 

@@ -180,5 +180,6 @@ PiXY is released under the **MIT License**. See `LICENSE` for details.
 ## Contact
 
 **Yoshiaki KON**  
+**Email:** yoshiaki-kon@aist.go.jp  
 Geological Survey of Japan (GSJ), AIST  
 Japan

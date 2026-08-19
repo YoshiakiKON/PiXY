@@ -37,6 +37,7 @@ import cv2
 from datetime import datetime
 from collections import deque
 from time import monotonic
+from typing import Optional
 from widgets import ClickableSlider, RefTableDelegate
 from rendering import build_zoomed_canvas, draw_crosshair
 from tables import populate_tables, fix_tables_height
@@ -945,7 +946,7 @@ class Footer(QWidget):
     def showMessage(self, msg):
         self.status_label.setText(msg)
 
-    def setVersion(self, version: str | None):
+    def setVersion(self, version: Optional[str]):
         if version:
             self.version_label.setText(f"Ver. {version}")
         else:
@@ -1005,7 +1006,7 @@ class CentroidFinderWindow(QMainWindow):
         try:
             import sys
 
-            def _read_version_from_pyproject(pyproject_path: str) -> str | None:
+            def _read_version_from_pyproject(pyproject_path: str) -> Optional[str]:
                 try:
                     if not pyproject_path or not os.path.isfile(pyproject_path):
                         return None

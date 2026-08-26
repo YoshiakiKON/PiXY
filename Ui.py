@@ -15101,24 +15101,40 @@ class CentroidFinderWindow(QMainWindow):
                 pass
             return
 
-        # Keep consistency with current detection result (cache first, else recompute)
+        # Keep export consistent with the currently visible overlay payload rather than
+        # stale raw centroid detection results.
+        centroids = list(getattr(self, 'centroids', []) or [])
+        label_texts = []
         try:
-            if self._cache.get("centroids") is not None and self._cache.get("img_id") == id(self.proc_img):
-                centroids = self._cache["centroids"]
-            else:
-                params = self._get_params()
-                poster = None
-                if (
-                    self._cache.get("poster") is not None
-                    and self._cache.get("img_id") == id(self.proc_img)
-                    and self._cache.get("levels") == params["levels"]
-                    and self._cache.get("min_area") == params["min_area"]
-                    and self._cache.get("trim_px") == params.get("trim_px")
-                ):
-                    poster = self._cache.get("poster")
-                centroids = self.centroid_processor.get_centroids(params, poster=poster)
+            payload = self._get_overlay_render_payload()
+            if isinstance(payload, dict):
+                payload_centroids = list(payload.get('centroids', []) or [])
+                if payload_centroids:
+                    centroids = payload_centroids
+                    label_texts = list(payload.get('label_texts', []) or [])
         except Exception:
-            centroids = getattr(self, 'centroids', []) or []
+            pass
+
+        # Backward-compatible fallback: if the UI has no overlay payload yet, recompute
+        # the current centroid set from the cached detector result.
+        if not centroids:
+            try:
+                if self._cache.get("centroids") is not None and self._cache.get("img_id") == id(self.proc_img):
+                    centroids = list(self._cache["centroids"])
+                else:
+                    params = self._get_params()
+                    poster = None
+                    if (
+                        self._cache.get("poster") is not None
+                        and self._cache.get("img_id") == id(self.proc_img)
+                        and self._cache.get("levels") == params["levels"]
+                        and self._cache.get("min_area") == params["min_area"]
+                        and self._cache.get("trim_px") == params.get("trim_px")
+                    ):
+                        poster = self._cache.get("poster")
+                    centroids = list(self.centroid_processor.get_centroids(params, poster=poster))
+            except Exception:
+                centroids = list(getattr(self, 'centroids', []) or [])
 
         # Output path
         dt_str = datetime.now().strftime("%Y%m%d_%H%M%S")
@@ -15145,13 +15161,15 @@ class CentroidFinderWindow(QMainWindow):
         if not outpath:
             return
 
-        # Draw markers on full-res image with FIXED pixel size (independent of image dimensions)
+        # Draw markers on full-res image with the same visual scale as the UI overlay.
+        # UI uses ~4px markers and ~8pt labels; keep export slightly smaller and lighter to
+        # avoid overlap while matching the same color mapping.
         out_img = self.img_full.copy()
         h_full, w_full = out_img.shape[:2]
-        radius_px = 5
-        font_scale = 0.55
+        radius_px = 4
+        font_scale = 0.34
         text_thickness = 1
-        outline_thickness = 3
+        outline_thickness = 1
 
         for i, c in enumerate(centroids or []):
             try:
@@ -15165,18 +15183,36 @@ class CentroidFinderWindow(QMainWindow):
             if not (0 <= x < w_full and 0 <= y < h_full):
                 continue
 
-            # centroid marker
+            # Match UI overlay color logic: core = red, rim = blue, base centroid = gray.
+            fill_color = (64, 64, 64)
             try:
-                cv2.circle(out_img, (x, y), int(radius_px), (64, 64, 64), -1, lineType=cv2.LINE_AA)
+                ptag = str((payload.get('local_to_pos', [])[i] if i < len(payload.get('local_to_pos', [])) else 'c')).lower().strip()
+                if ptag == 'r':
+                    fill_color = (0, 102, 220)
+                elif ptag == 'c':
+                    fill_color = (220, 50, 50)
+                elif label_texts and i < len(label_texts):
+                    lbl = str(label_texts[i]).strip().lower()
+                    if lbl.endswith('r'):
+                        fill_color = (0, 102, 220)
+                    elif lbl.endswith('c'):
+                        fill_color = (220, 50, 50)
+            except Exception:
+                pass
+
+            try:
+                cv2.circle(out_img, (x, y), int(radius_px), fill_color, -1, lineType=cv2.LINE_AA)
                 cv2.circle(out_img, (x, y), int(radius_px), (255, 255, 255), 1, lineType=cv2.LINE_AA)
             except Exception:
                 pass
 
-            # centroid index label (1-based)
-            label = str(int(i) + 1)
+            # Preserve the current overlay label if present; otherwise fall back to a simple 1-based index.
+            if i < len(label_texts):
+                label = str(label_texts[i])
+            else:
+                label = str(int(i) + 1)
             tx = int(x + radius_px + 2)
             ty = int(y - radius_px - 2)
-            # keep roughly on-screen
             tx = max(0, min(w_full - 1, tx))
             ty = max(0, min(h_full - 1, ty))
             try:

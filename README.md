@@ -85,7 +85,7 @@ A standalone Windows executable is provided, so Python does not need to be insta
 
 Download the latest release and run:
 ```
-PiXY_ver154.exe
+PiXY_ver155.exe
 ```
 
 The recommended screen resolution is **1200 × 900 pixels or larger**.
@@ -139,15 +139,15 @@ For detailed instructions and screenshots, see the manuals below.
 
 ### Manuals
 
-- **English:** `InstructionManual_EN_v1.5.4.md`
-- **日本語:** `InstructionManual_JP_v1.5.4.md`
+- **English:** `InstructionManual_EN_v1.5.5.md`
+- **日本語:** `InstructionManual_JP_v1.5.5.md`
 
 The manuals describe the complete offline-targeting and online-alignment workflow, including image-based target extraction, manual target selection, fiducial-point registration, coordinate transformation, and coordinate export.
 
 ### Release Notes
 
 Changes specific to each software version are documented separately:
-- `RELEASE_NOTES_v1.5.4.md`
+- `RELEASE_NOTES_v1.5.5.md`
 
 ## Citation
 
@@ -171,7 +171,7 @@ Issues and pull requests are welcome. For substantial changes, please open an is
 
 ## Version
 
-**Current release: v1.5.4**
+**Current release: v1.5.5**
 
 ## License
 
